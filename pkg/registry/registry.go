@@ -3,8 +3,10 @@
 package registry
 
 import (
+	"context"
+
 	ref "github.com/distribution/reference"
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/openserbia/watchtower/pkg/registry/helpers"
@@ -12,21 +14,21 @@ import (
 )
 
 // GetPullOptions creates a struct with all options needed for pulling images from a registry
-func GetPullOptions(imageName string) (types.ImagePullOptions, error) {
+func GetPullOptions(imageName string) (image.PullOptions, error) {
 	auth, err := EncodedAuth(imageName)
 	log.Debugf("Got image name: %s", imageName)
 	if err != nil {
-		return types.ImagePullOptions{}, err
+		return image.PullOptions{}, err
 	}
 
 	if auth == "" {
-		return types.ImagePullOptions{}, nil
+		return image.PullOptions{}, nil
 	}
 
 	// CREDENTIAL: Uncomment to log docker config auth
 	// log.Tracef("Got auth value: %s", auth)
 
-	return types.ImagePullOptions{
+	return image.PullOptions{
 		RegistryAuth:  auth,
 		PrivilegeFunc: DefaultAuthHandler,
 	}, nil
@@ -35,7 +37,7 @@ func GetPullOptions(imageName string) (types.ImagePullOptions, error) {
 // DefaultAuthHandler will be invoked if an AuthConfig is rejected
 // It could be used to return a new value for the "X-Registry-Auth" authentication header,
 // but there's no point trying again with the same value as used in AuthConfig
-func DefaultAuthHandler() (string, error) {
+func DefaultAuthHandler(_ context.Context) (string, error) {
 	log.Debug("Authentication request was rejected. Trying again without authentication")
 	return "", nil
 }

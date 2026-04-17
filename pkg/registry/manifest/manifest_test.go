@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	apiTypes "github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
@@ -61,7 +61,7 @@ var _ = Describe("the manifest module", func() {
 })
 
 func buildMockContainerManifestURL(imageRef string) (string, error) {
-	imageInfo := apiTypes.ImageInspect{
+	imageInfo := image.InspectResponse{
 		RepoTags: []string{
 			imageRef,
 		},

@@ -15,3 +15,5 @@ docs/assets/wasm_exec.js
 docs/assets/*.wasm
 /.venv/
 /vendor/
+# Added by code-review-graph
+.code-review-graph/

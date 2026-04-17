@@ -10,49 +10,30 @@ on:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: 1.20.x
-      - uses: dominikh/staticcheck-action@ba605356b4b29a60e87ab9404b712f3461e566dc #v1.3.0
-        with:
-          version: "2022.1.1"
-          install-go: "false" # StaticCheck uses go v1.17 which does not support `any`
+      - name: Lint
+        run: devbox run -- task lint
 
   test:
     name: Test
-    strategy:
-      matrix:
-        go-version:
-          - 1.20.x
-        platform:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
-    runs-on: ${{ matrix.platform }}
+    runs-on: self-hosted
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: 1.20.x
       - name: Run tests
-        run: |
-          go test ./... -coverprofile coverage.out
+        run: devbox run -- task test
 
   build:
     name: Build
-    runs-on: ubuntu-latest
-    needs: 
+    runs-on: self-hosted
+    needs:
       - test
       - lint
     env:
@@ -60,26 +41,22 @@ jobs:
       TAG: ${{ github.ref_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: 1.20.x
       - name: Login to Docker Hub
-        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc #v2
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Login to GHCR
-        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc #v2
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.BOT_USERNAME }}
           password: ${{ secrets.BOT_GHCR_PAT }}
           registry: ghcr.io
       - name: Build
-        uses: goreleaser/goreleaser-action@7ec5c2b0c6cdda6e8bbb49444bc797dd33d74dd8 #v3
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: v0.155.0
           args: --debug
@@ -93,74 +70,74 @@ jobs:
         run: |
           export DH_TAG=$(git tag --points-at HEAD | sed 's/^v*//')
           docker manifest create \
-            containrrr/watchtower:$DH_TAG \
-            containrrr/watchtower:amd64-$DH_TAG \
-            containrrr/watchtower:i386-$DH_TAG \
-            containrrr/watchtower:armhf-$DH_TAG \
-            containrrr/watchtower:arm64v8-$DH_TAG
+            openserbia/watchtower:$DH_TAG \
+            openserbia/watchtower:amd64-$DH_TAG \
+            openserbia/watchtower:i386-$DH_TAG \
+            openserbia/watchtower:armhf-$DH_TAG \
+            openserbia/watchtower:arm64v8-$DH_TAG
           docker manifest create \
-            ghcr.io/containrrr/watchtower:$DH_TAG \
-            ghcr.io/containrrr/watchtower:amd64-$DH_TAG \
-            ghcr.io/containrrr/watchtower:i386-$DH_TAG \
-            ghcr.io/containrrr/watchtower:armhf-$DH_TAG \
-            ghcr.io/containrrr/watchtower:arm64v8-$DH_TAG
+            ghcr.io/openserbia/watchtower:$DH_TAG \
+            ghcr.io/openserbia/watchtower:amd64-$DH_TAG \
+            ghcr.io/openserbia/watchtower:i386-$DH_TAG \
+            ghcr.io/openserbia/watchtower:armhf-$DH_TAG \
+            ghcr.io/openserbia/watchtower:arm64v8-$DH_TAG
       - name: Annotate manifest for version
         run: |
           for REPO in '' ghcr.io/ ; do
-          
+
           docker manifest annotate \
-            ${REPO}containrrr/watchtower:$(echo $TAG | sed 's/^v*//') \
-            ${REPO}containrrr/watchtower:i386-$(echo $TAG | sed 's/^v*//') \
+            ${REPO}openserbia/watchtower:$(echo $TAG | sed 's/^v*//') \
+            ${REPO}openserbia/watchtower:i386-$(echo $TAG | sed 's/^v*//') \
             --os linux \
             --arch 386
-          
+
           docker manifest annotate \
-            ${REPO}containrrr/watchtower:$(echo $TAG | sed 's/^v*//') \
-            ${REPO}containrrr/watchtower:armhf-$(echo $TAG | sed 's/^v*//') \
+            ${REPO}openserbia/watchtower:$(echo $TAG | sed 's/^v*//') \
+            ${REPO}openserbia/watchtower:armhf-$(echo $TAG | sed 's/^v*//') \
             --os linux \
             --arch arm
-      
+
           docker manifest annotate \
-            ${REPO}containrrr/watchtower:$(echo $TAG | sed 's/^v*//') \
-            ${REPO}containrrr/watchtower:arm64v8-$(echo $TAG | sed 's/^v*//') \
+            ${REPO}openserbia/watchtower:$(echo $TAG | sed 's/^v*//') \
+            ${REPO}openserbia/watchtower:arm64v8-$(echo $TAG | sed 's/^v*//') \
             --os linux \
             --arch arm64 \
             --variant v8
-            
+
             done
       - name: Create manifest for latest
         run: |
           docker manifest create \
-            containrrr/watchtower:latest \
-            containrrr/watchtower:amd64-latest \
-            containrrr/watchtower:i386-latest \
-            containrrr/watchtower:armhf-latest \
-            containrrr/watchtower:arm64v8-latest
+            openserbia/watchtower:latest \
+            openserbia/watchtower:amd64-latest \
+            openserbia/watchtower:i386-latest \
+            openserbia/watchtower:armhf-latest \
+            openserbia/watchtower:arm64v8-latest
           docker manifest create \
-            ghcr.io/containrrr/watchtower:latest \
-            ghcr.io/containrrr/watchtower:amd64-latest \
-            ghcr.io/containrrr/watchtower:i386-latest \
-            ghcr.io/containrrr/watchtower:armhf-latest \
-            ghcr.io/containrrr/watchtower:arm64v8-latest
+            ghcr.io/openserbia/watchtower:latest \
+            ghcr.io/openserbia/watchtower:amd64-latest \
+            ghcr.io/openserbia/watchtower:i386-latest \
+            ghcr.io/openserbia/watchtower:armhf-latest \
+            ghcr.io/openserbia/watchtower:arm64v8-latest
       - name: Annotate manifest for latest
         run: |
           for REPO in '' ghcr.io/ ; do
 
           docker manifest annotate \
-            ${REPO}containrrr/watchtower:latest \
-            ${REPO}containrrr/watchtower:i386-latest \
+            ${REPO}openserbia/watchtower:latest \
+            ${REPO}openserbia/watchtower:i386-latest \
             --os linux \
             --arch 386
-      
+
           docker manifest annotate \
-            ${REPO}containrrr/watchtower:latest \
-            ${REPO}containrrr/watchtower:armhf-latest \
+            ${REPO}openserbia/watchtower:latest \
+            ${REPO}openserbia/watchtower:armhf-latest \
             --os linux \
             --arch arm
-            
+
           docker manifest annotate \
-            ${REPO}containrrr/watchtower:latest \
-            ${REPO}containrrr/watchtower:arm64v8-latest \
+            ${REPO}openserbia/watchtower:latest \
+            ${REPO}openserbia/watchtower:arm64v8-latest \
             --os linux \
             --arch arm64 \
             --variant v8
@@ -172,26 +149,13 @@ jobs:
           DOCKER_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           docker login -u $DOCKER_USER -p $DOCKER_TOKEN && \
-            docker manifest push containrrr/watchtower:$(echo $TAG | sed 's/^v*//') && \
-            docker manifest push containrrr/watchtower:latest
+            docker manifest push openserbia/watchtower:$(echo $TAG | sed 's/^v*//') && \
+            docker manifest push openserbia/watchtower:latest
       - name: Push manifests to GitHub Container Registry
         env:
           DOCKER_USER: ${{ secrets.BOT_USERNAME }}
           DOCKER_TOKEN: ${{ secrets.BOT_GHCR_PAT }}
         run: |
           docker login -u $DOCKER_USER -p $DOCKER_TOKEN ghcr.io && \
-            docker manifest push ghcr.io/containrrr/watchtower:$(echo $TAG | sed 's/^v*//') && \
-            docker manifest push ghcr.io/containrrr/watchtower:latest
-
-  renew-docs:
-    name: Refresh pkg.go.dev
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-    - name: Pull new module version
-      uses: andrewslotin/go-proxy-pull-action@50fea06a976087614babb9508e5c528b464f4645 #master@2022-10-14
-
-  
-  
-
-  
+            docker manifest push ghcr.io/openserbia/watchtower:$(echo $TAG | sed 's/^v*//') && \
+            docker manifest push ghcr.io/openserbia/watchtower:latest

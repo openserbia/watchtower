@@ -17,10 +17,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// DockerAPIMinVersion is the minimum version of the docker api required to
-// use watchtower
-const DockerAPIMinVersion string = "1.25"
-
 const hoursPerDay = 24
 
 var defaultInterval = int((time.Hour * hoursPerDay).Seconds())
@@ -429,7 +425,10 @@ const (
 func SetDefaults() {
 	viper.AutomaticEnv()
 	viper.SetDefault("DOCKER_HOST", "unix:///var/run/docker.sock")
-	viper.SetDefault("DOCKER_API_VERSION", DockerAPIMinVersion)
+	// Intentionally not defaulting DOCKER_API_VERSION: when set, the Docker client
+	// skips version negotiation and pins to the env value. Leaving it unset lets
+	// WithAPIVersionNegotiation() downgrade to the daemon's reported version,
+	// which is required to work with Docker Engine 29+ (minimum API floor 1.44).
 	viper.SetDefault("WATCHTOWER_POLL_INTERVAL", defaultInterval)
 	viper.SetDefault("WATCHTOWER_TIMEOUT", time.Second*defaultStopTimeoutSeconds)
 	viper.SetDefault("WATCHTOWER_NOTIFICATIONS", []string{})

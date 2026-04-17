@@ -9,53 +9,36 @@ on:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Install Devbox
-        uses: jetify-com/devbox-install-action@v0.13.0
-        with:
-          enable-cache: "true"
       - name: Lint
         run: devbox run -- task lint
   test:
     name: Test
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - ubuntu-latest
-    runs-on: ${{ matrix.platform }}
+    runs-on: self-hosted
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Install Devbox
-        uses: jetify-com/devbox-install-action@v0.13.0
-        with:
-          enable-cache: "true"
       - name: Run tests
         run: devbox run -- task test
       - name: Publish coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Install Devbox
-        uses: jetify-com/devbox-install-action@v0.13.0
-        with:
-          enable-cache: "true"
       - name: Build binary
         run: devbox run -- task build

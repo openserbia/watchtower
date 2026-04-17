@@ -3,7 +3,6 @@ build:
   binary: watchtower
   goos:
     - linux
-    - windows
   goarch:
     - amd64
     - 386
@@ -12,7 +11,7 @@ build:
   ldflags:
     - -s -w -X github.com/openserbia/watchtower/internal/meta.Version={{.Version}}
 archives:
-  - 
+  -
     name_template: "{{.ProjectName}}_{{.Os}}_{{.Arch}}"
     format: tar.gz
     replacements:
@@ -20,11 +19,7 @@ archives:
       arm64: arm64v8
       amd64: amd64
       386: 386
-      darwin: macOS
       linux: linux
-    format_overrides:
-      - goos: windows
-        format: zip
     files:
       - LICENSE.md
 dockers:
@@ -36,10 +31,10 @@ dockers:
     goarm: ''
     dockerfile: dockerfiles/Dockerfile
     image_templates:
-      - containrrr/watchtower:amd64-{{ .Version }}
-      - containrrr/watchtower:amd64-latest
-      - ghcr.io/containrrr/watchtower:amd64-{{ .Version }}
-      - ghcr.io/containrrr/watchtower:amd64-latest
+      - openserbia/watchtower:amd64-{{ .Version }}
+      - openserbia/watchtower:amd64-latest
+      - ghcr.io/openserbia/watchtower:amd64-{{ .Version }}
+      - ghcr.io/openserbia/watchtower:amd64-latest
     binaries:
       - watchtower
   - 
@@ -50,10 +45,10 @@ dockers:
     goarm: ''
     dockerfile: dockerfiles/Dockerfile
     image_templates:
-      - containrrr/watchtower:i386-{{ .Version }}
-      - containrrr/watchtower:i386-latest
-      - ghcr.io/containrrr/watchtower:i386-{{ .Version }}
-      - ghcr.io/containrrr/watchtower:i386-latest
+      - openserbia/watchtower:i386-{{ .Version }}
+      - openserbia/watchtower:i386-latest
+      - ghcr.io/openserbia/watchtower:i386-{{ .Version }}
+      - ghcr.io/openserbia/watchtower:i386-latest
     binaries:
       - watchtower
   - 
@@ -64,10 +59,10 @@ dockers:
     goarm: 6
     dockerfile: dockerfiles/Dockerfile
     image_templates:
-      - containrrr/watchtower:armhf-{{ .Version }}
-      - containrrr/watchtower:armhf-latest
-      - ghcr.io/containrrr/watchtower:armhf-{{ .Version }}
-      - ghcr.io/containrrr/watchtower:armhf-latest
+      - openserbia/watchtower:armhf-{{ .Version }}
+      - openserbia/watchtower:armhf-latest
+      - ghcr.io/openserbia/watchtower:armhf-{{ .Version }}
+      - ghcr.io/openserbia/watchtower:armhf-latest
     binaries:
       - watchtower
   - 
@@ -78,9 +73,9 @@ dockers:
     goarm: ''
     dockerfile: dockerfiles/Dockerfile
     image_templates:
-      - containrrr/watchtower:arm64v8-{{ .Version }}
-      - containrrr/watchtower:arm64v8-latest
-      - ghcr.io/containrrr/watchtower:arm64v8-{{ .Version }}
-      - ghcr.io/containrrr/watchtower:arm64v8-latest
+      - openserbia/watchtower:arm64v8-{{ .Version }}
+      - openserbia/watchtower:arm64v8-latest
+      - ghcr.io/openserbia/watchtower:arm64v8-{{ .Version }}
+      - ghcr.io/openserbia/watchtower:arm64v8-latest
     binaries:
       - watchtower

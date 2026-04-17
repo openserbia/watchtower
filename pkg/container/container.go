@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/docker/docker/api/types"
 	dockercontainer "github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/go-connections/nat"
 	"github.com/sirupsen/logrus"
 
@@ -18,7 +18,7 @@ import (
 
 // NewContainer returns a new Container instance instantiated with the
 // specified ContainerInfo and ImageInfo structs.
-func NewContainer(containerInfo *types.ContainerJSON, imageInfo *types.ImageInspect) *Container {
+func NewContainer(containerInfo *dockercontainer.InspectResponse, imageInfo *image.InspectResponse) *Container {
 	return &Container{
 		containerInfo: containerInfo,
 		imageInfo:     imageInfo,
@@ -30,8 +30,8 @@ type Container struct {
 	LinkedToRestarting bool
 	Stale              bool
 
-	containerInfo *types.ContainerJSON
-	imageInfo     *types.ImageInspect
+	containerInfo *dockercontainer.InspectResponse
+	imageInfo     *image.InspectResponse
 }
 
 // IsLinkedToRestarting returns the current value of the LinkedToRestarting field for the container
@@ -55,7 +55,7 @@ func (c *Container) SetStale(value bool) {
 }
 
 // ContainerInfo fetches JSON info for the container
-func (c Container) ContainerInfo() *types.ContainerJSON {
+func (c Container) ContainerInfo() *dockercontainer.InspectResponse {
 	return c.containerInfo
 }
 
@@ -332,9 +332,10 @@ func (c Container) GetCreateConfig() *dockercontainer.Config {
 
 	config.Volumes = util.StructMapSubtract(config.Volumes, imageConfig.Volumes)
 
-	// subtract ports exposed in image from container
+	// subtract ports exposed in image from container. The image config's ExposedPorts
+	// is keyed by string (OCI image-spec), while the container config uses nat.Port.
 	for k := range config.ExposedPorts {
-		if _, ok := imageConfig.ExposedPorts[k]; ok {
+		if _, ok := imageConfig.ExposedPorts[string(k)]; ok {
 			delete(config.ExposedPorts, k)
 		}
 	}
@@ -367,7 +368,7 @@ func (c Container) HasImageInfo() bool {
 }
 
 // ImageInfo fetches the ImageInspect data of the current container
-func (c Container) ImageInfo() *types.ImageInspect {
+func (c Container) ImageInfo() *image.InspectResponse {
 	return c.imageInfo
 }
 

@@ -1,5 +1,5 @@
 site_name: Watchtower
-site_url: https://containrrr.dev/watchtower/
+site_url: https://openserbia.github.io/watchtower/
 repo_url: https://github.com/openserbia/watchtower/
 edit_uri: edit/main/docs/
 theme:
@@ -29,7 +29,7 @@ markdown_extensions:
     - pymdownx.magiclink:
         repo_url_shortener: True
         provider: github
-        user: containrrr
+        user: openserbia
         repo: watchtower
     - pymdownx.saneheaders
     - pymdownx.tabbed:

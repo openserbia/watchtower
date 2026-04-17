@@ -1,0 +1,91 @@
+version: "2"
+
+run:
+  modules-download-mode: vendor
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - dupl
+    - errname
+    - exhaustive
+    - gocheckcompilerdirectives
+    - goconst
+    - gocritic
+    - mnd
+    - misspell
+    - nilerr
+    - noctx
+    - prealloc
+    - predeclared
+    - revive
+    - sqlclosecheck
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+  settings:
+    dupl:
+      threshold: 150
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    mnd:
+      ignored-functions:
+        - strconv.FormatInt
+        - strconv.ParseInt
+        - strconv.FormatUint
+        - strconv.ParseUint
+        - strconv.FormatFloat
+        - strconv.ParseFloat
+        - time.Duration
+        - time.Sleep
+  exclusions:
+    generated: lax
+    paths:
+      - vendor
+      - pkg/notifications/preview
+      - tplprev
+      - "(^|/)mocks/"
+    rules:
+      # Ginkgo and Gomega rely on dot imports in spec files.
+      - path: _test\.go
+        linters:
+          - revive
+        text: "dot-imports"
+      # Test fixtures commonly use numeric literals, short-lived slices and repeated strings.
+      - path: _test\.go
+        linters:
+          - mnd
+          - prealloc
+          - goconst
+          - dupl
+      # ContainerStatus is a session status record exposed through ContainerReport.Error();
+      # it is not an error type despite the method name.
+      - path: pkg/session/container_status\.go
+        linters:
+          - errname
+      # Ginkgo suite bootstraps pass unused *testing.T.
+      - path: _suite_test\.go
+        linters:
+          - revive
+        text: "unused-parameter"
+      - path: _test\.go
+        linters:
+          - revive
+        text: "unused-parameter"
+
+formatters:
+  enable:
+    - gofumpt
+    - gci
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/openserbia)

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
+  "packages": {
+    "go": "1.26.1",
+    "golangci-lint": "latest",
+    "gofumpt": "latest",
+    "gci": "latest",
+    "go-task": "latest",
+    "gopls": "latest",
+    "delve": "latest",
+    "ginkgo": "latest",
+    "git": "latest",
+    "docker": "latest",
+    "goreleaser": "latest",
+    "python3": "latest",
+    "mkdocs": "latest",
+    "python312Packages.mkdocs-material": "latest",
+    "python312Packages.md-toc": "latest"
+  },
+  "shell": {
+    "init_hook": [
+      "export \"GOROOT=$(go env GOROOT)\"",
+      ". $VENV_DIR/bin/activate",
+      "pip install -r requirements.txt"
+    ]
+  }
+}
