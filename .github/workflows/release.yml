@@ -63,3 +63,11 @@ jobs:
         run: devbox run -- goreleaser release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Sync Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: openserbia/watchtower
+          short-description: Automate Docker container base image updates (openserbia fork of containrrr/watchtower)
+          readme-filepath: ./README.md

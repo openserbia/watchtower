@@ -12,10 +12,7 @@
     "git": "latest",
     "docker": "latest",
     "goreleaser": "latest",
-    "python3": "latest",
-    "mkdocs": "latest",
-    "python312Packages.mkdocs-material": "latest",
-    "python312Packages.md-toc": "latest"
+    "python3": "latest"
   },
   "shell": {
     "init_hook": [
