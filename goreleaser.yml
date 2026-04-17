@@ -12,8 +12,10 @@ builds:
       - "386"
       - arm
       - arm64
+      - riscv64
     goarm:
       - "6"
+      - "7"
     ldflags:
       - -s -w -X github.com/openserbia/watchtower/internal/meta.Version={{.Version}}
 
@@ -39,7 +41,9 @@ dockers_v2:
       - linux/amd64
       - linux/386
       - linux/arm/v6
+      - linux/arm/v7
       - linux/arm64
+      - linux/riscv64
     tags:
       - "{{ .Version }}"
       - latest

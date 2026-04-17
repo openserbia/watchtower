@@ -25,7 +25,7 @@
 - **What it is:** a small Go daemon that polls the Docker socket, checks registries for new image digests, and recreates stale containers with the same config (volumes, networks, env, command).
 - **Who it's for:** homelabs, self-hosted stacks, media centers, dev environments — anywhere a running Kubernetes cluster would be overkill.
 - **Who it's *not* for:** production workloads that need staged rollouts, canaries, or rollback. Use Kubernetes (or [k3s](https://k3s.io/) / [MicroK8s](https://microk8s.io/)) for that.
-- **Images:** `docker.io/openserbia/watchtower` and `ghcr.io/openserbia/watchtower` (multi-arch: amd64, arm64v8, armhf, i386).
+- **Images:** `docker.io/openserbia/watchtower` and `ghcr.io/openserbia/watchtower` (multi-arch: amd64, arm64, arm/v6, arm/v7, 386, riscv64 — see [supported architectures](#supported-architectures)).
 - **Go module path:** `github.com/openserbia/watchtower`.
 
 ## Quick start
@@ -79,14 +79,16 @@ Common flags you'll reach for: `--interval 60`, `--cleanup`, `--label-enable`, `
 
 ### Supported architectures
 
-| Platform | Docker tag suffix | Typical host |
-|---|---|---|
-| `linux/amd64` | default | x86-64 servers, most homelabs |
-| `linux/arm64` | default | Raspberry Pi 4/5 (64-bit), Apple-silicon dev machines |
-| `linux/arm/v6` | default | Raspberry Pi Zero / 1 |
-| `linux/386` | default | legacy 32-bit x86 |
+| Platform | Typical host |
+|---|---|
+| `linux/amd64` | x86-64 servers, most homelabs |
+| `linux/arm64` | Raspberry Pi 4/5 (64-bit), Apple-silicon dev machines |
+| `linux/arm/v7` | Raspberry Pi 2/3 (32-bit), many cheap SBCs |
+| `linux/arm/v6` | Raspberry Pi Zero / 1 |
+| `linux/386` | legacy 32-bit x86 |
+| `linux/riscv64` | SiFive boards, VisionFive, emulated dev setups |
 
-All four live under the same `:latest` / `:<version>` tag — Docker picks the right variant for your host automatically. No need to specify the arch.
+All six live under the same `:latest` / `:<version>` tag — Docker picks the right variant for your host automatically. No need to specify the arch.
 
 ## Why this fork
 
