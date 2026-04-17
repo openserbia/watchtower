@@ -59,16 +59,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          version: "~> v2"
-          args: release --clean
+        run: devbox run -- goreleaser release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Enable experimental docker features
-        run: |
-          mkdir -p ~/.docker/ && \
-          echo '{"experimental": "enabled"}' > ~/.docker/config.json
       - name: Create manifest for version
         run: |
           export DH_TAG=$(git tag --points-at HEAD | sed 's/^v*//')
