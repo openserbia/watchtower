@@ -1,0 +1,91 @@
+version: "3"
+
+vars:
+  PACKAGE_NAME:
+    sh: grep -m 1 "^module" go.mod | awk '{print $2}'
+  VERSION:
+    sh: git describe --tags 2>/dev/null || echo dev
+  COMMIT_HASH:
+    sh: '[ -n "$SOURCE_COMMIT" ] && echo "$SOURCE_COMMIT" || git rev-parse HEAD'
+  BUILD_TIME:
+    sh: date -u +"%Y-%m-%dT%H:%M:%SZ"
+  BUILD_PATH: "{{.ROOT_DIR}}/build"
+  BIN_NAME:
+    sh: '[ -n "$MSYSTEM" ] && echo watchtower.exe || echo watchtower'
+
+env:
+  CGO_ENABLED: 0
+
+tasks:
+  default:
+    cmds:
+      - task -l
+
+  cleanup:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf {{.BUILD_PATH}}/
+
+  deps:
+    desc: Download, tidy, and vendor Go modules
+    sources:
+      - go.mod
+      - go.sum
+    generates:
+      - vendor/modules.txt
+    cmds:
+      - go env -w GOPROXY=https://proxy.golang.org,direct
+      - go mod download
+      - go mod tidy
+      - go mod vendor
+
+  fmt:
+    desc: Format code with gci and gofumpt
+    deps: [deps]
+    cmds:
+      - gci write -s standard -s default -s "prefix(github.com/openserbia)" --skip-generated --skip-vendor .
+      - gofumpt -l -w -extra .
+
+  lint:
+    desc: Run golangci-lint
+    deps: [fmt]
+    cmds:
+      - golangci-lint run
+
+  test:
+    desc: Run all tests with coverage
+    deps: [deps]
+    cmds:
+      - go test -mod vendor -v -covermode=atomic -coverprofile=coverage.out ./...
+
+  build:
+    desc: Build the watchtower binary
+    deps: [deps, cleanup]
+    cmds:
+      - >-
+        go build
+        -ldflags="-w -s
+        -X 'github.com/openserbia/watchtower/internal/meta.Version={{.VERSION}}'
+        -X 'main.Commit={{.COMMIT_HASH}}'
+        -X 'main.BuildTime={{.BUILD_TIME}}'"
+        -trimpath
+        -mod vendor
+        -o {{.BUILD_PATH}}/{{.BIN_NAME}}
+        .
+
+  tplprev:
+    desc: Build the WASM template-preview bundle
+    deps: [deps]
+    env:
+      GOARCH: wasm
+      GOOS: js
+    cmds:
+      - cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" ./docs/assets/ 2>/dev/null || cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" ./docs/assets/
+      - go build -mod vendor -o ./docs/assets/tplprev.wasm ./tplprev
+
+  docker:build:
+    desc: Build the watchtower Docker image from local sources
+    vars:
+      IMAGE_TAG: '{{.IMAGE_TAG | default "openserbia/watchtower:dev"}}'
+    cmds:
+      - docker build . -f dockerfiles/Dockerfile.dev-self-contained -t {{.IMAGE_TAG}}
