@@ -61,8 +61,8 @@ jobs:
       - name: Build
         uses: goreleaser/goreleaser-action@v7
         with:
-          version: v0.155.0
-          args: --debug
+          version: "~> v2"
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Enable experimental docker features

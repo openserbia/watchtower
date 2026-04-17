@@ -1,81 +1,81 @@
-build:
-  main: ./main.go
-  binary: watchtower
-  goos:
-    - linux
-  goarch:
-    - amd64
-    - 386
-    - arm
-    - arm64
-  ldflags:
-    - -s -w -X github.com/openserbia/watchtower/internal/meta.Version={{.Version}}
+version: 2
+
+builds:
+  - main: ./main.go
+    binary: watchtower
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - "386"
+      - arm
+      - arm64
+    goarm:
+      - "6"
+    ldflags:
+      - -s -w -X github.com/openserbia/watchtower/internal/meta.Version={{.Version}}
+
 archives:
-  -
-    name_template: "{{.ProjectName}}_{{.Os}}_{{.Arch}}"
-    format: tar.gz
-    replacements:
-      arm: armhf
-      arm64: arm64v8
-      amd64: amd64
-      386: 386
-      linux: linux
+  - name_template: >-
+      {{ .ProjectName }}_{{ .Os }}_
+      {{- if eq .Arch "amd64" }}amd64
+      {{- else if eq .Arch "386" }}386
+      {{- else if eq .Arch "arm" }}armhf
+      {{- else if eq .Arch "arm64" }}arm64v8
+      {{- else }}{{ .Arch }}{{ end }}
+    formats:
+      - tar.gz
     files:
       - LICENSE.md
+
 dockers:
-  -
-    use_buildx: true
-    build_flag_templates: [ "--platform=linux/amd64" ]
+  - use: buildx
+    build_flag_templates:
+      - --platform=linux/amd64
     goos: linux
     goarch: amd64
-    goarm: ''
     dockerfile: dockerfiles/Dockerfile
     image_templates:
       - openserbia/watchtower:amd64-{{ .Version }}
       - openserbia/watchtower:amd64-latest
       - ghcr.io/openserbia/watchtower:amd64-{{ .Version }}
       - ghcr.io/openserbia/watchtower:amd64-latest
-    binaries:
-      - watchtower
-  - 
-    use_buildx: true
-    build_flag_templates: [ "--platform=linux/386" ]
+
+  - use: buildx
+    build_flag_templates:
+      - --platform=linux/386
     goos: linux
-    goarch: 386
-    goarm: ''
+    goarch: "386"
     dockerfile: dockerfiles/Dockerfile
     image_templates:
       - openserbia/watchtower:i386-{{ .Version }}
       - openserbia/watchtower:i386-latest
       - ghcr.io/openserbia/watchtower:i386-{{ .Version }}
       - ghcr.io/openserbia/watchtower:i386-latest
-    binaries:
-      - watchtower
-  - 
-    use_buildx: true
-    build_flag_templates: [ "--platform=linux/arm/v6" ]
+
+  - use: buildx
+    build_flag_templates:
+      - --platform=linux/arm/v6
     goos: linux
     goarch: arm
-    goarm: 6
+    goarm: "6"
     dockerfile: dockerfiles/Dockerfile
     image_templates:
       - openserbia/watchtower:armhf-{{ .Version }}
       - openserbia/watchtower:armhf-latest
       - ghcr.io/openserbia/watchtower:armhf-{{ .Version }}
       - ghcr.io/openserbia/watchtower:armhf-latest
-    binaries:
-      - watchtower
-  - 
-    use_buildx: true
-    build_flag_templates: [ "--platform=linux/arm64/v8" ]
+
+  - use: buildx
+    build_flag_templates:
+      - --platform=linux/arm64/v8
     goos: linux
     goarch: arm64
-    goarm: ''
     dockerfile: dockerfiles/Dockerfile
     image_templates:
       - openserbia/watchtower:arm64v8-{{ .Version }}
       - openserbia/watchtower:arm64v8-latest
       - ghcr.io/openserbia/watchtower:arm64v8-{{ .Version }}
       - ghcr.io/openserbia/watchtower:arm64v8-latest
-    binaries:
-      - watchtower
