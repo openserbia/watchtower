@@ -8,8 +8,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/containrrr/shoutrrr"
-	"github.com/containrrr/shoutrrr/pkg/types"
+	"github.com/nicholas-fedor/shoutrrr"
+	"github.com/nicholas-fedor/shoutrrr/pkg/types"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/openserbia/watchtower/pkg/notifications/templates"

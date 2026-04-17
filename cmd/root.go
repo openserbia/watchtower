@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/robfig/cron"
+	"github.com/robfig/cron/v3"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
@@ -317,8 +317,11 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 		lock <- true
 	}
 
-	scheduler := cron.New()
-	err := scheduler.AddFunc(
+	// cron/v3 switched to the standard 5-field crontab spec by default.
+	// Watchtower has historically exposed a 6-field spec (with a leading seconds field),
+	// so opt back in via WithSeconds to keep existing WATCHTOWER_SCHEDULE values working.
+	scheduler := cron.New(cron.WithSeconds())
+	_, err := scheduler.AddFunc(
 		scheduleSpec,
 		func() {
 			select {

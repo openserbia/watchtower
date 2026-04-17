@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"time"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/openserbia/watchtower/cmd"
@@ -280,8 +280,10 @@ var _ = Describe("notifications", func() {
 				tokenC := "44444444-4444-4444-8444-cccccccccccc"
 				color := url.QueryEscape(notifications.ColorHex)
 
-				hookURL := fmt.Sprintf("https://outlook.office.com/webhook/%s/IncomingWebhook/%s/%s", tokenA, tokenB, tokenC)
-				expectedOutput := fmt.Sprintf("teams://%s/%s/%s?color=%s", tokenA, tokenB, tokenC, color)
+				tokenD := "55555555-4444-4444-8444-cccccccccccc"
+				org := "example"
+				hookURL := fmt.Sprintf("https://%s.webhook.office.com/webhookb2/%s/IncomingWebhook/%s/%s/%s", org, tokenA, tokenB, tokenC, tokenD)
+				expectedOutput := fmt.Sprintf("teams://%s/%s/%s/%s?color=%s&host=%s.webhook.office.com", tokenA, tokenB, tokenC, tokenD, color, org)
 
 				args := []string{
 					"--notifications",
@@ -351,7 +353,7 @@ var _ = Describe("notifications", func() {
 })
 
 func buildExpectedURL(username, password, host string, port int, from, to, auth string) string {
-	template := "smtp://%s:%s@%s:%d/?auth=%s&fromaddress=%s&fromname=Watchtower&subject=&toaddresses=%s"
+	template := "smtp://%s:%s@%s:%d/?auth=%s&clienthost=localhost&encryption=Auto&fromaddress=%s&fromname=Watchtower&subject=&toaddresses=%s&usehtml=No&usestarttls=Yes&timeout=0s"
 	return fmt.Sprintf(template,
 		url.QueryEscape(username),
 		url.QueryEscape(password),

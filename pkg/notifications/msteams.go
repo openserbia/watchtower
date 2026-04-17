@@ -3,7 +3,7 @@ package notifications
 import (
 	"net/url"
 
-	shoutrrrTeams "github.com/containrrr/shoutrrr/pkg/services/teams"
+	shoutrrrTeams "github.com/nicholas-fedor/shoutrrr/pkg/services/chat/teams"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
@@ -42,7 +42,7 @@ func (n *msTeamsTypeNotifier) GetURL(_ *cobra.Command) (string, error) {
 		return "", err
 	}
 
-	config, err := shoutrrrTeams.ConfigFromWebhookURL(*webhookURL)
+	config, err := shoutrrrTeams.ConfigFromWebhookURL(webhookURL)
 	if err != nil {
 		return "", err
 	}

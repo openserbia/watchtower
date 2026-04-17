@@ -3,7 +3,7 @@ package notifications
 import (
 	"time"
 
-	shoutrrrSmtp "github.com/containrrr/shoutrrr/pkg/services/smtp"
+	shoutrrrSmtp "github.com/nicholas-fedor/shoutrrr/pkg/services/email/smtp"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 

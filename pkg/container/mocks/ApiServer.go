@@ -12,7 +12,7 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
-	"github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo/v2"
 	O "github.com/onsi/gomega"
 	"github.com/onsi/gomega/ghttp"
 

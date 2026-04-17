@@ -1,7 +1,7 @@
 package notifications
 
 import (
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	s "github.com/openserbia/watchtower/pkg/session"
