@@ -4,7 +4,6 @@ on:
   workflow_dispatch: { }
   workflow_run:
     workflows: [ "Release (Production)" ]
-    branches: [ main ]
     types:
       - completed
 
@@ -16,6 +15,9 @@ jobs:
   publish-docs:
     name: Publish Docs
     runs-on: self-hosted
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -24,4 +26,4 @@ jobs:
       - name: Build tplprev
         run: devbox run -- task tplprev
       - name: Generate docs
-        run: devbox run -- mkdocs gh-deploy --strict
+        run: devbox run -- mkdocs gh-deploy --force --strict

@@ -16,7 +16,8 @@ COPY --from=alpine \
 
 EXPOSE 8080
 
-COPY watchtower /
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/watchtower /
 
 HEALTHCHECK CMD [ "/watchtower", "--health-check"]
 
