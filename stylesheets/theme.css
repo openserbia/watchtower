@@ -77,11 +77,11 @@
     0 0      0.05rem rgba(0 0 0 35%);
 }
 
-.md-header-nav__button.md-logo {
+.md-header__button.md-logo {
   padding: 0;
 }
 
-.md-header-nav__button.md-logo img {
+.md-header__button.md-logo img {
   width: 1.6rem;
   height: 1.6rem;
 }
