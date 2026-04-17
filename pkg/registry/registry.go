@@ -1,11 +1,14 @@
+// Package registry authenticates to container image registries and resolves
+// remote image digests used by the stale-check logic.
 package registry
 
 import (
-	"github.com/containrrr/watchtower/pkg/registry/helpers"
-	watchtowerTypes "github.com/containrrr/watchtower/pkg/types"
 	ref "github.com/distribution/reference"
 	"github.com/docker/docker/api/types"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/pkg/registry/helpers"
+	watchtowerTypes "github.com/openserbia/watchtower/pkg/types"
 )
 
 // GetPullOptions creates a struct with all options needed for pulling images from a registry
@@ -42,7 +45,6 @@ func DefaultAuthHandler() (string, error) {
 // are problems parsing the container hostname.
 // Will return false if behavior for container is unknown.
 func WarnOnAPIConsumption(container watchtowerTypes.Container) bool {
-
 	normalizedRef, err := ref.ParseNormalizedNamed(container.ImageName())
 	if err != nil {
 		return true

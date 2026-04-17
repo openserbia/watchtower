@@ -1,3 +1,4 @@
+// Package meta holds build-time metadata populated via -ldflags.
 package meta
 
 var (

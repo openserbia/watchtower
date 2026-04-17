@@ -10,9 +10,10 @@ import (
 
 	"github.com/containrrr/shoutrrr"
 	"github.com/containrrr/shoutrrr/pkg/types"
-	"github.com/containrrr/watchtower/pkg/notifications/templates"
-	t "github.com/containrrr/watchtower/pkg/types"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/pkg/notifications/templates"
+	t "github.com/openserbia/watchtower/pkg/types"
 )
 
 // LocalLog is a logrus logger that does not send entries as notifications
@@ -165,8 +166,9 @@ func (n *shoutrrrTypeNotifier) sendEntries(entries []*log.Entry, report t.Report
 
 // StartNotification begins queueing up messages to send them as a batch
 func (n *shoutrrrTypeNotifier) StartNotification() {
+	const initialEntriesCapacity = 10
 	if n.entries == nil {
-		n.entries = make([]*log.Entry, 0, 10)
+		n.entries = make([]*log.Entry, 0, initialEntriesCapacity)
 	}
 }
 
@@ -207,7 +209,6 @@ func (n *shoutrrrTypeNotifier) Fire(entry *log.Entry) error {
 }
 
 func getShoutrrrTemplate(tplString string, legacy bool) (tpl *template.Template, err error) {
-
 	tplBase := template.New("").Funcs(templates.Funcs)
 
 	if builtin, found := commonTemplates[tplString]; found {
@@ -234,5 +235,5 @@ func getShoutrrrTemplate(tplString string, legacy bool) (tpl *template.Template,
 		tpl = template.Must(tplBase.Parse(commonTemplates[defaultKey]))
 	}
 
-	return
+	return tpl, err
 }

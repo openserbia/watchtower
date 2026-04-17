@@ -1,9 +1,10 @@
 package container_test
 
 import (
-	wt "github.com/containrrr/watchtower/pkg/types"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	wt "github.com/openserbia/watchtower/pkg/types"
 )
 
 var _ = Describe("container utils", func() {

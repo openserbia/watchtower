@@ -3,13 +3,14 @@ package actions
 import (
 	"errors"
 
-	"github.com/containrrr/watchtower/internal/util"
-	"github.com/containrrr/watchtower/pkg/container"
-	"github.com/containrrr/watchtower/pkg/lifecycle"
-	"github.com/containrrr/watchtower/pkg/session"
-	"github.com/containrrr/watchtower/pkg/sorter"
-	"github.com/containrrr/watchtower/pkg/types"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/internal/util"
+	"github.com/openserbia/watchtower/pkg/container"
+	"github.com/openserbia/watchtower/pkg/lifecycle"
+	"github.com/openserbia/watchtower/pkg/session"
+	"github.com/openserbia/watchtower/pkg/sorter"
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 // Update looks at the running Docker containers to see if any of the images
@@ -130,9 +131,8 @@ func stopContainersInReversedOrder(containers []types.Container, client containe
 			// NOTE: If a container is restarted due to a dependency this might be empty
 			stopped[containers[i].SafeImageID()] = true
 		}
-
 	}
-	return
+	return failed, stopped
 }
 
 func stopStaleContainer(container types.Container, client container.Client, params types.UpdateParams) error {
@@ -234,7 +234,6 @@ func restartStaleContainer(container types.Container, client container.Client, p
 // UpdateImplicitRestart iterates through the passed containers, setting the
 // `LinkedToRestarting` flag if any of it's linked containers are marked for restart
 func UpdateImplicitRestart(containers []types.Container) {
-
 	for ci, c := range containers {
 		if c.ToRestart() {
 			// The container is already marked for restart, no need to check
@@ -249,7 +248,6 @@ func UpdateImplicitRestart(containers []types.Container) {
 			// NOTE: To mutate the array, the `c` variable cannot be used as it's a copy
 			containers[ci].SetLinkedToRestarting(true)
 		}
-
 	}
 }
 

@@ -4,9 +4,10 @@ import (
 	"net/url"
 
 	shoutrrrTeams "github.com/containrrr/shoutrrr/pkg/services/teams"
-	t "github.com/containrrr/watchtower/pkg/types"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
+	t "github.com/openserbia/watchtower/pkg/types"
 )
 
 const (
@@ -19,11 +20,10 @@ type msTeamsTypeNotifier struct {
 }
 
 func newMsTeamsNotifier(cmd *cobra.Command) t.ConvertibleNotifier {
-
 	flags := cmd.Flags()
 
 	webHookURL, _ := flags.GetString("notification-msteams-hook")
-	if len(webHookURL) <= 0 {
+	if len(webHookURL) == 0 {
 		log.Fatal("Required argument --notification-msteams-hook(cli) or WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL(env) is empty.")
 	}
 
@@ -36,7 +36,7 @@ func newMsTeamsNotifier(cmd *cobra.Command) t.ConvertibleNotifier {
 	return n
 }
 
-func (n *msTeamsTypeNotifier) GetURL(c *cobra.Command) (string, error) {
+func (n *msTeamsTypeNotifier) GetURL(_ *cobra.Command) (string, error) {
 	webhookURL, err := url.Parse(n.webHookURL)
 	if err != nil {
 		return "", err

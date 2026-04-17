@@ -2,20 +2,21 @@ package digest_test
 
 import (
 	"fmt"
-	"github.com/containrrr/watchtower/internal/actions/mocks"
-	"github.com/containrrr/watchtower/pkg/registry/digest"
-	wtTypes "github.com/containrrr/watchtower/pkg/types"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/ghttp"
 	"net/http"
 	"os"
 	"testing"
 	"time"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/ghttp"
+
+	"github.com/openserbia/watchtower/internal/actions/mocks"
+	"github.com/openserbia/watchtower/pkg/registry/digest"
+	wtTypes "github.com/openserbia/watchtower/pkg/types"
 )
 
 func TestDigest(t *testing.T) {
-
 	RegisterFailHandler(Fail)
 	RunSpecs(GinkgoT(), "Digest Suite")
 }
@@ -32,34 +33,35 @@ var (
 )
 
 func SkipIfCredentialsEmpty(credentials *wtTypes.RegistryCredentials, fn func()) func() {
-	if credentials.Username == "" {
+	switch {
+	case credentials.Username == "":
 		return func() {
 			Skip("Username missing. Skipping integration test")
 		}
-	} else if credentials.Password == "" {
+	case credentials.Password == "":
 		return func() {
 			Skip("Password missing. Skipping integration test")
 		}
-	} else {
+	default:
 		return fn
 	}
 }
 
 var _ = Describe("Digests", func() {
-	mockId := "mock-id"
+	mockID := "mock-id"
 	mockName := "mock-container"
 	mockImage := "ghcr.io/k6io/operator:latest"
 	mockCreated := time.Now()
 	mockDigest := "ghcr.io/k6io/operator@sha256:d68e1e532088964195ad3a0a71526bc2f11a78de0def85629beb75e2265f0547"
 
 	mockContainer := mocks.CreateMockContainerWithDigest(
-		mockId,
+		mockID,
 		mockName,
 		mockImage,
 		mockCreated,
 		mockDigest)
 
-	mockContainerNoImage := mocks.CreateMockContainerWithImageInfoP(mockId, mockName, mockImage, mockCreated, nil)
+	mockContainerNoImage := mocks.CreateMockContainerWithImageInfoP(mockID, mockName, mockImage, mockCreated, nil)
 
 	When("a digest comparison is done", func() {
 		It("should return true if digests match",
@@ -72,10 +74,8 @@ var _ = Describe("Digests", func() {
 		)
 
 		It("should return false if digests differ", func() {
-
 		})
 		It("should return an error if the registry isn't available", func() {
-
 		})
 		It("should return an error when container contains no image info", func() {
 			matches, err := digest.CompareDigest(mockContainerNoImage, `user:pass`)

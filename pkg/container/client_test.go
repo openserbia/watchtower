@@ -1,28 +1,26 @@
 package container
 
 import (
-	"github.com/docker/docker/api/types/network"
+	"context"
+	"net/http"
 	"time"
-
-	"github.com/containrrr/watchtower/internal/util"
-	"github.com/containrrr/watchtower/pkg/container/mocks"
-	"github.com/containrrr/watchtower/pkg/filters"
-	t "github.com/containrrr/watchtower/pkg/types"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/backend"
+	"github.com/docker/docker/api/types/network"
 	cli "github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
-	"github.com/onsi/gomega/gbytes"
-	"github.com/onsi/gomega/ghttp"
-	"github.com/sirupsen/logrus"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gbytes"
+	"github.com/onsi/gomega/ghttp"
 	gt "github.com/onsi/gomega/types"
+	"github.com/sirupsen/logrus"
 
-	"context"
-	"net/http"
+	"github.com/openserbia/watchtower/internal/util"
+	"github.com/openserbia/watchtower/pkg/container/mocks"
+	"github.com/openserbia/watchtower/pkg/filters"
+	t "github.com/openserbia/watchtower/pkg/types"
 )
 
 var _ = Describe("the client", func() {
@@ -339,7 +337,6 @@ var _ = Describe("the client", func() {
 
 // Capture logrus output in buffer
 func captureLogrus(level logrus.Level) (func(), *gbytes.Buffer) {
-
 	logbuf := gbytes.NewBuffer()
 
 	origOut := logrus.StandardLogger().Out

@@ -5,12 +5,11 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/containrrr/watchtower/pkg/notifications/preview/data"
-	"github.com/containrrr/watchtower/pkg/notifications/templates"
+	"github.com/openserbia/watchtower/pkg/notifications/preview/data"
+	"github.com/openserbia/watchtower/pkg/notifications/templates"
 )
 
 func Render(input string, states []data.State, loglevels []data.LogLevel) (string, error) {
-
 	data := data.New()
 
 	tpl, err := template.New("").Funcs(templates.Funcs).Parse(input)

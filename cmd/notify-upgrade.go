@@ -9,11 +9,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/containrrr/watchtower/internal/flags"
-	"github.com/containrrr/watchtower/pkg/container"
-	"github.com/containrrr/watchtower/pkg/notifications"
 	"github.com/spf13/cobra"
+
+	"github.com/openserbia/watchtower/internal/flags"
+	"github.com/openserbia/watchtower/pkg/container"
+	"github.com/openserbia/watchtower/pkg/notifications"
 )
+
+const notifyUpgradeTimeout = 5 * time.Minute
 
 var notifyUpgradeCommand = NewNotifyUpgradeCommand()
 
@@ -76,7 +79,7 @@ func runNotifyUpgradeE(cmd *cobra.Command, _ []string) error {
 	logf("Note: This file will be removed in 5 minutes or when this container is stopped!")
 
 	signalChannel := make(chan os.Signal, 1)
-	time.AfterFunc(5*time.Minute, func() {
+	time.AfterFunc(notifyUpgradeTimeout, func() {
 		signalChannel <- syscall.SIGALRM
 	})
 

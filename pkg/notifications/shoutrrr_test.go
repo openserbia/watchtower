@@ -4,14 +4,15 @@ import (
 	"time"
 
 	"github.com/containrrr/shoutrrr/pkg/types"
-	"github.com/containrrr/watchtower/internal/actions/mocks"
-	"github.com/containrrr/watchtower/internal/flags"
-	s "github.com/containrrr/watchtower/pkg/session"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
+	"github.com/openserbia/watchtower/internal/actions/mocks"
+	"github.com/openserbia/watchtower/internal/flags"
+	s "github.com/openserbia/watchtower/pkg/session"
 )
 
 var allButTrace = logrus.DebugLevel
@@ -108,7 +109,6 @@ updt1 (mock/updt1:latest): Updated
 	})
 
 	When("using legacy templates", func() {
-
 		When("no custom template is provided", func() {
 			It("should format the messages using the default template", func() {
 				cmd := new(cobra.Command)
@@ -130,7 +130,6 @@ updt1 (mock/updt1:latest): Updated
 		})
 		When("given a valid custom template", func() {
 			It("should format the messages using the custom template", func() {
-
 				tplString := `{{range .}}{{.Level}}: {{.Message}}{{println}}{{end}}`
 				tpl, err := getShoutrrrTemplate(tplString, true)
 				Expect(err).ToNot(HaveOccurred())
@@ -198,7 +197,6 @@ updt1 (mock/updt1:latest): Updated
 				Expect(getTemplatedResult(tplString, true, legacyMockData)).To(Equal("Foo Bar"))
 			})
 		})
-
 	})
 
 	When("using report templates", func() {
@@ -213,7 +211,6 @@ updt1 (mock/updt1:latest): Updated
 				data := mockDataFromStates(s.UpdatedState, s.FreshState, s.FailedState, s.SkippedState, s.UpdatedState)
 				Expect(getTemplatedResult(``, false, data)).To(Equal(expected))
 			})
-
 		})
 
 		When("using a template referencing Title", func() {
@@ -299,12 +296,10 @@ Turns out everything is on fire
 	})
 
 	When("sending notifications", func() {
-
 		It("SlowNotificationNotSent", func() {
 			_, blockingRouter := sendNotificationsWithBlockingRouter(true)
 
 			Eventually(blockingRouter.sent).Should(Not(Receive()))
-
 		})
 
 		It("SlowNotificationSent", func() {
@@ -330,7 +325,6 @@ func (b blockingRouter) Send(_ string, _ *types.Params) []error {
 }
 
 func sendNotificationsWithBlockingRouter(legacy bool) (*shoutrrrTypeNotifier, *blockingRouter) {
-
 	router := &blockingRouter{
 		unlock: make(chan bool, 1),
 		sent:   make(chan bool, 1),

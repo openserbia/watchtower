@@ -1,3 +1,5 @@
+// Package api hosts the HTTP control-plane for watchtower (token auth,
+// /v1/update, /v1/metrics).
 package api
 
 import (
@@ -51,7 +53,6 @@ func (api *API) RegisterHandler(path string, handler http.Handler) {
 
 // Start the API and serve over HTTP. Requires an API Token to be set.
 func (api *API) Start(block bool) error {
-
 	if !api.hasHandlers {
 		log.Debug("Watchtower HTTP API skipped.")
 		return nil

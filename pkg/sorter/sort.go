@@ -1,10 +1,12 @@
+// Package sorter topologically orders containers by their declared
+// depends-on and links graph so updates happen in a safe order.
 package sorter
 
 import (
 	"fmt"
 	"time"
 
-	"github.com/containrrr/watchtower/pkg/types"
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 // ByCreated allows a list of Container structs to be sorted by the container's
@@ -60,7 +62,6 @@ func (ds *dependencySorter) Sort(containers []types.Container) ([]types.Containe
 }
 
 func (ds *dependencySorter) visit(c types.Container) error {
-
 	if _, ok := ds.marked[c.Name()]; ok {
 		return fmt.Errorf("circular reference to %s", c.Name())
 	}

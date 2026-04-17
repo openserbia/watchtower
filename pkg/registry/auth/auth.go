@@ -1,6 +1,8 @@
+// Package auth handles registry authentication and bearer-token challenges.
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,10 +11,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/containrrr/watchtower/pkg/registry/helpers"
-	"github.com/containrrr/watchtower/pkg/types"
 	ref "github.com/distribution/reference"
 	"github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/pkg/registry/helpers"
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 // ChallengeHeader is the HTTP Header containing challenge instructions
@@ -25,20 +28,20 @@ func GetToken(container types.Container, registryAuth string) (string, error) {
 		return "", err
 	}
 
-	URL := GetChallengeURL(normalizedRef)
-	logrus.WithField("URL", URL.String()).Debug("Built challenge URL")
+	challengeURL := GetChallengeURL(normalizedRef)
+	logrus.WithField("URL", challengeURL.String()).Debug("Built challenge URL")
 
-	var req *http.Request
-	if req, err = GetChallengeRequest(URL); err != nil {
+	req, err := GetChallengeRequest(challengeURL)
+	if err != nil {
 		return "", err
 	}
 
 	client := &http.Client{}
-	var res *http.Response
-	if res, err = client.Do(req); err != nil {
+	res, err := client.Do(req)
+	if err != nil {
 		return "", err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	v := res.Header.Get(ChallengeHeader)
 
 	logrus.WithFields(logrus.Fields{
@@ -49,7 +52,7 @@ func GetToken(container types.Container, registryAuth string) (string, error) {
 	challenge := strings.ToLower(v)
 	if strings.HasPrefix(challenge, "basic") {
 		if registryAuth == "" {
-			return "", fmt.Errorf("no credentials available")
+			return "", errors.New("no credentials available")
 		}
 
 		return fmt.Sprintf("Basic %s", registryAuth), nil
@@ -62,8 +65,8 @@ func GetToken(container types.Container, registryAuth string) (string, error) {
 }
 
 // GetChallengeRequest creates a request for getting challenge instructions
-func GetChallengeRequest(URL url.URL) (*http.Request, error) {
-	req, err := http.NewRequest("GET", URL.String(), nil)
+func GetChallengeRequest(challengeURL url.URL) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, challengeURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -76,13 +79,12 @@ func GetChallengeRequest(URL url.URL) (*http.Request, error) {
 func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) (string, error) {
 	client := http.Client{}
 	authURL, err := GetAuthURL(challenge, imageRef)
-
 	if err != nil {
 		return "", err
 	}
 
-	var r *http.Request
-	if r, err = http.NewRequest("GET", authURL.String(), nil); err != nil {
+	r, err := http.NewRequestWithContext(context.Background(), http.MethodGet, authURL.String(), nil)
+	if err != nil {
 		return "", err
 	}
 
@@ -95,10 +97,11 @@ func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) 
 		logrus.Debug("No credentials found.")
 	}
 
-	var authResponse *http.Response
-	if authResponse, err = client.Do(r); err != nil {
+	authResponse, err := client.Do(r)
+	if err != nil {
 		return "", err
 	}
+	defer func() { _ = authResponse.Body.Close() }()
 
 	body, _ := io.ReadAll(authResponse.Body)
 	tokenResponse := &types.TokenResponse{}
@@ -130,8 +133,7 @@ func GetAuthURL(challenge string, imageRef ref.Named) (*url.URL, error) {
 		"service": values["service"],
 	}).Debug("Checking challenge header content")
 	if values["realm"] == "" || values["service"] == "" {
-
-		return nil, fmt.Errorf("challenge header did not include all values needed to construct an auth url")
+		return nil, errors.New("challenge header did not include all values needed to construct an auth url")
 	}
 
 	authURL, _ := url.Parse(values["realm"])
@@ -153,10 +155,9 @@ func GetAuthURL(challenge string, imageRef ref.Named) (*url.URL, error) {
 func GetChallengeURL(imageRef ref.Named) url.URL {
 	host, _ := helpers.GetRegistryAddress(imageRef.Name())
 
-	URL := url.URL{
+	return url.URL{
 		Scheme: "https",
 		Host:   host,
 		Path:   "/v2/",
 	}
-	return URL
 }

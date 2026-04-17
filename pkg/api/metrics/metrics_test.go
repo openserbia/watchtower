@@ -1,6 +1,7 @@
 package metrics_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,9 +12,9 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"github.com/containrrr/watchtower/pkg/api"
-	metricsAPI "github.com/containrrr/watchtower/pkg/api/metrics"
-	"github.com/containrrr/watchtower/pkg/metrics"
+	"github.com/openserbia/watchtower/pkg/api"
+	metricsAPI "github.com/openserbia/watchtower/pkg/api/metrics"
+	"github.com/openserbia/watchtower/pkg/metrics"
 )
 
 const (
@@ -30,7 +31,7 @@ func getWithToken(handler http.Handler) map[string]string {
 	metricMap := map[string]string{}
 	respWriter := httptest.NewRecorder()
 
-	req := httptest.NewRequest("GET", getURL, nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, getURL, nil)
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token))
 
 	handler.ServeHTTP(respWriter, req)
@@ -57,7 +58,6 @@ var _ = Describe("the metrics API", func() {
 	tryGetMetrics := func() map[string]string { return getWithToken(handleReq) }
 
 	It("should serve metrics", func() {
-
 		Expect(tryGetMetrics()).To(HaveKeyWithValue("watchtower_containers_updated", "0"))
 
 		metric := &metrics.Metric{

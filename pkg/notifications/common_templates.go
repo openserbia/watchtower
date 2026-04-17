@@ -1,3 +1,5 @@
+// Package notifications sends watchtower session outcomes through shoutrrr
+// (and legacy email/slack/msteams/gotify shims) using configurable templates.
 package notifications
 
 var commonTemplates = map[string]string{

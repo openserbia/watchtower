@@ -1,3 +1,5 @@
+// Package templates contains the text/template function map used by
+// notification templates.
 package templates
 
 import (
@@ -10,6 +12,7 @@ import (
 	"golang.org/x/text/language"
 )
 
+// Funcs is the template.FuncMap made available to notification templates.
 var Funcs = template.FuncMap{
 	"ToUpper": strings.ToUpper,
 	"ToLower": strings.ToLower,

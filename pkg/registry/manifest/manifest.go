@@ -1,3 +1,4 @@
+// Package manifest builds registry manifest URLs for digest lookups.
 package manifest
 
 import (
@@ -5,10 +6,11 @@ import (
 	"fmt"
 	url2 "net/url"
 
-	"github.com/containrrr/watchtower/pkg/registry/helpers"
-	"github.com/containrrr/watchtower/pkg/types"
 	ref "github.com/distribution/reference"
 	"github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/pkg/registry/helpers"
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 // BuildManifestURL from raw image data

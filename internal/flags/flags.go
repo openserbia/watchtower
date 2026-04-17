@@ -1,3 +1,5 @@
+// Package flags defines watchtower's CLI flag set and the viper-backed
+// environment-variable bindings that accompany it.
 package flags
 
 import (
@@ -19,7 +21,9 @@ import (
 // use watchtower
 const DockerAPIMinVersion string = "1.25"
 
-var defaultInterval = int((time.Hour * 24).Seconds())
+const hoursPerDay = 24
+
+var defaultInterval = int((time.Hour * hoursPerDay).Seconds())
 
 // RegisterDockerFlags that are used directly by the docker api client
 func RegisterDockerFlags(rootCmd *cobra.Command) {
@@ -416,16 +420,21 @@ func envDuration(key string) time.Duration {
 	return viper.GetDuration(key)
 }
 
+const (
+	defaultStopTimeoutSeconds = 10
+	defaultSMTPPort           = 25
+)
+
 // SetDefaults provides default values for environment variables
 func SetDefaults() {
 	viper.AutomaticEnv()
 	viper.SetDefault("DOCKER_HOST", "unix:///var/run/docker.sock")
 	viper.SetDefault("DOCKER_API_VERSION", DockerAPIMinVersion)
 	viper.SetDefault("WATCHTOWER_POLL_INTERVAL", defaultInterval)
-	viper.SetDefault("WATCHTOWER_TIMEOUT", time.Second*10)
+	viper.SetDefault("WATCHTOWER_TIMEOUT", time.Second*defaultStopTimeoutSeconds)
 	viper.SetDefault("WATCHTOWER_NOTIFICATIONS", []string{})
 	viper.SetDefault("WATCHTOWER_NOTIFICATIONS_LEVEL", "info")
-	viper.SetDefault("WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT", 25)
+	viper.SetDefault("WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT", defaultSMTPPort)
 	viper.SetDefault("WATCHTOWER_NOTIFICATION_EMAIL_SUBJECTTAG", "")
 	viper.SetDefault("WATCHTOWER_NOTIFICATION_SLACK_IDENTIFIER", "watchtower")
 	viper.SetDefault("WATCHTOWER_LOG_LEVEL", "info")
@@ -489,7 +498,7 @@ func ReadFlags(cmd *cobra.Command) (bool, bool, bool, time.Duration) {
 	return cleanup, noRestart, monitorOnly, timeout
 }
 
-func setEnvOptStr(env string, opt string) error {
+func setEnvOptStr(env, opt string) error {
 	if opt == "" || opt == os.Getenv(env) {
 		return nil
 	}
@@ -583,7 +592,6 @@ func isFile(s string) bool {
 
 // ProcessFlagAliases updates the value of flags that are being set by helper flags
 func ProcessFlagAliases(flags *pflag.FlagSet) {
-
 	porcelain, err := flags.GetString(`porcelain`)
 	if err != nil {
 		log.Fatalf(`Failed to get flag: %v`, err)
@@ -629,7 +637,6 @@ func ProcessFlagAliases(flags *pflag.FlagSet) {
 	if flagIsEnabled(flags, `trace`) {
 		_ = flags.Set(`log-level`, `trace`)
 	}
-
 }
 
 // SetupLogging reads only the flags that is needed to set up logging and applies them to the global logger
@@ -663,11 +670,11 @@ func SetupLogging(f *pflag.FlagSet) error {
 	}
 
 	rawLogLevel, _ := f.GetString(`log-level`)
-	if logLevel, err := log.ParseLevel(rawLogLevel); err != nil {
+	logLevel, err := log.ParseLevel(rawLogLevel)
+	if err != nil {
 		return fmt.Errorf("invalid log level: %e", err)
-	} else {
-		log.SetLevel(logLevel)
 	}
+	log.SetLevel(logLevel)
 
 	return nil
 }
@@ -697,7 +704,7 @@ func appendFlagValue(flags *pflag.FlagSet, name string, values ...string) error 
 	return nil
 }
 
-func setFlagIfDefault(flags *pflag.FlagSet, name string, value string) {
+func setFlagIfDefault(flags *pflag.FlagSet, name, value string) {
 	if flags.Changed(name) {
 		return
 	}

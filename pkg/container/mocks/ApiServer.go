@@ -3,19 +3,19 @@ package mocks
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/onsi/ginkgo"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
-	t "github.com/containrrr/watchtower/pkg/types"
-
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/onsi/ginkgo"
 	O "github.com/onsi/gomega"
 	"github.com/onsi/gomega/ghttp"
+
+	t "github.com/openserbia/watchtower/pkg/types"
 )
 
 func getMockJSONFile(relPath string) ([]byte, error) {
@@ -81,11 +81,13 @@ var Watchtower = ContainerRef{
 	id:    "3d88e0e3543281c747d88b27e246578b65ae8964ba86c7cd7522cf84e0978134",
 	image: &defaultImage,
 }
+
 var Stopped = ContainerRef{
 	name:  "stopped",
 	id:    "ae8964ba86c7cd7522cf84e09781343d88e0e3543281c747d88b27e246578b65",
 	image: &defaultImage,
 }
+
 var Running = ContainerRef{
 	name: "running",
 	id:   "b978af0b858aa8855cce46b628817d4ed58e58f2c4f66c9b9c5449134ed4c008",
@@ -95,6 +97,7 @@ var Running = ContainerRef{
 		file: "running",
 	},
 }
+
 var Restarting = ContainerRef{
 	name:  "restarting",
 	id:    "ae8964ba86c7cd7522cf84e09781343d88e0e3543281c747d88b27e246578b67",
@@ -110,6 +113,7 @@ var netSupplierOK = ContainerRef{
 		file: "net_producer",
 	},
 }
+
 var netSupplierNotFound = ContainerRef{
 	id:        NetSupplierNotFoundID,
 	name:      netSupplierOK.name,
@@ -137,11 +141,12 @@ var NetConsumerInvalidSupplier = ContainerRef{
 	references: []*ContainerRef{&netSupplierNotFound},
 }
 
-const NetSupplierNotFoundID = "badc1dbadc1dbadc1dbadc1dbadc1dbadc1dbadc1dbadc1dbadc1dbadc1dbadc"
-const NetSupplierContainerName = "/wt-contnet-producer-1"
+const (
+	NetSupplierNotFoundID    = "badc1dbadc1dbadc1dbadc1dbadc1dbadc1dbadc1dbadc1dbadc1dbadc1dbadc"
+	NetSupplierContainerName = "/wt-contnet-producer-1"
+)
 
 func getContainerFileHandler(cr *ContainerRef) http.HandlerFunc {
-
 	if cr.isMissing {
 		return containerNotFoundResponse(string(cr.id))
 	}

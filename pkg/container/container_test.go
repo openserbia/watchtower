@@ -1,11 +1,12 @@
 package container
 
 import (
-	"github.com/containrrr/watchtower/pkg/types"
 	dc "github.com/docker/docker/api/types/container"
 	"github.com/docker/go-connections/nat"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 var _ = Describe("the container", func() {
@@ -15,7 +16,7 @@ var _ = Describe("the container", func() {
 				c := MockContainer(WithPortBindings())
 				c.imageInfo = nil
 				err := c.VerifyConfiguration()
-				Expect(err).To(Equal(errorNoImageInfo))
+				Expect(err).To(Equal(errNoImageInfo))
 			})
 		})
 		When("verifying a container with no container info", func() {
@@ -23,7 +24,7 @@ var _ = Describe("the container", func() {
 				c := MockContainer(WithPortBindings())
 				c.containerInfo = nil
 				err := c.VerifyConfiguration()
-				Expect(err).To(Equal(errorNoContainerInfo))
+				Expect(err).To(Equal(errNoContainerInfo))
 			})
 		})
 		When("verifying a container with no config", func() {
@@ -31,7 +32,7 @@ var _ = Describe("the container", func() {
 				c := MockContainer(WithPortBindings())
 				c.containerInfo.Config = nil
 				err := c.VerifyConfiguration()
-				Expect(err).To(Equal(errorInvalidConfig))
+				Expect(err).To(Equal(errInvalidConfig))
 			})
 		})
 		When("verifying a container with no host config", func() {
@@ -39,7 +40,7 @@ var _ = Describe("the container", func() {
 				c := MockContainer(WithPortBindings())
 				c.containerInfo.HostConfig = nil
 				err := c.VerifyConfiguration()
-				Expect(err).To(Equal(errorInvalidConfig))
+				Expect(err).To(Equal(errInvalidConfig))
 			})
 		})
 		When("verifying a container with no port bindings", func() {
@@ -386,6 +387,5 @@ var _ = Describe("the container", func() {
 				Expect(postTimeout).To(Equal(5))
 			})
 		})
-
 	})
 })

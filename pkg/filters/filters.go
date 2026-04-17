@@ -1,11 +1,16 @@
+// Package filters composes container predicates for selecting update targets.
 package filters
 
 import (
 	"regexp"
 	"strings"
 
-	t "github.com/containrrr/watchtower/pkg/types"
+	t "github.com/openserbia/watchtower/pkg/types"
 )
+
+// scopeNone is the sentinel value used in the scope label to mark containers
+// that belong to no particular watchtower scope.
+const scopeNone = "none"
 
 // WatchtowerContainersFilter filters only watchtower containers
 func WatchtowerContainersFilter(c t.FilterableContainer) bool { return c.IsWatchtower() }
@@ -90,7 +95,7 @@ func FilterByScope(scope string, baseFilter t.Filter) t.Filter {
 		containerScope, containerHasScope := c.Scope()
 
 		if !containerHasScope || containerScope == "" {
-			containerScope = "none"
+			containerScope = scopeNone
 		}
 
 		if containerScope == scope {
@@ -120,7 +125,7 @@ func FilterByImage(images []string, baseFilter t.Filter) t.Filter {
 }
 
 // BuildFilter creates the needed filter of containers
-func BuildFilter(names []string, disableNames []string, enableLabel bool, scope string) (t.Filter, string) {
+func BuildFilter(names, disableNames []string, enableLabel bool, scope string) (t.Filter, string) {
 	sb := strings.Builder{}
 	filter := NoFilter
 	filter = FilterByNames(names, filter)
@@ -154,7 +159,7 @@ func BuildFilter(names []string, disableNames []string, enableLabel bool, scope 
 		sb.WriteString("using enable label, ")
 	}
 
-	if scope == "none" {
+	if scope == scopeNone {
 		// If a scope has explicitly defined as "none", containers should only be considered
 		// if they do not have a scope defined, or if it's explicitly set to "none".
 		filter = FilterByScope(scope, filter)

@@ -4,14 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sirupsen/logrus"
-
-	"github.com/containrrr/watchtower/internal/actions"
-	"github.com/containrrr/watchtower/pkg/types"
-
-	. "github.com/containrrr/watchtower/internal/actions/mocks"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/internal/actions"
+	. "github.com/openserbia/watchtower/internal/actions/mocks"
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 func TestActions(t *testing.T) {

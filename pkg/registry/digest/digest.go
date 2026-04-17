@@ -1,6 +1,9 @@
+// Package digest compares the current image digest to the latest one published
+// in the registry to decide whether a container is stale.
 package digest
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -11,15 +14,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/containrrr/watchtower/internal/meta"
-	"github.com/containrrr/watchtower/pkg/registry/auth"
-	"github.com/containrrr/watchtower/pkg/registry/manifest"
-	"github.com/containrrr/watchtower/pkg/types"
 	"github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/internal/meta"
+	"github.com/openserbia/watchtower/pkg/registry/auth"
+	"github.com/openserbia/watchtower/pkg/registry/manifest"
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 // ContentDigestHeader is the key for the key-value pair containing the digest header
 const ContentDigestHeader = "Docker-Content-Digest"
+
+const (
+	dialerTimeout         = 30 * time.Second
+	dialerKeepAlive       = 30 * time.Second
+	idleConnMax           = 100
+	idleConnTimeout       = 90 * time.Second
+	tlsHandshakeTimeout   = 10 * time.Second
+	expectContinueTimeout = 1 * time.Second
+)
 
 // CompareDigest ...
 func CompareDigest(container types.Container, registryAuth string) (bool, error) {
@@ -75,23 +88,23 @@ func TransformAuth(registryAuth string) string {
 }
 
 // GetDigest from registry using a HEAD request to prevent rate limiting
-func GetDigest(url string, token string) (string, error) {
+func GetDigest(url, token string) (string, error) {
 	tr := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
+			Timeout:   dialerTimeout,
+			KeepAlive: dialerKeepAlive,
 		}).DialContext,
 		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
+		MaxIdleConns:          idleConnMax,
+		IdleConnTimeout:       idleConnTimeout,
+		TLSHandshakeTimeout:   tlsHandshakeTimeout,
+		ExpectContinueTimeout: expectContinueTimeout,
 		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
 	}
 	client := &http.Client{Transport: tr}
 
-	req, _ := http.NewRequest("HEAD", url, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodHead, url, nil)
 	req.Header.Set("User-Agent", meta.UserAgent)
 
 	if token == "" {
@@ -113,9 +126,9 @@ func GetDigest(url string, token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
-	if res.StatusCode != 200 {
+	if res.StatusCode != http.StatusOK {
 		wwwAuthHeader := res.Header.Get("www-authenticate")
 		if wwwAuthHeader == "" {
 			wwwAuthHeader = "not present"

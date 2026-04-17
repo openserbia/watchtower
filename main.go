@@ -1,8 +1,10 @@
+// Package main is the watchtower entry point. It delegates to the Cobra command tree in cmd.
 package main
 
 import (
-	"github.com/containrrr/watchtower/cmd"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/cmd"
 )
 
 func init() {

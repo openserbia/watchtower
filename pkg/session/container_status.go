@@ -1,6 +1,8 @@
+// Package session tracks container state and outcomes for a single
+// watchtower update run.
 package session
 
-import wt "github.com/containrrr/watchtower/pkg/types"
+import wt "github.com/openserbia/watchtower/pkg/types"
 
 // State indicates what the current state is of the container
 type State int
@@ -24,8 +26,8 @@ type ContainerStatus struct {
 	newImage      wt.ImageID
 	containerName string
 	imageName     string
-	error
-	state State
+	err           error
+	state         State
 }
 
 // ID returns the container ID
@@ -55,10 +57,10 @@ func (u *ContainerStatus) ImageName() string {
 
 // Error returns the error (if any) that was encountered for the container during a session
 func (u *ContainerStatus) Error() string {
-	if u.error == nil {
+	if u.err == nil {
 		return ""
 	}
-	return u.error.Error()
+	return u.err.Error()
 }
 
 // State returns the current State that the container is in
@@ -76,6 +78,8 @@ func (u *ContainerStatus) State() string {
 		return "Fresh"
 	case StaleState:
 		return "Stale"
+	case UnknownState:
+		return "Unknown"
 	default:
 		return "Unknown"
 	}

@@ -1,3 +1,6 @@
+// Package actions orchestrates the high-level watchtower update flow:
+// listing containers, running sanity and duplicate-instance checks, and
+// driving the stop/start sequence through pkg/container.
 package actions
 
 import (
@@ -5,12 +8,12 @@ import (
 	"sort"
 	"time"
 
-	"github.com/containrrr/watchtower/pkg/container"
-	"github.com/containrrr/watchtower/pkg/filters"
-	"github.com/containrrr/watchtower/pkg/sorter"
-	"github.com/containrrr/watchtower/pkg/types"
-
 	log "github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/pkg/container"
+	"github.com/openserbia/watchtower/pkg/filters"
+	"github.com/openserbia/watchtower/pkg/sorter"
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 // CheckForSanity makes sure everything is sane before starting
@@ -44,7 +47,6 @@ func CheckForMultipleWatchtowerInstances(client container.Client, cleanup bool, 
 		filter = filters.FilterByScope(scope, filter)
 	}
 	containers, err := client.ListContainers(filter)
-
 	if err != nil {
 		return err
 	}
@@ -58,6 +60,8 @@ func CheckForMultipleWatchtowerInstances(client container.Client, cleanup bool, 
 	return cleanupExcessWatchtowers(containers, client, cleanup)
 }
 
+const stopTimeout = 10 * time.Minute
+
 func cleanupExcessWatchtowers(containers []types.Container, client container.Client, cleanup bool) error {
 	var stopErrors int
 
@@ -65,7 +69,7 @@ func cleanupExcessWatchtowers(containers []types.Container, client container.Cli
 	allContainersExceptLast := containers[0 : len(containers)-1]
 
 	for _, c := range allContainersExceptLast {
-		if err := client.StopContainer(c, 10*time.Minute); err != nil {
+		if err := client.StopContainer(c, stopTimeout); err != nil {
 			// logging the original here as we're just returning a count
 			log.WithError(err).Error("Could not stop a previous watchtower instance.")
 			stopErrors++

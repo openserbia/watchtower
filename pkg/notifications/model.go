@@ -1,8 +1,9 @@
 package notifications
 
 import (
-	t "github.com/containrrr/watchtower/pkg/types"
 	log "github.com/sirupsen/logrus"
+
+	t "github.com/openserbia/watchtower/pkg/types"
 )
 
 // StaticData is the part of the notification template data model set upon initialization

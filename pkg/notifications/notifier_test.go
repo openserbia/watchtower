@@ -5,17 +5,17 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/containrrr/watchtower/cmd"
-	"github.com/containrrr/watchtower/internal/flags"
-	"github.com/containrrr/watchtower/pkg/notifications"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"github.com/openserbia/watchtower/cmd"
+	"github.com/openserbia/watchtower/internal/flags"
+	"github.com/openserbia/watchtower/pkg/notifications"
 )
 
 var _ = Describe("notifications", func() {
 	Describe("the notifier", func() {
 		When("only empty notifier types are provided", func() {
-
 			command := cmd.NewRootCommand()
 			flags.RegisterNotificationFlags(command)
 
@@ -28,7 +28,7 @@ var _ = Describe("notifications", func() {
 
 			Expect(notif.GetNames()).To(BeEmpty())
 		})
-		When("title is overriden in flag", func() {
+		When("title is overridden in flag", func() {
 			It("should use the specified hostname in the title", func() {
 				command := cmd.NewRootCommand()
 				flags.RegisterNotificationFlags(command)
@@ -201,7 +201,6 @@ var _ = Describe("notifications", func() {
 
 			When("icon URL is specified", func() {
 				It("should return the expected URL", func() {
-
 					hookURL := fmt.Sprintf("https://hooks.slack.com/services/%s/%s/%s", tokenA, tokenB, tokenC)
 					expectedOutput := fmt.Sprintf("slack://hook:%s-%s-%s@webhook?botname=%s&color=%s&icon=%s", tokenA, tokenB, tokenC, username, color, url.QueryEscape(iconURL))
 					expectedDelay := time.Duration(7) * time.Second
@@ -323,7 +322,6 @@ var _ = Describe("notifications", func() {
 			})
 
 			It("should return the expected URL", func() {
-
 				fromAddress := "sender@example.com"
 				toAddress := "receiver@example.com"
 				expectedOutput := buildExpectedURL("containrrrbot", "secret-password", "mail.containrrr.dev", 25, fromAddress, toAddress, "Plain")
@@ -352,8 +350,8 @@ var _ = Describe("notifications", func() {
 	})
 })
 
-func buildExpectedURL(username string, password string, host string, port int, from string, to string, auth string) string {
-	var template = "smtp://%s:%s@%s:%d/?auth=%s&fromaddress=%s&fromname=Watchtower&subject=&toaddresses=%s"
+func buildExpectedURL(username, password, host string, port int, from, to, auth string) string {
+	template := "smtp://%s:%s@%s:%d/?auth=%s&fromaddress=%s&fromname=Watchtower&subject=&toaddresses=%s"
 	return fmt.Sprintf(template,
 		url.QueryEscape(username),
 		url.QueryEscape(password),

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	t "github.com/containrrr/watchtower/pkg/types"
+	t "github.com/openserbia/watchtower/pkg/types"
 )
 
 // MockClient is a mock that passes as a watchtower Client
@@ -29,7 +29,7 @@ func (testdata *TestData) TriedToRemoveImage() bool {
 }
 
 // CreateMockClient creates a mock watchtower Client for usage in tests
-func CreateMockClient(data *TestData, pullImages bool, removeVolumes bool) MockClient {
+func CreateMockClient(data *TestData, pullImages, removeVolumes bool) MockClient {
 	return MockClient{
 		data,
 		pullImages,
@@ -72,7 +72,7 @@ func (client MockClient) GetContainer(_ t.ContainerID) (t.Container, error) {
 }
 
 // ExecuteCommand is a mock method
-func (client MockClient) ExecuteCommand(_ t.ContainerID, command string, _ int) (SkipUpdate bool, err error) {
+func (client MockClient) ExecuteCommand(_ t.ContainerID, command string, _ int) (skipUpdate bool, err error) {
 	switch command {
 	case "/PreUpdateReturn0.sh":
 		return false, nil
@@ -86,7 +86,7 @@ func (client MockClient) ExecuteCommand(_ t.ContainerID, command string, _ int) 
 }
 
 // IsContainerStale is true if not explicitly stated in TestData for the mock client
-func (client MockClient) IsContainerStale(cont t.Container, params t.UpdateParams) (bool, t.ImageID, error) {
+func (client MockClient) IsContainerStale(cont t.Container, _ t.UpdateParams) (bool, t.ImageID, error) {
 	stale, found := client.TestData.Staleness[cont.Name()]
 	if !found {
 		stale = true

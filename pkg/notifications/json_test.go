@@ -1,9 +1,10 @@
 package notifications
 
 import (
-	s "github.com/containrrr/watchtower/pkg/session"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	s "github.com/openserbia/watchtower/pkg/session"
 )
 
 var _ = Describe("JSON template", func() {

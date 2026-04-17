@@ -1,10 +1,15 @@
+// Package metrics collects watchtower scan statistics and exports them via
+// prometheus counters/gauges consumed by the /v1/metrics API.
 package metrics
 
 import (
-	"github.com/containrrr/watchtower/pkg/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+
+	"github.com/openserbia/watchtower/pkg/types"
 )
+
+const metricChannelBuffer = 10
 
 var metrics *Metrics
 
@@ -72,7 +77,7 @@ func Default() *Metrics {
 			Name: "watchtower_scans_skipped",
 			Help: "Number of skipped scans since watchtower started",
 		}),
-		channel: make(chan *Metric, 10),
+		channel: make(chan *Metric, metricChannelBuffer),
 	}
 
 	go metrics.HandleUpdate(metrics.channel)

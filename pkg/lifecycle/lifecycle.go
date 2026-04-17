@@ -1,9 +1,13 @@
+// Package lifecycle runs user-defined pre/post check and update commands
+// (configured via com.centurylinklabs.watchtower.lifecycle.* labels) inside
+// target containers.
 package lifecycle
 
 import (
-	"github.com/containrrr/watchtower/pkg/container"
-	"github.com/containrrr/watchtower/pkg/types"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/pkg/container"
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 // ExecutePreChecks tries to run the pre-check lifecycle hook for all containers included by the current filter.
@@ -61,7 +65,7 @@ func ExecutePostCheckCommand(client container.Client, container types.Container)
 }
 
 // ExecutePreUpdateCommand tries to run the pre-update lifecycle hook for a single container.
-func ExecutePreUpdateCommand(client container.Client, container types.Container) (SkipUpdate bool, err error) {
+func ExecutePreUpdateCommand(client container.Client, container types.Container) (skipUpdate bool, err error) {
 	timeout := container.PreUpdateTimeout()
 	command := container.GetLifecyclePreUpdateCommand()
 	clog := log.WithField("container", container.Name())
@@ -99,7 +103,6 @@ func ExecutePostUpdateCommand(client container.Client, newContainerID types.Cont
 
 	clog.Debug("Executing post-update command.")
 	_, err = client.ExecuteCommand(newContainerID, command, timeout)
-
 	if err != nil {
 		clog.Error(err)
 	}

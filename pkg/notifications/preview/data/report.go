@@ -3,7 +3,7 @@ package data
 import (
 	"sort"
 
-	"github.com/containrrr/watchtower/pkg/types"
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 // State is the outcome of a container in a session report
@@ -54,18 +54,23 @@ type report struct {
 func (r *report) Scanned() []types.ContainerReport {
 	return r.scanned
 }
+
 func (r *report) Updated() []types.ContainerReport {
 	return r.updated
 }
+
 func (r *report) Failed() []types.ContainerReport {
 	return r.failed
 }
+
 func (r *report) Skipped() []types.ContainerReport {
 	return r.skipped
 }
+
 func (r *report) Stale() []types.ContainerReport {
 	return r.stale
 }
+
 func (r *report) Fresh() []types.ContainerReport {
 	return r.fresh
 }

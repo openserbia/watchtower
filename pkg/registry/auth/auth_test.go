@@ -8,29 +8,31 @@ import (
 	"testing"
 	"time"
 
-	"github.com/containrrr/watchtower/internal/actions/mocks"
-	"github.com/containrrr/watchtower/pkg/registry/auth"
-
-	wtTypes "github.com/containrrr/watchtower/pkg/types"
 	ref "github.com/distribution/reference"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"github.com/openserbia/watchtower/internal/actions/mocks"
+	"github.com/openserbia/watchtower/pkg/registry/auth"
+	wtTypes "github.com/openserbia/watchtower/pkg/types"
 )
 
 func TestAuth(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Registry Auth Suite")
 }
+
 func SkipIfCredentialsEmpty(credentials *wtTypes.RegistryCredentials, fn func()) func() {
-	if credentials.Username == "" {
+	switch {
+	case credentials.Username == "":
 		return func() {
 			Skip("Username missing. Skipping integration test")
 		}
-	} else if credentials.Password == "" {
+	case credentials.Password == "":
 		return func() {
 			Skip("Password missing. Skipping integration test")
 		}
-	} else {
+	default:
 		return fn
 	}
 }
@@ -41,14 +43,14 @@ var GHCRCredentials = &wtTypes.RegistryCredentials{
 }
 
 var _ = Describe("the auth module", func() {
-	mockId := "mock-id"
+	mockID := "mock-id"
 	mockName := "mock-container"
 	mockImage := "ghcr.io/k6io/operator:latest"
 	mockCreated := time.Now()
 	mockDigest := "ghcr.io/k6io/operator@sha256:d68e1e532088964195ad3a0a71526bc2f11a78de0def85629beb75e2265f0547"
 
 	mockContainer := mocks.CreateMockContainerWithDigest(
-		mockId,
+		mockID,
 		mockName,
 		mockImage,
 		mockCreated,

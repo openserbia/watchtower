@@ -5,9 +5,10 @@ import (
 
 	shoutrrrDisco "github.com/containrrr/shoutrrr/pkg/services/discord"
 	shoutrrrSlack "github.com/containrrr/shoutrrr/pkg/services/slack"
-	t "github.com/containrrr/watchtower/pkg/types"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
+	t "github.com/openserbia/watchtower/pkg/types"
 )
 
 const (
@@ -41,7 +42,7 @@ func newSlackNotifier(c *cobra.Command) t.ConvertibleNotifier {
 	return n
 }
 
-func (s *slackTypeNotifier) GetURL(c *cobra.Command) (string, error) {
+func (s *slackTypeNotifier) GetURL(_ *cobra.Command) (string, error) {
 	trimmedURL := strings.TrimRight(s.HookURL, "/")
 	trimmedURL = strings.TrimPrefix(trimmedURL, "https://")
 	parts := strings.Split(trimmedURL, "/")

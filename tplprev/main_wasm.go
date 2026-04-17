@@ -4,12 +4,11 @@ package main
 
 import (
 	"fmt"
-
-	"github.com/containrrr/watchtower/internal/meta"
-	"github.com/containrrr/watchtower/pkg/notifications/preview"
-	"github.com/containrrr/watchtower/pkg/notifications/preview/data"
-
 	"syscall/js"
+
+	"github.com/openserbia/watchtower/internal/meta"
+	"github.com/openserbia/watchtower/pkg/notifications/preview"
+	"github.com/openserbia/watchtower/pkg/notifications/preview/data"
 )
 
 func main() {
@@ -19,11 +18,9 @@ func main() {
 		"tplprev": js.FuncOf(jsTplPrev),
 	}))
 	<-make(chan bool)
-
 }
 
 func jsTplPrev(this js.Value, args []js.Value) any {
-
 	if len(args) < 3 {
 		return "Requires 3 arguments passed"
 	}

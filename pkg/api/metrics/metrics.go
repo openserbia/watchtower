@@ -1,10 +1,12 @@
+// Package metrics exposes the Prometheus /v1/metrics HTTP handler.
 package metrics
 
 import (
-	"github.com/containrrr/watchtower/pkg/metrics"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	"github.com/openserbia/watchtower/pkg/metrics"
 )
 
 // Handler is an HTTP handle for serving metric data

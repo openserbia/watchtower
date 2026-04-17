@@ -1,3 +1,4 @@
+// Package types defines the data-transfer and interface types shared across watchtower packages.
 package types
 
 import (

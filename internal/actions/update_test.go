@@ -3,15 +3,15 @@ package actions_test
 import (
 	"time"
 
-	"github.com/containrrr/watchtower/internal/actions"
-	"github.com/containrrr/watchtower/pkg/types"
 	dockerTypes "github.com/docker/docker/api/types"
 	dockerContainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/go-connections/nat"
-
-	. "github.com/containrrr/watchtower/internal/actions/mocks"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
+	"github.com/openserbia/watchtower/internal/actions"
+	. "github.com/openserbia/watchtower/internal/actions/mocks"
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 func getCommonTestData(keepContainer string) *TestData {
@@ -186,7 +186,7 @@ var _ = Describe("the update action", func() {
 				It("it should update containers when monitor only is set to false", func() {
 					client := CreateMockClient(
 						&TestData{
-							//NameOfContainerToKeep: "test-container-02",
+							// NameOfContainerToKeep: "test-container-02",
 							Containers: []types.Container{
 								CreateMockContainerWithConfig(
 									"test-container-02",
@@ -212,7 +212,7 @@ var _ = Describe("the update action", func() {
 				It("it should update not containers when monitor only is set to true", func() {
 					client := CreateMockClient(
 						&TestData{
-							//NameOfContainerToKeep: "test-container-02",
+							// NameOfContainerToKeep: "test-container-02",
 							Containers: []types.Container{
 								CreateMockContainerWithConfig(
 									"test-container-02",
@@ -253,18 +253,16 @@ var _ = Describe("the update action", func() {
 					Expect(err).NotTo(HaveOccurred())
 					Expect(client.TestData.TriedToRemoveImageCount).To(Equal(0))
 				})
-
 			})
 		})
 	})
 
 	When("watchtower has been instructed to run lifecycle hooks", func() {
-
 		When("pre-update script returns 1", func() {
 			It("should not update those containers", func() {
 				client := CreateMockClient(
 					&TestData{
-						//NameOfContainerToKeep: "test-container-02",
+						// NameOfContainerToKeep: "test-container-02",
 						Containers: []types.Container{
 							CreateMockContainerWithConfig(
 								"test-container-02",
@@ -290,14 +288,13 @@ var _ = Describe("the update action", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(0))
 			})
-
 		})
 
 		When("prupddate script returns 75", func() {
 			It("should not update those containers", func() {
 				client := CreateMockClient(
 					&TestData{
-						//NameOfContainerToKeep: "test-container-02",
+						// NameOfContainerToKeep: "test-container-02",
 						Containers: []types.Container{
 							CreateMockContainerWithConfig(
 								"test-container-02",
@@ -322,14 +319,13 @@ var _ = Describe("the update action", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(0))
 			})
-
 		})
 
 		When("prupddate script returns 0", func() {
 			It("should update those containers", func() {
 				client := CreateMockClient(
 					&TestData{
-						//NameOfContainerToKeep: "test-container-02",
+						// NameOfContainerToKeep: "test-container-02",
 						Containers: []types.Container{
 							CreateMockContainerWithConfig(
 								"test-container-02",
@@ -358,7 +354,6 @@ var _ = Describe("the update action", func() {
 
 		When("container is linked to restarting containers", func() {
 			It("should be marked for restart", func() {
-
 				provider := CreateMockContainerWithConfig(
 					"test-container-provider",
 					"/test-container-provider",
@@ -399,16 +394,14 @@ var _ = Describe("the update action", func() {
 
 				Expect(containers[0].ToRestart()).To(BeTrue())
 				Expect(containers[1].ToRestart()).To(BeTrue())
-
 			})
-
 		})
 
 		When("container is not running", func() {
 			It("skip running preupdate", func() {
 				client := CreateMockClient(
 					&TestData{
-						//NameOfContainerToKeep: "test-container-02",
+						// NameOfContainerToKeep: "test-container-02",
 						Containers: []types.Container{
 							CreateMockContainerWithConfig(
 								"test-container-02",
@@ -433,14 +426,13 @@ var _ = Describe("the update action", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(1))
 			})
-
 		})
 
 		When("container is restarting", func() {
 			It("skip running preupdate", func() {
 				client := CreateMockClient(
 					&TestData{
-						//NameOfContainerToKeep: "test-container-02",
+						// NameOfContainerToKeep: "test-container-02",
 						Containers: []types.Container{
 							CreateMockContainerWithConfig(
 								"test-container-02",
@@ -465,8 +457,6 @@ var _ = Describe("the update action", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(1))
 			})
-
 		})
-
 	})
 })

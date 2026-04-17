@@ -63,5 +63,5 @@ func (c Container) getBoolLabelValue(label string) (bool, error) {
 		value, err := strconv.ParseBool(strVal)
 		return value, err
 	}
-	return false, errorLabelNotFound
+	return false, errLabelNotFound
 }

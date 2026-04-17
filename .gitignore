@@ -1,6 +1,6 @@
 watchtower
 watchtower.exe
-vendor
+build/
 .glide
 dist
 .idea
@@ -8,6 +8,10 @@ dist
 /site
 coverage.out
 *.coverprofile
+.devbox/
+.task/
 
 docs/assets/wasm_exec.js
 docs/assets/*.wasm
+/.venv/
+/vendor/

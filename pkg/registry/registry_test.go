@@ -1,12 +1,13 @@
 package registry_test
 
 import (
-	"github.com/containrrr/watchtower/internal/actions/mocks"
-	unit "github.com/containrrr/watchtower/pkg/registry"
+	"time"
+
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 
-	"time"
+	"github.com/openserbia/watchtower/internal/actions/mocks"
+	unit "github.com/openserbia/watchtower/pkg/registry"
 )
 
 var _ = Describe("Registry", func() {

@@ -91,7 +91,7 @@ func TestGetSliceSecretsFromFiles(t *testing.T) {
 		`--notification-url`, file.Name())
 }
 
-func testGetSecretsFromFiles(t *testing.T, flagName string, expected string, args ...string) {
+func testGetSecretsFromFiles(t *testing.T, flagName, expected string, args ...string) {
 	cmd := new(cobra.Command)
 	SetDefaults()
 	RegisterSystemFlags(cmd)
@@ -279,7 +279,6 @@ func TestProcessFlagAliasesInvalidPorcelaineVersion(t *testing.T) {
 }
 
 func TestFlagsArePrecentInDocumentation(t *testing.T) {
-
 	// Legacy notifcations are ignored, since they are (soft) deprecated
 	ignoredEnvs := map[string]string{
 		"WATCHTOWER_NOTIFICATION_SLACK_ICON_EMOJI": "legacy",

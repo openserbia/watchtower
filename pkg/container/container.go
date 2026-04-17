@@ -7,13 +7,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/containrrr/watchtower/internal/util"
-	wt "github.com/containrrr/watchtower/pkg/types"
-	"github.com/sirupsen/logrus"
-
 	"github.com/docker/docker/api/types"
 	dockercontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/go-connections/nat"
+	"github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/internal/util"
+	wt "github.com/openserbia/watchtower/pkg/types"
 )
 
 // NewContainer returns a new Container instance instantiated with the
@@ -144,18 +144,17 @@ func (c Container) IsNoPull(params wt.UpdateParams) bool {
 }
 
 func (c Container) getContainerOrGlobalBool(globalVal bool, label string, contPrecedence bool) bool {
-	if contVal, err := c.getBoolLabelValue(label); err != nil {
-		if !errors.Is(err, errorLabelNotFound) {
+	contVal, err := c.getBoolLabelValue(label)
+	if err != nil {
+		if !errors.Is(err, errLabelNotFound) {
 			logrus.WithField("error", err).WithField("label", label).Warn("Failed to parse label value")
 		}
 		return globalVal
-	} else {
-		if contPrecedence {
-			return contVal
-		} else {
-			return contVal || globalVal
-		}
 	}
+	if contPrecedence {
+		return contVal
+	}
+	return contVal || globalVal
 }
 
 // Scope returns the value of the scope UID label and if the label
@@ -376,22 +375,22 @@ func (c Container) ImageInfo() *types.ImageInspect {
 // that the container can be recreated once deleted
 func (c Container) VerifyConfiguration() error {
 	if c.imageInfo == nil {
-		return errorNoImageInfo
+		return errNoImageInfo
 	}
 
 	containerInfo := c.ContainerInfo()
 	if containerInfo == nil {
-		return errorNoContainerInfo
+		return errNoContainerInfo
 	}
 
 	containerConfig := containerInfo.Config
 	if containerConfig == nil {
-		return errorInvalidConfig
+		return errInvalidConfig
 	}
 
 	hostConfig := containerInfo.HostConfig
 	if hostConfig == nil {
-		return errorInvalidConfig
+		return errInvalidConfig
 	}
 
 	// Instead of returning an error here, we just create an empty map

@@ -5,9 +5,10 @@ import (
 	"strings"
 	"time"
 
-	ty "github.com/containrrr/watchtower/pkg/types"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+
+	ty "github.com/openserbia/watchtower/pkg/types"
 )
 
 // NewNotifier creates and returns a new Notifier, using global configuration.
@@ -33,7 +34,6 @@ func NewNotifier(c *cobra.Command) ty.Notifier {
 
 // AppendLegacyUrls creates shoutrrr equivalent URLs from legacy notification flags
 func AppendLegacyUrls(urls []string, cmd *cobra.Command) ([]string, time.Duration) {
-
 	// Parse types and create notifiers.
 	types, err := cmd.Flags().GetStringSlice("notifications")
 	if err != nil {
@@ -43,7 +43,6 @@ func AppendLegacyUrls(urls []string, cmd *cobra.Command) ([]string, time.Duratio
 	legacyDelay := time.Duration(0)
 
 	for _, t := range types {
-
 		var legacyNotifier ty.ConvertibleNotifier
 		var err error
 
@@ -95,7 +94,7 @@ func GetDelay(c *cobra.Command, legacyDelay time.Duration) time.Duration {
 }
 
 // GetTitle formats the title based on the passed hostname and tag
-func GetTitle(hostname string, tag string) string {
+func GetTitle(hostname, tag string) string {
 	tb := strings.Builder{}
 
 	if tag != "" {

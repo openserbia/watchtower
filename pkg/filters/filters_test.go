@@ -3,8 +3,9 @@ package filters
 import (
 	"testing"
 
-	"github.com/containrrr/watchtower/pkg/container/mocks"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/openserbia/watchtower/pkg/container/mocks"
 )
 
 func TestWatchtowerContainersFilter(t *testing.T) {
@@ -212,7 +213,6 @@ func TestFilterByImage(t *testing.T) {
 	assert.False(t, filterSingle(container))
 	assert.True(t, filterMultiple(container))
 	container.AssertExpectations(t)
-
 }
 
 func TestBuildFilter(t *testing.T) {

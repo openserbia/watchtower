@@ -3,11 +3,11 @@ package notifications
 import (
 	"time"
 
+	shoutrrrSmtp "github.com/containrrr/shoutrrr/pkg/services/smtp"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	shoutrrrSmtp "github.com/containrrr/shoutrrr/pkg/services/smtp"
-	t "github.com/containrrr/watchtower/pkg/types"
-	log "github.com/sirupsen/logrus"
+	t "github.com/openserbia/watchtower/pkg/types"
 )
 
 const (
@@ -50,7 +50,7 @@ func newEmailNotifier(c *cobra.Command) t.ConvertibleNotifier {
 	return n
 }
 
-func (e *emailTypeNotifier) GetURL(c *cobra.Command) (string, error) {
+func (e *emailTypeNotifier) GetURL(_ *cobra.Command) (string, error) {
 	conf := &shoutrrrSmtp.Config{
 		FromAddress: e.From,
 		FromName:    "Watchtower",

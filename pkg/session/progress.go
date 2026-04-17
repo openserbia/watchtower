@@ -1,7 +1,7 @@
 package session
 
 import (
-	"github.com/containrrr/watchtower/pkg/types"
+	"github.com/openserbia/watchtower/pkg/types"
 )
 
 // Progress contains the current session container status
@@ -22,7 +22,7 @@ func UpdateFromContainer(cont types.Container, newImage types.ImageID, state Sta
 // AddSkipped adds a container to the Progress with the state set as skipped
 func (m Progress) AddSkipped(cont types.Container, err error) {
 	update := UpdateFromContainer(cont, cont.SafeImageID(), SkippedState)
-	update.error = err
+	update.err = err
 	m.Add(update)
 }
 
@@ -35,7 +35,7 @@ func (m Progress) AddScanned(cont types.Container, newImage types.ImageID) {
 func (m Progress) UpdateFailed(failures map[types.ContainerID]error) {
 	for id, err := range failures {
 		update := m[id]
-		update.error = err
+		update.err = err
 		update.state = FailedState
 	}
 }

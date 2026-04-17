@@ -1,3 +1,4 @@
+// Package helpers holds registry-address resolution helpers shared across the registry sub-packages.
 package helpers
 
 import (

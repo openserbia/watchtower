@@ -1,3 +1,4 @@
+// Package update exposes the HTTP handler for the /v1/update API endpoint.
 package update
 
 import (
@@ -9,9 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var (
-	lock chan bool
-)
+var lock chan bool
 
 // New is a factory function creating a new  Handler instance
 func New(updateFn func(images []string), updateLock chan bool) *Handler {
@@ -35,7 +34,7 @@ type Handler struct {
 }
 
 // Handle is the actual http.Handle function doing all the heavy lifting
-func (handle *Handler) Handle(w http.ResponseWriter, r *http.Request) {
+func (handle *Handler) Handle(_ http.ResponseWriter, r *http.Request) {
 	log.Info("Updates triggered by HTTP API request.")
 
 	_, err := io.Copy(os.Stdout, r.Body)
@@ -50,7 +49,6 @@ func (handle *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 		for _, image := range imageQueries {
 			images = append(images, strings.Split(image, ",")...)
 		}
-
 	} else {
 		images = nil
 	}
@@ -68,5 +66,4 @@ func (handle *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 			log.Debug("Skipped. Another update already running.")
 		}
 	}
-
 }
