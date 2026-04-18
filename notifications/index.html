@@ -536,17 +536,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#notify-upgrade" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        notify-upgrade
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#email" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -983,17 +972,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#notify-upgrade" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        notify-upgrade
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#email" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1236,59 +1214,6 @@ The types of notifications to send are set by passing a comma-separated list of 
 <li><code>msteams</code> to send notifications via MSTeams webhook</li>
 <li><code>gotify</code> to send notifications via Gotify</li>
 </ul>
-<h3 id="notify-upgrade"><code>notify-upgrade</code><a class="headerlink" href="#notify-upgrade" title="Permanent link">&para;</a></h3>
-<p>If watchtower is started with <code>notify-upgrade</code> as it's first argument, it will generate a .env file with your current legacy notification options converted to shoutrrr URLs.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">docker run</label><label for="__tabbed_2_2">docker-compose.yml</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code>$<span class="w"> </span>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
---name<span class="w"> </span>watchtower<span class="w"> </span><span class="se">\</span>
--v<span class="w"> </span>/var/run/docker.sock:/var/run/docker.sock<span class="w"> </span><span class="se">\</span>
--e<span class="w"> </span><span class="nv">WATCHTOWER_NOTIFICATIONS</span><span class="o">=</span>slack<span class="w"> </span><span class="se">\</span>
--e<span class="w"> </span><span class="nv">WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL</span><span class="o">=</span><span class="s2">&quot;https://hooks.slack.com/services/xxx/yyyyyyyyyyyyyyy&quot;</span><span class="w"> </span><span class="se">\</span>
-openserbia/watchtower<span class="w"> </span><span class="se">\</span>
-notify-upgrade
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3&quot;</span>
-<span class="nt">services</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">watchtower</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openserbia/watchtower</span>
-<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
-<span class="w">    </span><span class="nt">env</span><span class="p">:</span>
-<span class="w">      </span><span class="nt">WATCHTOWER_NOTIFICATIONS</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">slack</span>
-<span class="w">      </span><span class="nt">WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://hooks.slack.com/services/xxx/yyyyyyyyyyyyyyy</span>
-<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">notify-upgrade</span>
-</code></pre></div>
-</div>
-</div>
-</div>
-<p>You can then copy this file from the container (a message with the full command to do so will be logged) and use it with your current setup:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="3:2"><input checked="checked" id="__tabbed_3_1" name="__tabbed_3" type="radio" /><input id="__tabbed_3_2" name="__tabbed_3" type="radio" /><div class="tabbed-labels"><label for="__tabbed_3_1">docker run</label><label for="__tabbed_3_2">docker-compose.yml</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code>$<span class="w"> </span>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
---name<span class="w"> </span>watchtower<span class="w"> </span><span class="se">\</span>
--v<span class="w"> </span>/var/run/docker.sock:/var/run/docker.sock<span class="w"> </span><span class="se">\</span>
---env-file<span class="w"> </span>watchtower-notifications.env<span class="w"> </span><span class="se">\</span>
-openserbia/watchtower
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3&quot;</span>
-<span class="nt">services</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">watchtower</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openserbia/watchtower</span>
-<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
-<span class="w">    </span><span class="nt">env_file</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">watchtower-notifications.env</span>
-</code></pre></div>
-</div>
-</div>
-</div>
 <h3 id="email">Email<a class="headerlink" href="#email" title="Permanent link">&para;</a></h3>
 <p>To receive notifications by email, the following command-line options, or their corresponding environment variables, can be set:</p>
 <ul>

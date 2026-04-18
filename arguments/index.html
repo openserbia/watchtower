@@ -868,6 +868,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#public_metrics_endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public metrics endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#watch-status_audit_endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watch-status audit endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#scheduling" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1720,6 +1742,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#public_metrics_endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Public metrics endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#watch-status_audit_endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watch-status audit endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#scheduling" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2158,6 +2202,34 @@ Environment Variable: WATCHTOWER_SCOPE
 <p>Enables a metrics endpoint, exposing prometheus metrics via HTTP. See <a href="../metrics/">Metrics</a> for details.  </p>
 <div class="highlight"><pre><span></span><code>            Argument: --http-api-metrics
 Environment Variable: WATCHTOWER_HTTP_API_METRICS
+                Type: Boolean
+             Default: false
+</code></pre></div>
+<h2 id="public_metrics_endpoint">Public metrics endpoint<a class="headerlink" href="#public_metrics_endpoint" title="Permanent link">&para;</a></h2>
+<p>When set, <code>/v1/metrics</code> is served without bearer-token auth. Intended for homelab / trusted-network
+Prometheus scrapers where token plumbing is more friction than protection, and the real access boundary
+is a localhost bind or reverse proxy in front of <code>:8080</code>. The <code>/v1/update</code> endpoint remains token-gated
+regardless. When only <code>--http-api-metrics</code> + <code>--http-api-metrics-no-auth</code> are set (no <code>--http-api-update</code>),
+<code>--http-api-token</code> is no longer required.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --http-api-metrics-no-auth
+Environment Variable: WATCHTOWER_HTTP_API_METRICS_NO_AUTH
+                Type: Boolean
+             Default: false
+</code></pre></div>
+<h2 id="watch-status_audit_endpoint">Watch-status audit endpoint<a class="headerlink" href="#watch-status_audit_endpoint" title="Permanent link">&para;</a></h2>
+<p>When set, <code>GET /v1/audit</code> returns a JSON report of every container the Docker daemon reports, classified
+as <code>managed</code> (<code>enable=true</code>), <code>excluded</code> (<code>enable=false</code>), or <code>unmanaged</code> (no label at all). Useful for
+post-deploy verification scripts, dashboards, or ad-hoc <code>curl | jq</code> during incident response — without
+parsing logs. Token-gated; pair with <code>--http-api-token</code>.</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer </span><span class="nv">$TOKEN</span><span class="s2">&quot;</span><span class="w"> </span>http://watchtower:8080/v1/audit<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq
+<span class="c1"># {</span>
+<span class="c1">#   &quot;generated_at&quot;: &quot;2026-04-18T12:00:00Z&quot;,</span>
+<span class="c1">#   &quot;summary&quot;: {&quot;managed&quot;: 5, &quot;excluded&quot;: 2, &quot;unmanaged&quot;: 3, &quot;total&quot;: 10},</span>
+<span class="c1">#   &quot;containers&quot;: [...]</span>
+<span class="c1"># }</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>            Argument: --http-api-audit
+Environment Variable: WATCHTOWER_HTTP_API_AUDIT
                 Type: Boolean
              Default: false
 </code></pre></div>

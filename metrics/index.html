@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#available_metrics" class="md-skip">
+        <a href="#scrape_configuration" class="md-skip">
           Skip to content
         </a>
       
@@ -771,10 +771,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#available_metrics" class="md-nav__link">
+  <a href="#scrape_configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Available Metrics
+        Scrape configuration
       
     </span>
   </a>
@@ -782,10 +782,104 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example_prometheus_scrape_config" class="md-nav__link">
+  <a href="#available_metrics" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Example Prometheus scrape_config
+        Available metrics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Available metrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scan_cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scan cycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#watch_status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watch status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update_lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http_api_v1_endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP API (/v1/* endpoints)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#registry_traffic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registry traffic
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker_daemon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker daemon
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#useful_queries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Useful queries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dashboards_and_alerts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dashboards and alerts
       
     </span>
   </a>
@@ -836,10 +930,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#available_metrics" class="md-nav__link">
+  <a href="#scrape_configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Available Metrics
+        Scrape configuration
       
     </span>
   </a>
@@ -847,10 +941,104 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#example_prometheus_scrape_config" class="md-nav__link">
+  <a href="#available_metrics" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Example Prometheus scrape_config
+        Available metrics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Available metrics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scan_cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scan cycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#watch_status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watch status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update_lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#http_api_v1_endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HTTP API (/v1/* endpoints)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#registry_traffic" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registry traffic
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker_daemon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker daemon
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#useful_queries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Useful queries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dashboards_and_alerts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dashboards and alerts
       
     </span>
   </a>
@@ -890,66 +1078,218 @@
 
   <h1>Metrics</h1>
 
-<div class="admonition warning">
-<p class="admonition-title">Experimental feature</p>
-<p>This feature was added in v1.0.4 and is still considered experimental. If you notice any strange behavior, please raise
-a ticket in the repository issues.</p>
-</div>
-<p>Metrics can be used to track how Watchtower behaves over time.</p>
-<p>To use this feature, you have to set an <a href="../arguments/#http_api_token">API token</a> and <a href="../arguments/#http_api_metrics">enable the metrics API</a>,
-as well as creating a port mapping for your container for port <code>8080</code>.</p>
-<p>The metrics API endpoint is <code>/v1/metrics</code>.</p>
-<h2 id="available_metrics">Available Metrics<a class="headerlink" href="#available_metrics" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Name</th>
-<th>Type</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>watchtower_containers_scanned</code></td>
-<td>Gauge</td>
-<td>Number of containers scanned for changes by watchtower during the last scan</td>
-</tr>
-<tr>
-<td><code>watchtower_containers_updated</code></td>
-<td>Gauge</td>
-<td>Number of containers updated by watchtower during the last scan</td>
-</tr>
-<tr>
-<td><code>watchtower_containers_failed</code></td>
-<td>Gauge</td>
-<td>Number of containers where update failed during the last scan</td>
-</tr>
-<tr>
-<td><code>watchtower_scans_total</code></td>
-<td>Counter</td>
-<td>Number of scans since the watchtower started</td>
-</tr>
-<tr>
-<td><code>watchtower_scans_skipped</code></td>
-<td>Counter</td>
-<td>Number of skipped scans since watchtower started</td>
-</tr>
-</tbody>
-</table>
-<h2 id="example_prometheus_scrape_config">Example Prometheus <code>scrape_config</code><a class="headerlink" href="#example_prometheus_scrape_config" title="Permanent link">&para;</a></h2>
+<p>Metrics let you track how Watchtower behaves over time — scan cadence,
+registry reliability, security-relevant events, and per-container watch
+status.</p>
+<p>To use this feature, <a href="../arguments/#http_api_metrics">enable the metrics API</a>,
+set an <a href="../arguments/#http_api_token">API token</a> (or opt out via
+<a href="../arguments/#public_metrics_endpoint"><code>--http-api-metrics-no-auth</code></a> for
+trusted networks), and map port <code>8080</code> from the container.</p>
+<p>The endpoint is <code>GET /v1/metrics</code>, served in Prometheus exposition format.</p>
+<h2 id="scrape_configuration">Scrape configuration<a class="headerlink" href="#scrape_configuration" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nt">scrape_configs</span><span class="p">:</span>
 <span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">job_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">watchtower</span>
-<span class="w">    </span><span class="nt">scrape_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5s</span>
+<span class="w">    </span><span class="nt">scrape_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30s</span>
 <span class="w">    </span><span class="nt">metrics_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/v1/metrics</span>
 <span class="w">    </span><span class="nt">bearer_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demotoken</span>
 <span class="w">    </span><span class="nt">static_configs</span><span class="p">:</span>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">targets</span><span class="p">:</span>
 <span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;watchtower:8080&#39;</span>
 </code></pre></div>
-<p>Replace <code>demotoken</code> with the Bearer token you have set accordingly.</p>
+<p>Replace <code>demotoken</code> with the token you set via <code>--http-api-token</code>. Drop the
+<code>bearer_token</code> line entirely if <code>--http-api-metrics-no-auth</code> is active.</p>
+<p>For homelab cadences (polls every minutes-to-hours), <code>scrape_interval: 30s</code>
+is plenty. Tighter intervals don't help because the underlying gauges only
+change once per scan.</p>
+<h2 id="available_metrics">Available metrics<a class="headerlink" href="#available_metrics" title="Permanent link">&para;</a></h2>
+<p>Grouped by what they tell you.</p>
+<h3 id="scan_cycle">Scan cycle<a class="headerlink" href="#scan_cycle" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Type</th>
+<th>What it tells you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>watchtower_scans_total</code></td>
+<td>counter</td>
+<td>Poll cycles since the daemon started. <code>rate()</code> gives you scans-per-second.</td>
+</tr>
+<tr>
+<td><code>watchtower_scans_skipped</code></td>
+<td>counter</td>
+<td>Cycles where another update was still in flight. Non-zero suggests an HTTP API request is racing the scheduler or the update is stuck.</td>
+</tr>
+<tr>
+<td><code>watchtower_containers_scanned</code></td>
+<td>gauge</td>
+<td>Containers inspected during the last scan.</td>
+</tr>
+<tr>
+<td><code>watchtower_containers_updated</code></td>
+<td>gauge</td>
+<td>Containers recreated during the last scan.</td>
+</tr>
+<tr>
+<td><code>watchtower_containers_failed</code></td>
+<td>gauge</td>
+<td>Containers whose update failed during the last scan.</td>
+</tr>
+<tr>
+<td><code>watchtower_last_scan_timestamp_seconds</code></td>
+<td>gauge</td>
+<td>Unix timestamp of the most recent completed scan. Pair with <code>time()</code> for staleness alerts.</td>
+</tr>
+<tr>
+<td><code>watchtower_poll_interval_seconds</code></td>
+<td>gauge</td>
+<td>Configured cadence between scans, derived from the active schedule at startup. Scale alert thresholds by this instead of hardcoding a window.</td>
+</tr>
+<tr>
+<td><code>watchtower_poll_duration_seconds</code></td>
+<td>histogram</td>
+<td>Wall-clock duration of each scan + update cycle. Buckets from 0.5s to 5m. Use <code>histogram_quantile(0.95, ...)</code> for p95.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="watch_status">Watch status<a class="headerlink" href="#watch_status" title="Permanent link">&para;</a></h3>
+<p>Published every scan regardless of whether any audit flag is set.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Type</th>
+<th>What it tells you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>watchtower_containers_managed</code></td>
+<td>gauge</td>
+<td>Containers with <code>com.centurylinklabs.watchtower.enable=true</code>.</td>
+</tr>
+<tr>
+<td><code>watchtower_containers_excluded</code></td>
+<td>gauge</td>
+<td>Containers with <code>com.centurylinklabs.watchtower.enable=false</code> (intentional opt-out).</td>
+</tr>
+<tr>
+<td><code>watchtower_containers_unmanaged</code></td>
+<td>gauge</td>
+<td>Containers with no <code>enable</code> label at all. Under <code>--label-enable</code> these are silently skipped — hit <a href="../arguments/#watch_status_audit_endpoint"><code>/v1/audit</code></a> for names or enable <a href="../arguments/#audit_unmanaged_containers"><code>--audit-unmanaged</code></a> for log warnings. Excludes Docker-managed infrastructure (buildkit etc.), which is tracked separately in <code>watchtower_containers_infrastructure</code>.</td>
+</tr>
+<tr>
+<td><code>watchtower_containers_infrastructure</code></td>
+<td>gauge</td>
+<td>Docker-managed scaffolding (<code>moby/buildkit*</code> image prefix, <code>docker/desktop-*</code> image prefix, <code>com.docker.buildx.*</code> / <code>com.docker.desktop.*</code> label prefixes). Not a user workload; tracked separately so transient builder containers don't show up as unmanaged noise.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="update_lifecycle">Update lifecycle<a class="headerlink" href="#update_lifecycle" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Type</th>
+<th>What it tells you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>watchtower_rollbacks_total</code></td>
+<td>counter</td>
+<td>Rollbacks triggered by <a href="../arguments/#health_check_gated_updates"><code>--health-check-gated</code></a>. Each increment = a replacement container failed health check and the previous image was restored.</td>
+</tr>
+<tr>
+<td><code>watchtower_image_fallback_total</code></td>
+<td>counter</td>
+<td>Times <code>GetContainer</code> fell back to inspecting by image reference because the source image ID was missing locally. Sustained counts indicate external tooling is deleting images Watchtower still needs. Background: <a href="https://github.com/containrrr/watchtower/issues/1217">upstream#1217</a>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="http_api_v1_endpoints">HTTP API (<code>/v1/*</code> endpoints)<a class="headerlink" href="#http_api_v1_endpoints" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Labels</th>
+<th>What it tells you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>watchtower_api_requests_total</code></td>
+<td><code>endpoint</code>, <code>status</code></td>
+<td>One counter per endpoint and response status code. A burst of <code>status="401"</code> on <code>endpoint="/v1/update"</code> is usually credential stuffing.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="registry_traffic">Registry traffic<a class="headerlink" href="#registry_traffic" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Labels</th>
+<th>What it tells you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>watchtower_registry_requests_total</code></td>
+<td><code>host</code>, <code>operation</code>, <code>outcome</code></td>
+<td>Outbound requests to registries. Operations are <code>challenge</code>, <code>token</code>, <code>digest</code>; outcomes are <code>success</code>, <code>error</code>, <code>retried</code>.</td>
+</tr>
+<tr>
+<td><code>watchtower_registry_retries_total</code></td>
+<td><code>host</code></td>
+<td>Bounded-backoff retry attempts. Zero is healthy; sustained non-zero means a flaky registry.</td>
+</tr>
+<tr>
+<td><code>watchtower_auth_cache_hits_total</code></td>
+<td>—</td>
+<td>Bearer-token cache hits. High rate means the in-memory cache is sparing the oauth endpoint.</td>
+</tr>
+<tr>
+<td><code>watchtower_auth_cache_misses_total</code></td>
+<td>—</td>
+<td>Cache misses — each miss triggers an oauth exchange.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="docker_daemon">Docker daemon<a class="headerlink" href="#docker_daemon" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Labels</th>
+<th>What it tells you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>watchtower_docker_api_errors_total</code></td>
+<td><code>operation</code></td>
+<td>Errors from the Docker engine API, broken down by operation. Operations: <code>list</code>, <code>inspect</code>, <code>kill</code>, <code>start</code>, <code>create</code>, <code>remove</code>, <code>image_inspect</code>, <code>image_remove</code>, <code>image_pull</code>, <code>rename</code>, <code>network_connect</code>, <code>network_disconnect</code>. Sustained non-zero rates usually mean socket permission issues or a daemon under load.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="useful_queries">Useful queries<a class="headerlink" href="#useful_queries" title="Permanent link">&para;</a></h2>
+<p>Staleness: <code>time() - watchtower_last_scan_timestamp_seconds</code> — seconds since the last scan.</p>
+<p>p95 scan duration: <code>histogram_quantile(0.95, sum by (le) (rate(watchtower_poll_duration_seconds_bucket[5m])))</code>.</p>
+<p>Bearer-cache hit ratio: <code>sum(increase(watchtower_auth_cache_hits_total[1h])) / clamp_min(sum(increase(watchtower_auth_cache_hits_total[1h])) + sum(increase(watchtower_auth_cache_misses_total[1h])), 1)</code>.</p>
+<p>Unmanaged containers present for &gt; 1 h: <code>watchtower_containers_unmanaged &gt; 0</code> with an alert <code>for: 1h</code>.</p>
+<h2 id="dashboards_and_alerts">Dashboards and alerts<a class="headerlink" href="#dashboards_and_alerts" title="Permanent link">&para;</a></h2>
+<p>Ready-to-import Grafana dashboard and Prometheus alerting rules ship under
+<a href="https://github.com/openserbia/watchtower/tree/main/observability"><code>observability/</code></a>
+in the source tree. Dashboard covers the three rows above (overview, watch
+status, reliability + security), plus three annotation tracks for rollbacks,
+daemon restarts, and newly-appeared unmanaged containers.</p>
 <h2 id="demo">Demo<a class="headerlink" href="#demo" title="Permanent link">&para;</a></h2>
-<p>The repository contains a demo with prometheus and grafana, available through <code>docker-compose.yml</code>. This demo
-is preconfigured with a dashboard, which will look something like this:</p>
+<p>The repository contains a demo with Prometheus and Grafana, available via
+<code>docker-compose.yml</code>. This demo is preconfigured with the dashboard:</p>
 <p><img alt="grafana metrics" src="../assets/grafana-dashboard.png" /></p>
 
 
