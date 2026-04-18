@@ -30,10 +30,19 @@ groups:
         # Fires when the latest scan timestamp is older than 2× the configured
         # poll interval. Scales to any cadence — 60 s polls alert at 120 s, a
         # daily poll alerts at 48 h. Replaces the hardcoded 2 h window which
-        # false-alarmed for long-cadence deployments. The `unless absent(...)`
-        # guard skips instances whose binary doesn't yet export the interval
-        # gauge (pre-v1.10.1).
+        # false-alarmed for long-cadence deployments.
+        #
+        # The `last_scan > 0` guard prevents a false alert right after a
+        # restart: Watchtower only writes `watchtower_last_scan_timestamp_seconds`
+        # once the first scan completes, so a daemon on a 12 h cadence that
+        # restarts mid-cycle would otherwise show (time() - 0) = 56 years of
+        # "staleness" until the first scan runs.
+        #
+        # The `unless absent(...)` guard skips instances whose binary doesn't
+        # yet export the interval gauge (pre-v1.10.1).
         expr: |
+          watchtower_last_scan_timestamp_seconds{job="watchtower"} > 0
+          and
           (time() - watchtower_last_scan_timestamp_seconds{job="watchtower"})
             > (2 * watchtower_poll_interval_seconds{job="watchtower"})
           unless absent(watchtower_poll_interval_seconds{job="watchtower"})

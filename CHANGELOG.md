@@ -75,6 +75,19 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   caller explicitly asking for an image usually wants it eventually.
   Inspired by [nicholas-fedor/watchtower#1304](https://github.com/nicholas-fedor/watchtower/pull/1304).
 
+### Fixed
+- **`WatchtowerScansStopped` alert no longer fires before the first scan**
+  completes. The alert had a latent bug: after a restart on a
+  long-cadence deployment (e.g. `@every 12h`), Watchtower's
+  `watchtower_last_scan_timestamp_seconds` gauge sits at `0` until the
+  first scheduled scan actually runs. The expression
+  `time() - 0` produced a ~56-year "staleness" readout and fired the
+  alert immediately instead of at the intended 2× poll interval.
+  Expression now guards on
+  `watchtower_last_scan_timestamp_seconds > 0` so the alert only fires
+  once a scan has completed at least once and subsequent scans are
+  overdue.
+
 ## [1.11.2] - 2026-04-18
 
 ### Fixed
