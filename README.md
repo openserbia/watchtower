@@ -68,7 +68,12 @@ Full flag reference, notification setup, lifecycle hooks, HTTP API, and metrics 
 
 ## Why this fork
 
-`containrrr/watchtower` stopped accepting changes in late 2024. This fork keeps it alive with a modern toolchain (Go 1.26, golangci-lint v2, Devbox-pinned CI), fixes real-world bugs left unmerged upstream ([upstream#966](https://github.com/containrrr/watchtower/issues/966), [#1217](https://github.com/containrrr/watchtower/issues/1217), [#1413](https://github.com/containrrr/watchtower/issues/1413)), and adds reliability improvements — bounded retries and bearer-token caching on registry calls — that cut traffic and harden against oauth flakes.
+`containrrr/watchtower` stopped accepting changes in late 2024. This fork keeps it alive with a modern toolchain (Go 1.26, golangci-lint v2, Devbox-pinned CI) and extends the same feature set across four axes:
+
+- **Fixes real-world upstream bugs** left unmerged when the project was archived — [#966](https://github.com/containrrr/watchtower/issues/966) (`--cleanup` deletes the replacement image), [#1217](https://github.com/containrrr/watchtower/issues/1217) (nil-pointer panic on GC'd source image), [#1413](https://github.com/containrrr/watchtower/issues/1413) (`No such image` loop that wedges the container).
+- **Safer updates** — opt-in `--health-check-gated` waits for the replacement container to report healthy and automatically rolls back to the previous image on failure, with per-container label overrides and a post-rollback cooldown that prevents thrash.
+- **Hardened network layer** — bounded exponential backoff on registry flakes, an in-memory bearer-token cache, strict TLS by default (removing upstream's blanket `InsecureSkipVerify`), constant-time bearer-token comparison, and opt-in `--insecure-registry` / `--registry-ca-bundle` for self-signed registries.
+- **Operational visibility** — ship-ready Grafana dashboard + Prometheus alerts, a `GET /v1/audit` JSON endpoint for post-deploy verification, `--http-api-metrics-no-auth` for trusted-network scraping, and ~20 new metrics covering every HTTP-facing surface (request counts by status/endpoint/host/outcome, retry counters, Docker API errors, bearer-cache hit rate, poll-duration histogram, and more).
 
 **Drop-in compatible** — same CLI flags, labels (`com.centurylinklabs.watchtower.*`), HTTP API, and notification backends. Swap the image name and you're done. Migration diff, full comparison table, and roadmap: **[Why this fork?](https://openserbia.github.io/watchtower/why-fork/)**.
 

@@ -89,5 +89,7 @@ Omit the label to keep a container untouched (databases, stateful services, anyt
 - **[Container selection](container-selection.md)** — include/exclude by label, scope, or name
 - **[Notifications](notifications.md)** — Shoutrrr, email, Slack, Teams, Gotify
 - **[Private registries](private-registries.md)** — credentials via `config.json`
-- **[HTTP API mode](http-api-mode.md)** — trigger updates and scrape Prometheus metrics
+- **[HTTP API mode](http-api-mode.md)** — `/v1/update`, `/v1/metrics`, `/v1/audit` endpoints
+- **[Metrics](metrics.md)** — Prometheus exposition format + shipped Grafana dashboard
 - **[Lifecycle hooks](lifecycle-hooks.md)** — pre/post scripts inside the target container
+- **[Why this fork?](why-fork.md)** — what openserbia/watchtower adds over upstream
