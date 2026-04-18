@@ -77,6 +77,11 @@
     <label class="md-overlay" for="__drawer"></label>
     <div data-md-component="skip">
       
+        
+        <a href="#v1update" class="md-skip">
+          Skip to content
+        </a>
+      
     </div>
     <div data-md-component="announce">
       
@@ -692,6 +697,24 @@
       
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HTTP API Mode
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -708,6 +731,67 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#v1update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /v1/update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v1metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /v1/metrics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v1audit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /v1/audit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security_notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -758,6 +842,58 @@
   
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#v1update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /v1/update
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v1metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /v1/metrics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#v1audit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        /v1/audit
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security_notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -778,40 +914,172 @@
 
   <h1>HTTP API Mode</h1>
 
-<p>Watchtower provides an HTTP API mode that enables an HTTP endpoint that can be requested to trigger container updating. The current available endpoint list is:</p>
+<p>Watchtower exposes a small HTTP control-plane on port <code>8080</code> with three
+optional endpoints. Each is opt-in via its own flag, and all share the
+same listener and bearer-token scheme.</p>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Flag</th>
+<th>Env</th>
+<th>Default auth</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/v1/update</code></td>
+<td><code>--http-api-update</code></td>
+<td><code>WATCHTOWER_HTTP_API_UPDATE</code></td>
+<td>Bearer token (always required)</td>
+<td>Trigger a scan and update cycle on demand.</td>
+</tr>
+<tr>
+<td><code>/v1/metrics</code></td>
+<td><code>--http-api-metrics</code></td>
+<td><code>WATCHTOWER_HTTP_API_METRICS</code></td>
+<td>Bearer token (optional opt-out)</td>
+<td>Prometheus exposition format for every watchtower metric.</td>
+</tr>
+<tr>
+<td><code>/v1/audit</code></td>
+<td><code>--http-api-audit</code></td>
+<td><code>WATCHTOWER_HTTP_API_AUDIT</code></td>
+<td>Bearer token</td>
+<td>JSON watch-status report (<code>managed</code> / <code>excluded</code> / <code>unmanaged</code> / <code>infrastructure</code>).</td>
+</tr>
+</tbody>
+</table>
+<p>Set <code>--http-api-token</code> (env <code>WATCHTOWER_HTTP_API_TOKEN</code>) and bind port
+<code>8080</code> to enable any of them. The token check uses
+<code>crypto/subtle.ConstantTimeCompare</code>, so timing-based probes aren't
+useful.</p>
+<p>The only exception: if <code>/v1/metrics</code> is the <strong>only</strong> endpoint enabled
+and <code>--http-api-metrics-no-auth</code> is set, <code>--http-api-token</code> is not
+required to start the daemon.</p>
+<h2 id="v1update"><code>/v1/update</code><a class="headerlink" href="#v1update" title="Permanent link">&para;</a></h2>
+<p>Triggers a scan + update cycle — the same work the scheduler would do
+at its next tick. The request blocks until the update completes (or is
+skipped because another update is already running). Responses:</p>
 <ul>
-<li><code>/v1/update</code> - triggers an update for all of the containers monitored by this Watchtower instance.</li>
+<li><code>200</code> — update completed or was skipped because another was in flight.</li>
+<li><code>401</code> — missing or wrong bearer token.</li>
+<li>The handler does not stream per-container progress; scrape
+  <code>watchtower_scans_total</code> or tail the container's logs for in-flight
+  detail.</li>
 </ul>
-<hr />
-<p>To enable this mode, use the flag <code>--http-api-update</code>. For example, in a Docker Compose config file:</p>
-<div class="highlight"><pre><span></span><code><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;3&#39;</span>
-
-<span class="nt">services</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">app-monitored-by-watchtower</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapps/monitored-by-watchtower</span>
-<span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;com.centurylinklabs.watchtower.enable=true&quot;</span>
-
+<div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">watchtower</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openserbia/watchtower</span>
 <span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
-<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--debug --http-api-update</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--http-api-update</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--debug</span>
 <span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">WATCHTOWER_HTTP_API_TOKEN=mytoken</span>
-<span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;com.centurylinklabs.watchtower.enable=false&quot;</span>
+<span class="w">      </span><span class="nt">WATCHTOWER_HTTP_API_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mytoken</span>
 <span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080:8080</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;8080:8080&quot;</span>
 </code></pre></div>
-<p>By default, enabling this mode prevents periodic polls (i.e. what is specified using <code>--interval</code> or <code>--schedule</code>). To run periodic updates regardless, pass <code>--http-api-periodic-polls</code>.</p>
-<p>Notice that there is an environment variable named WATCHTOWER_HTTP_API_TOKEN. To prevent external services from accidentally triggering image updates, all of the requests have to contain a "Token" field, valued as the token defined in WATCHTOWER_HTTP_API_TOKEN, in their headers. In this case, there is a port bind to the host machine, allowing to request localhost:8080 to reach Watchtower. The following <code>curl</code> command would trigger an image update:</p>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer mytoken&quot;</span><span class="w"> </span>localhost:8080/v1/update
+<p>By default, enabling this flag <strong>disables</strong> periodic polling (<code>--interval</code>
+/ <code>--schedule</code>). Pass <code>--http-api-periodic-polls</code> to keep the scheduler
+running alongside the HTTP trigger.</p>
+<p>Trigger a full scan:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer mytoken&quot;</span><span class="w"> </span>http://localhost:8080/v1/update
 </code></pre></div>
-<hr />
-<p>In order to update only certain images, the image names can be provided as URL query parameters. The following <code>curl</code> command would trigger an update for the images <code>foo/bar</code> and <code>foo/baz</code>:</p>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer mytoken&quot;</span><span class="w"> </span>localhost:8080/v1/update?image<span class="o">=</span>foo/bar,foo/baz
+<p>Scope the update to specific images by passing an <code>image=</code> query
+parameter — accepts a comma-separated list:</p>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer mytoken&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="s2">&quot;http://localhost:8080/v1/update?image=foo/bar,foo/baz&quot;</span>
 </code></pre></div>
+<h2 id="v1metrics"><code>/v1/metrics</code><a class="headerlink" href="#v1metrics" title="Permanent link">&para;</a></h2>
+<p>Serves the Prometheus exposition format. Pair with
+<code>--http-api-token</code> for bearer-token auth, or enable
+<code>--http-api-metrics-no-auth</code> (env <code>WATCHTOWER_HTTP_API_METRICS_NO_AUTH</code>)
+to drop the token gate — conventional for Prometheus scraping on
+trusted networks where a localhost bind or firewall in front of <code>:8080</code>
+provides the real access boundary. <code>/v1/update</code> remains
+mandatorily token-gated regardless.</p>
+<p>With both <code>--http-api-metrics --http-api-metrics-no-auth</code> (and no
+<code>--http-api-update</code>), <code>--http-api-token</code> becomes optional and the daemon
+starts without it.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">watchtower</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openserbia/watchtower</span>
+<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--http-api-metrics</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--http-api-metrics-no-auth</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--http-api-periodic-polls</span>
+<span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;127.0.0.1:8080:8080&quot;</span>
+</code></pre></div>
+<p>See <a href="../metrics/">Metrics</a> for the full metric catalog, scrape config,
+and the shipped Grafana dashboard.</p>
+<h2 id="v1audit"><code>/v1/audit</code><a class="headerlink" href="#v1audit" title="Permanent link">&para;</a></h2>
+<p>Returns a JSON watch-status report for every container the Docker daemon
+reports — the pull-model alternative to the log-based
+<a href="../arguments/#audit_unmanaged_containers"><code>--audit-unmanaged</code></a> warning.
+Useful for post-deploy verification scripts, dashboards, and ad-hoc
+<code>curl | jq</code> during incident response.</p>
+<p>Each container is classified as:</p>
+<ul>
+<li><code>managed</code> — <code>com.centurylinklabs.watchtower.enable=true</code>.</li>
+<li><code>excluded</code> — <code>com.centurylinklabs.watchtower.enable=false</code> (intentional opt-out).</li>
+<li><code>unmanaged</code> — no <code>enable</code> label at all. Silently skipped under <code>--label-enable</code>.</li>
+<li><code>infrastructure</code> — Docker-managed scaffolding (<code>moby/buildkit*</code>, <code>docker/desktop-*</code>, <code>com.docker.buildx.*</code> / <code>com.docker.desktop.*</code> labels). Tracked separately so transient builder containers don't inflate the unmanaged count.</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">watchtower</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openserbia/watchtower</span>
+<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--http-api-audit</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--label-enable</span>
+<span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">WATCHTOWER_HTTP_API_TOKEN</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mytoken</span>
+<span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;8080:8080&quot;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-s<span class="w"> </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer mytoken&quot;</span><span class="w"> </span>http://localhost:8080/v1/audit<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;generated_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-04-18T12:00:00Z&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;summary&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;managed&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;excluded&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unmanaged&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;infrastructure&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">11</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;containers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/api&quot;</span><span class="p">,</span><span class="w">    </span><span class="nt">&quot;image&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;myorg/api:latest&quot;</span><span class="p">,</span><span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;managed&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/db&quot;</span><span class="p">,</span><span class="w">     </span><span class="nt">&quot;image&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;postgres:15&quot;</span><span class="p">,</span><span class="w">         </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;excluded&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/chromium&quot;</span><span class="p">,</span><span class="nt">&quot;image&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;browserless/chromium:latest&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;unmanaged&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="security_notes">Security notes<a class="headerlink" href="#security_notes" title="Permanent link">&para;</a></h2>
+<ul>
+<li>All three endpoints share port <code>8080</code>. Bind to <code>127.0.0.1</code> or put a
+  reverse proxy in front if any of them is opened on a network other
+  than the one watchtower's scraper lives on.</li>
+<li><code>/v1/update</code> is always token-gated regardless of other flags.</li>
+<li><code>/v1/metrics</code> and <code>/v1/audit</code> disclose different data surfaces:
+  metrics are cluster-level counters (low sensitivity); audit reports
+  container names and image references (reveals stack topology). Keep
+  the audit endpoint token-gated on networks where topology leakage
+  matters.</li>
+<li>Non-2xx responses are counted in <code>watchtower_api_requests_total{status}</code>
+  — a burst of <code>401</code> on <code>/v1/update</code> usually means credential stuffing.
+  No alert for this ships by default (homelab context — <code>/v1/update</code>
+  sees negligible traffic so a threshold alert would be trivially
+  noise-tunable per-deployment). Operators who want one can add:
+  <code>sum(increase(watchtower_api_requests_total{endpoint="/v1/update", status="401"}[10m])) &gt; 5</code>.</li>
+</ul>
 
 
 

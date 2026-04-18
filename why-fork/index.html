@@ -402,6 +402,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What changed">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#project_health" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Project health
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update_behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -445,6 +495,56 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Reliability and performance improvements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#registry_and_auth_v19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registry and auth (v1.9)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#safer_updates_v110" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Safer updates (v1.10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#operational_visibility_v110_v111" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operational visibility (v1.10 – v1.11)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#security_hardening_v111" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security hardening (v1.11)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -940,6 +1040,56 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="What changed">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#project_health" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Project health
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update_behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -983,6 +1133,56 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Reliability and performance improvements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#registry_and_auth_v19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registry and auth (v1.9)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#safer_updates_v110" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Safer updates (v1.10)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#operational_visibility_v110_v111" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Operational visibility (v1.10 – v1.11)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#security_hardening_v111" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Security hardening (v1.11)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1042,6 +1242,7 @@
 </ul>
 <p>No config migration. No flag rename. No label rewrite.</p>
 <h2 id="what_changed">What changed<a class="headerlink" href="#what_changed" title="Permanent link">&para;</a></h2>
+<h3 id="project_health">Project health<a class="headerlink" href="#project_health" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -1072,6 +1273,11 @@
 <td><strong>Devbox-pinned</strong> (reproducible, matches CI)</td>
 </tr>
 <tr>
+<td>Tests</td>
+<td><code>go test</code></td>
+<td><strong><code>go test -race</code> by default</strong> (CGO-enabled lane)</td>
+</tr>
+<tr>
 <td>Module path</td>
 <td><code>github.com/containrrr/watchtower</code></td>
 <td><code>github.com/openserbia/watchtower</code></td>
@@ -1090,6 +1296,112 @@
 <td>Knowledge graph for contributors</td>
 <td>—</td>
 <td><a href="https://github.com/openserbia/code-review-graph"><code>code-review-graph</code></a> MCP support wired in</td>
+</tr>
+<tr>
+<td>Shoutrrr library</td>
+<td><code>containrrr/shoutrrr</code> (paused)</td>
+<td><strong><code>nicholas-fedor/shoutrrr</code></strong> v0.14 (active fork, URL-compatible)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="update_behavior">Update behavior<a class="headerlink" href="#update_behavior" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>containrrr/watchtower</code></th>
+<th><strong><code>openserbia/watchtower</code></strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Health-check gating</td>
+<td>—</td>
+<td><strong><code>--health-check-gated</code></strong> with auto-rollback; per-container label override; cooldown</td>
+</tr>
+<tr>
+<td>Registry retry</td>
+<td>None — single request, then bail</td>
+<td><strong>Bounded exp backoff</strong> (3 tries, 500 ms → 4 s + jitter) on network / 5xx / 429 / oauth flake</td>
+</tr>
+<tr>
+<td>Bearer-token auth</td>
+<td>One exchange per image</td>
+<td><strong>In-memory cache</strong> keyed on auth URL + credential, respects <code>expires_in</code></td>
+</tr>
+<tr>
+<td>Stuck on GC'd source image</td>
+<td>Container becomes un-updatable (upstream#1217)</td>
+<td><strong>Fallback to image-reference inspection</strong> — update proceeds cleanly</td>
+</tr>
+<tr>
+<td><code>--cleanup</code> after retag</td>
+<td>Deletes replacement image (upstream#966)</td>
+<td>Targets the original image via <code>SourceImageID()</code>; <code>NotFound</code> treated as success</td>
+</tr>
+<tr>
+<td>Compose-deploy race</td>
+<td>Aborts the scan on container NotFound</td>
+<td>Skipped container, scan continues</td>
+</tr>
+</tbody>
+</table>
+<h3 id="security">Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>containrrr/watchtower</code></th>
+<th><strong><code>openserbia/watchtower</code></strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Registry TLS (default)</td>
+<td><code>InsecureSkipVerify: true</code> hardcoded</td>
+<td><strong>Strict TLS 1.2+, system trust store</strong></td>
+</tr>
+<tr>
+<td>Registry TLS (opt-out)</td>
+<td>—</td>
+<td><strong><code>--insecure-registry</code></strong> per host, <strong><code>--registry-ca-bundle</code></strong> for private CAs</td>
+</tr>
+<tr>
+<td>Bearer-token comparison</td>
+<td><code>!=</code> (timing-sensitive)</td>
+<td><strong><code>crypto/subtle.ConstantTimeCompare</code></strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>containrrr/watchtower</code></th>
+<th><strong><code>openserbia/watchtower</code></strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTTP API endpoints</td>
+<td><code>/v1/update</code>, <code>/v1/metrics</code></td>
+<td>+ <strong><code>/v1/audit</code></strong> (JSON watch-status report) + <strong><code>--http-api-metrics-no-auth</code></strong> for public scrape</td>
+</tr>
+<tr>
+<td>Prometheus metrics</td>
+<td>5 (scan cycle only)</td>
+<td><strong>~20</strong> (request / registry / Docker-API / auth-cache counters; fallback &amp; rollback counters; poll-duration histogram; watch-status gauges; infrastructure bucket)</td>
+</tr>
+<tr>
+<td>Ready-to-ship dashboard</td>
+<td>—</td>
+<td><strong>Grafana JSON + Prometheus alerts</strong> under <a href="https://github.com/openserbia/watchtower/tree/main/observability"><code>observability/</code></a></td>
+</tr>
+<tr>
+<td>Unmanaged-container visibility</td>
+<td>Silent skip under <code>--label-enable</code></td>
+<td><strong><code>--audit-unmanaged</code></strong> (change-detecting logs) + <code>/v1/audit</code> + <code>watchtower_containers_unmanaged</code> gauge + shipped alert</td>
 </tr>
 </tbody>
 </table>
@@ -1111,19 +1423,38 @@
 </ul>
 <p>See <a href="https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md">CHANGELOG.md</a> for the full list per release.</p>
 <h2 id="reliability_and_performance_improvements">Reliability and performance improvements<a class="headerlink" href="#reliability_and_performance_improvements" title="Permanent link">&para;</a></h2>
-<p>Not upstream-bug repairs — additions that harden the same feature set:</p>
+<p>Not upstream-bug repairs — additions that harden the same feature set.</p>
+<h3 id="registry_and_auth_v19">Registry and auth (v1.9)<a class="headerlink" href="#registry_and_auth_v19" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Bounded exponential backoff on registry HTTP calls.</strong> The oauth challenge, bearer-token exchange, and manifest HEAD retry up to 3 times (500 ms → 4 s + jitter) on network errors, 5xx, 429, and the 401/403/404 flakes seen on registry oauth endpoints under load. Previously a single transient failure wedged the affected image until the next poll.</li>
 <li><strong>In-memory bearer-token cache.</strong> A poll across N containers on the same registry+repository scope now issues one token exchange instead of N. Keyed by auth URL + credential hash, respects the registry's <code>expires_in</code> (default 60 s per the Docker token spec) minus a 10 s skew. Cuts registry traffic dramatically on larger deployments and further reduces oauth-flake exposure.</li>
-<li><strong><code>--audit-unmanaged</code> flag.</strong> With <code>--label-enable</code> active, warns once per poll for every container missing <code>com.centurylinklabs.watchtower.enable</code> so silent exclusions stop looking identical to intentional opt-outs.</li>
+</ul>
+<h3 id="safer_updates_v110">Safer updates (v1.10)<a class="headerlink" href="#safer_updates_v110" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>--health-check-gated</code> with automatic rollback.</strong> After creating the replacement container, Watchtower waits up to <code>--health-check-timeout</code> for <code>State.Health.Status == healthy</code>. If the container never reaches healthy (or reports unhealthy), the replacement is stopped and the previous image is restarted from preserved config. The rollback is itself health-gated — if the previous image is also broken, Watchtower logs <code>rollback_failed=true</code> and leaves the container in place for manual intervention rather than tearing the service down. A per-container rollback cooldown prevents the stop/start/fail loop from thrashing when an image author keeps pushing broken versions. Per-container label override (<code>com.centurylinklabs.watchtower.health-check-timeout=5m</code>) and a smart default derived from the image's own <code>HEALTHCHECK</code> (start_period + retries × (interval + timeout)) mean the gate scales across fast-boot and slow-boot services alike.</li>
+<li><strong><code>--insecure-registry</code> and <code>--registry-ca-bundle</code>.</strong> Upstream unconditionally set <code>InsecureSkipVerify: true</code> for every registry digest check — a long-standing security weakness. The fork enforces strict TLS (1.2+, system trust store) by default and offers per-host opt-outs: list hosts in <code>--insecure-registry</code> to skip verification for specific registries, or load additional CAs via <code>--registry-ca-bundle</code> (extends the system roots rather than replacing them).</li>
+</ul>
+<h3 id="operational_visibility_v110_v111">Operational visibility (v1.10 – v1.11)<a class="headerlink" href="#operational_visibility_v110_v111" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Ship-ready Grafana dashboard + Prometheus alerts.</strong> <code>observability/grafana/watchtower-dashboard.json</code> and <code>observability/prometheus/alerts.yml</code> drop into any Prometheus + Grafana stack: scan overview, watch-status donut, reliability/security row (poll p50/p95, registry outcomes, API error breakdown, Docker API errors, bearer-cache hit rate, image-fallback count), optional Loki logs row, and three annotation tracks for rollbacks/restarts/newly-appeared unmanaged containers. Six production-tuned alerts cover scheduler wedges, sustained failures, registry errors, and Docker API errors.</li>
+<li><strong>Poll-interval-aware staleness alert.</strong> <code>watchtower_poll_interval_seconds</code> is published at startup from the active schedule, so the <code>WatchtowerScansStopped</code> alert uses <code>(time() - last_scan) &gt; 2 × poll_interval</code> instead of a hardcoded window. Works equally for 60-second polls and 12-hour cadences.</li>
+<li><strong><code>GET /v1/audit</code> endpoint.</strong> JSON report of every container classified as <code>managed</code> / <code>excluded</code> / <code>unmanaged</code> / <code>infrastructure</code>. Pull-model alternative to log-based auditing — operators can <code>curl | jq</code> during incident response or wire to a dashboard. Token-gated like <code>/v1/update</code>.</li>
+<li><strong><code>--http-api-metrics-no-auth</code>.</strong> Matches Prometheus convention for trusted-network scraping — <code>/v1/metrics</code> can be exposed without bearer-token plumbing while <code>/v1/update</code> stays mandatorily token-gated.</li>
+<li><strong>Change-detecting <code>--audit-unmanaged</code>.</strong> With <code>--label-enable</code> active, warns once when a container first appears without the <code>enable</code> label and stays silent on subsequent polls unless the set changes. Orders of magnitude less log noise than upstream's would-be behavior for steady-state homelabs.</li>
+<li><strong>Infrastructure bucket.</strong> Docker's own scaffolding containers (<code>moby/buildkit*</code>, <code>docker/desktop-*</code>, anything labelled <code>com.docker.buildx.*</code> / <code>com.docker.desktop.*</code>) are classified separately from unmanaged workloads, so ephemeral buildx builders stop inflating the audit count every <code>docker buildx build</code>.</li>
+<li><strong>~20 Prometheus metrics</strong> covering every HTTP-facing surface: API requests by endpoint + status, registry calls by host + operation + outcome, retry counts, Docker API errors by operation, bearer-cache hits/misses, image-fallback count, last-scan timestamp, and a poll-duration histogram. See <a href="../metrics/">Metrics</a> for the full list.</li>
+</ul>
+<h3 id="security_hardening_v111">Security hardening (v1.11)<a class="headerlink" href="#security_hardening_v111" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Constant-time bearer-token comparison.</strong> <code>api.RequireToken</code> now uses <code>crypto/subtle.ConstantTimeCompare</code> instead of <code>!=</code>, closing a theoretical timing-oracle on the <code>/v1/*</code> endpoints.</li>
+<li><strong>Strict TLS by default</strong> (noted above under v1.10).</li>
 </ul>
 <h2 id="known_rough_edges_fork_roadmap">Known rough edges (fork roadmap)<a class="headerlink" href="#known_rough_edges_fork_roadmap" title="Permanent link">&para;</a></h2>
 <p>Contributions welcome:</p>
 <ol>
-<li><strong>No self-metrics wired up by default.</strong> Prometheus metrics exist (<code>WATCHTOWER_HTTP_API_METRICS=true</code> + token) but nothing ships ready-to-scrape. Alerts like <code>scanned &gt; 0 AND updated == 0 AND image_age &gt; N days</code> would catch silent-failure modes automatically.</li>
-<li><strong><code>:latest</code> everywhere means a broken upstream push reaches prod in one poll interval.</strong> Not a fork bug — a deliberate tradeoff in Watchtower's design — but worth calling out so users opt in consciously.</li>
+<li><strong><code>:latest</code> everywhere means a broken upstream push reaches prod in one poll interval.</strong> Not a fork bug — a deliberate tradeoff in Watchtower's design — but worth calling out so users opt in consciously. Mitigated in part by <code>--health-check-gated</code> + rollback, which reverts a broken push instead of leaving it running.</li>
 </ol>
-<p>See <a href="https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md">CHANGELOG.md</a> for rough edges that have already been fixed (auth-flake backoff, pull-failure log levels, label fail-open audit, compose-deploy races, GC'd source images, and more).</p>
+<p>See <a href="https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md">CHANGELOG.md</a> for rough edges that have already been fixed (auth-flake backoff, pull-failure log levels, label fail-open audit, compose-deploy races, GC'd source images, blanket TLS skip, unmanaged-audit spam, buildkit noise, and more).</p>
 <h2 id="migrating_from_upstream">Migrating from upstream<a class="headerlink" href="#migrating_from_upstream" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="w"> </span>services:
 <span class="w"> </span>  watchtower:
