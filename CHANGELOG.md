@@ -28,6 +28,22 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   window in the `WatchtowerScansStopped` alert with
   `(time() - last_scan) > 2 × poll_interval`, so long-cadence deployments
   (e.g. `@every 12h`) no longer false-alarm.
+
+### Changed
+- **Observability artifacts** (`observability/`) aligned with production
+  tuning. Alerts trimmed to the six that have proven actionable
+  (`WatchtowerRollbackTriggered`, `WatchtowerScansStopped`,
+  `WatchtowerFailuresSustained`, `WatchtowerUnmanagedContainersPresent`,
+  `WatchtowerRegistryErrorsSustained`,
+  `WatchtowerDockerAPIErrorsSustained`); noise-heavy candidates
+  (`WatchtowerAllScansSkipped`, `WatchtowerScansWithoutUpdates`,
+  `WatchtowerAPIUnauthorizedBurst`) dropped. Descriptions tightened to
+  single-line operational prose with `humanizeDuration` templating.
+- Dashboard gains a collapsed "Logs (requires Loki)" row with two panels
+  (warn/error log rate + logs explorer, both querying
+  `{container="watchtower"}`). Uses a new `DS_LOKI` datasource variable
+  so operators without Loki can pick "Do not save" at import time and the
+  rest of the dashboard keeps working.
 - **Reliability / security observability.** Seven new metrics:
   `watchtower_api_requests_total{endpoint, status}`,
   `watchtower_registry_requests_total{host, operation, outcome}`,

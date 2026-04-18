@@ -269,6 +269,50 @@
         {"expr": "sum(increase(watchtower_image_fallback_total{job=\"$job\", instance=~\"$instance\"}[24h]))", "refId": "A"}
       ],
       "fieldConfig": {"defaults": {"unit": "short", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]}}}
+    },
+    {
+      "type": "row",
+      "title": "Logs (requires Loki)",
+      "description": "These two panels need a Loki datasource wired up. If you don't have Loki, pick \"Do not save\" when Grafana prompts for DS_LOKI at import time — the rest of the dashboard still works.",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 37},
+      "collapsed": true,
+      "panels": [
+        {
+          "type": "timeseries",
+          "title": "Warn / error log rate",
+          "description": "Rate of warn+error log lines per second, by level. Sudden spikes usually correlate with a registry flake or a broken release — pair with the Reliability & Security row above to isolate.",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 38},
+          "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+          "targets": [
+            {"expr": "sum by (level) (count_over_time({container=\"watchtower\"} | logfmt | level=~\"(?i)warning|warn|error|fatal\" [$__interval]))", "legendFormat": "{{level}}", "refId": "A"}
+          ],
+          "fieldConfig": {"defaults": {"unit": "short"}},
+          "options": {
+            "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true},
+            "tooltip": {"mode": "multi", "sort": "desc"}
+          }
+        },
+        {
+          "type": "logs",
+          "title": "Warn / error logs",
+          "description": "Live stream of warn+error log lines. Use the Grafana time range to scope to an incident window.",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 38},
+          "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
+          "targets": [
+            {"expr": "{container=\"watchtower\"} | logfmt | level=~\"(?i)warning|warn|error|fatal\"", "refId": "A"}
+          ],
+          "options": {
+            "showTime": true,
+            "showLabels": false,
+            "showCommonLabels": false,
+            "wrapLogMessage": true,
+            "prettifyLogMessage": false,
+            "enableLogDetails": true,
+            "dedupStrategy": "none",
+            "sortOrder": "Descending"
+          }
+        }
+      ]
     }
   ],
   "refresh": "30s",
@@ -282,6 +326,14 @@
         "query": "prometheus",
         "current": {"selected": false, "text": "Prometheus", "value": "Prometheus"},
         "hide": 0
+      },
+      {
+        "name": "DS_LOKI",
+        "type": "datasource",
+        "query": "loki",
+        "current": {"selected": false, "text": "Loki", "value": "Loki"},
+        "hide": 0,
+        "description": "Optional. Only needed for the collapsed \"Logs\" row at the bottom. Pick \"Do not save\" at import time if you don't use Loki."
       },
       {
         "name": "job",

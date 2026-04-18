@@ -31,12 +31,18 @@ The gauges are reset each poll, so they answer "what did the last run do?" rathe
 
 ## Prometheus alerts — `prometheus/alerts.yml`
 
-Four rules, tuned for homelab cadence (hours, not seconds):
+Six rules, deliberately tuned from production use. Earlier drafts of this
+file included more noise-heavy alerts (generic skipped-scan counts,
+scans-without-updates predictions, API 401 bursts) that turned out to
+either fire on expected homelab states or not catch anything actionable in
+practice. What's left:
 
-- **`WatchtowerScansStopped`** — scheduler wedged, no polls in 2h.
-- **`WatchtowerAllScansSkipped`** — HTTP-API-driven updates are blocking scheduled ones; poll interval likely too short.
-- **`WatchtowerFailuresSustained`** — at least one container has been stuck in failure for 30m. The most actionable alert.
-- **`WatchtowerScansWithoutUpdates`** — scans run but nothing updates for a week. Expected for digest-pinned stacks; suspicious for `:latest`-everywhere.
+- **`WatchtowerRollbackTriggered`** — any rollback in the last hour. A broken release shipped and got reverted; investigate before the next push.
+- **`WatchtowerScansStopped`** — the scheduler hasn't fired in 2× the configured interval. Scales with `watchtower_poll_interval_seconds` so 60 s polls and 12 h polls both alert at a sensible multiple.
+- **`WatchtowerFailuresSustained`** — at least one container has been stuck in failure for 30 m. The most actionable alert.
+- **`WatchtowerUnmanagedContainersPresent`** (info) — a container without the `enable` label has been visible for over an hour. Usually a new deploy missing a label.
+- **`WatchtowerRegistryErrorsSustained`** — outbound registry calls to a given host have been returning errors for 15 m. Distinguishes from the `retried` flake case.
+- **`WatchtowerDockerAPIErrorsSustained`** — errors against the Docker socket for 15 m. Usually socket permission drift or daemon load.
 
 Wire into Prometheus:
 
@@ -62,6 +68,10 @@ Three dashboard annotations are pre-wired and render as vertical markers on ever
 - **New unmanaged container** (orange) — `delta(watchtower_containers_unmanaged[5m]) > 0`. A container without the `enable` label appeared.
 
 Toggle individual annotation tracks from the top-right of the Grafana UI if they get noisy.
+
+### Optional Loki integration
+
+The dashboard ships a collapsed "Logs (requires Loki)" row at the bottom with two panels — a warn/error log-rate time-series and a tailing logs explorer — both querying `{container="watchtower"}`. At import time Grafana will prompt for a `DS_LOKI` datasource; pick **Do not save** if you don't run Loki and the rest of the dashboard still works. If you do have Loki scraping Docker container logs (e.g. via Promtail's `docker_sd_configs`), the row becomes extremely useful for correlating metric spikes with the actual log line that caused them.
 
 ## Limitations
 
