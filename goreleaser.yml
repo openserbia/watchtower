@@ -24,8 +24,11 @@ archives:
       {{ .ProjectName }}_{{ .Os }}_
       {{- if eq .Arch "amd64" }}amd64
       {{- else if eq .Arch "386" }}386
-      {{- else if eq .Arch "arm" }}armhf
       {{- else if eq .Arch "arm64" }}arm64v8
+      {{- else if eq .Arch "arm" }}
+      {{- if eq .Arm "6" }}armhf
+      {{- else if eq .Arm "7" }}armv7
+      {{- else }}arm{{ .Arm }}{{ end }}
       {{- else }}{{ .Arch }}{{ end }}
     formats:
       - tar.gz
