@@ -86,6 +86,12 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		envBool("WATCHTOWER_LABEL_ENABLE"),
 		"Watch containers where the com.centurylinklabs.watchtower.enable label is true")
 
+	flags.BoolP(
+		"audit-unmanaged",
+		"",
+		envBool("WATCHTOWER_AUDIT_UNMANAGED"),
+		"Warn about containers carrying no com.centurylinklabs.watchtower.enable label at all — silent exclusions that look identical to intentional opt-outs")
+
 	flags.StringSliceP(
 		"disable-containers",
 		"x",

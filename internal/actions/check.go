@@ -37,6 +37,36 @@ func CheckForSanity(client container.Client, filter types.Filter, rollingRestart
 	return nil
 }
 
+// AuditUnmanaged logs a warning for each container that carries no
+// com.centurylinklabs.watchtower.enable label at all. With --label-enable set,
+// these containers are silently skipped — indistinguishable from containers
+// that were intentionally opted out with enable=false. The audit forces
+// operators to be explicit so security patches don't hide behind a missed label.
+func AuditUnmanaged(client container.Client, scope string) error {
+	filter := filters.NoFilter
+	if scope != "" {
+		filter = filters.FilterByScope(scope, filter)
+	}
+	containers, err := client.ListContainers(filter)
+	if err != nil {
+		return err
+	}
+
+	for _, c := range containers {
+		if c.IsWatchtower() {
+			continue
+		}
+		if _, labeled := c.Enabled(); labeled {
+			continue
+		}
+		log.WithFields(log.Fields{
+			"container": c.Name(),
+			"image":     c.ImageName(),
+		}).Warn("Container has no com.centurylinklabs.watchtower.enable label — silently skipped under --label-enable. Set the label to true or false to make the intent explicit.")
+	}
+	return nil
+}
+
 // CheckForMultipleWatchtowerInstances will ensure that there are not multiple instances of the
 // watchtower running simultaneously. If multiple watchtower containers are detected, this function
 // will stop and remove all but the most recently started container. This behaviour can be bypassed
@@ -77,7 +107,7 @@ func cleanupExcessWatchtowers(containers []types.Container, client container.Cli
 		}
 
 		if cleanup {
-			if err := client.RemoveImageByID(c.ImageID()); err != nil {
+			if err := client.RemoveImageByID(c.SourceImageID()); err != nil {
 				log.WithError(err).Warning("Could not cleanup watchtower images, possibly because of other watchtowers instances in other scopes.")
 			}
 		}

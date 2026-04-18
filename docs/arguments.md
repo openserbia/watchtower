@@ -225,6 +225,18 @@ Environment Variable: WATCHTOWER_LABEL_ENABLE
              Default: false
 ```
 
+## Audit unmanaged containers
+Warn when a container has no `com.centurylinklabs.watchtower.enable` label at all. Under `--label-enable`, such
+containers are silently skipped, which is indistinguishable from an intentional opt-out. Enabling this flag
+prints one warning per poll per unlabeled container so silent exclusions become visible.
+
+```text
+            Argument: --audit-unmanaged
+Environment Variable: WATCHTOWER_AUDIT_UNMANAGED
+                Type: Boolean
+             Default: false
+```
+
 ## Filter by disable label
 __Do not__ Monitor and update containers that have `com.centurylinklabs.watchtower.enable` label set to false and 
 no `--label-enable` argument is passed. Note that only one or the other (targeting by enable label) can be 

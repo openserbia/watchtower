@@ -51,6 +51,7 @@ type Container interface {
 	Name() string
 	ImageID() ImageID
 	SafeImageID() ImageID
+	SourceImageID() ImageID
 	ImageName() string
 	Enabled() (bool, bool)
 	IsMonitorOnly(UpdateParams) bool

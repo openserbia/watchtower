@@ -75,6 +75,54 @@ var _ = Describe("the update action", func() {
 				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(1))
 			})
 		})
+		When("the container's imageInfo was populated from a fallback name lookup", func() {
+			It("should target the creation-time image ID, not the fallback imageInfo ID", func() {
+				// Simulates the post-fallback state: containerInfo.Image (the
+				// ID the container was actually created from) differs from
+				// imageInfo.ID (the freshly-pulled replacement found by name).
+				// Without SourceImageID, cleanup would try to delete the
+				// replacement image that the new container is now using.
+				oldImageID := "sha256:4d239725ac8da47ecfcf04356f19845a4207c3423f61979151bff56612f04807"
+				newImageID := "sha256:b00ed20a1dd0000000000000000000000000000000000000000000000000000a"
+				containerInfo := &dockerContainer.InspectResponse{
+					ContainerJSONBase: &dockerContainer.ContainerJSONBase{
+						ID:    "post-fallback-cont",
+						Image: oldImageID,
+						Name:  "post-fallback-cont",
+						HostConfig: &dockerContainer.HostConfig{
+							PortBindings: map[nat.Port][]nat.PortBinding{},
+						},
+					},
+					Config: &dockerContainer.Config{
+						Image:        "registry.example.com/app:latest",
+						Labels:       map[string]string{},
+						ExposedPorts: map[nat.Port]struct{}{},
+					},
+				}
+				fallbackImageInfo := &image.InspectResponse{
+					ID:          newImageID,
+					RepoDigests: []string{"registry.example.com/app@sha256:deadbeef"},
+				}
+				ctr := CreateMockContainerWithImageInfoP(
+					"post-fallback-cont",
+					"post-fallback-cont",
+					"registry.example.com/app:latest",
+					time.Now(),
+					fallbackImageInfo,
+				)
+				// Wire the raw containerInfo so SourceImageID returns oldImageID.
+				Expect(ctr.ContainerInfo()).NotTo(BeNil())
+				*ctr.ContainerInfo() = *containerInfo
+
+				client := CreateMockClient(&TestData{
+					Containers: []types.Container{ctr},
+				}, false, false)
+				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+				Expect(err).NotTo(HaveOccurred())
+				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(types.ImageID(oldImageID)))
+				Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(types.ImageID(newImageID)))
+			})
+		})
 		When("there are multiple containers using different images", func() {
 			It("should try to remove each of them", func() {
 				testData := getCommonTestData("")

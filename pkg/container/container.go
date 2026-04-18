@@ -98,6 +98,15 @@ func (c Container) SafeImageID() wt.ImageID {
 	return wt.ImageID(c.imageInfo.ID)
 }
 
+// SourceImageID returns the ID Docker recorded against the container itself at
+// creation time, not the ID of whichever image is currently tagged. This stays
+// stable even when the image has been garbage-collected and GetContainer fell
+// back to the name-resolved imageInfo, so it's the correct ID for --cleanup
+// (we want to remove the *old* image, not the freshly-pulled replacement).
+func (c Container) SourceImageID() wt.ImageID {
+	return wt.ImageID(c.containerInfo.Image)
+}
+
 // ImageName returns the name of the Docker image that was used to start the
 // container. If the original image was specified without a particular tag, the
 // "latest" tag is assumed.

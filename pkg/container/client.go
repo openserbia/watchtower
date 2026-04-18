@@ -124,6 +124,14 @@ func (client dockerClient) ListContainers(fn t.Filter) ([]t.Container, error) {
 	for _, runningContainer := range containers {
 		c, err := client.GetContainer(t.ContainerID(runningContainer.ID))
 		if err != nil {
+			// Container vanished between list and inspect — typically a manual
+			// `docker compose up` recreated it under a new ID. The next poll
+			// will pick the replacement up; aborting the whole scan here would
+			// drown genuine failures in churn-induced noise.
+			if cerrdefs.IsNotFound(err) {
+				log.Debugf("Container %s disappeared between list and inspect, skipping.", t.ContainerID(runningContainer.ID).ShortID())
+				continue
+			}
 			return nil, err
 		}
 
@@ -207,6 +215,10 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 	if c.IsRunning() {
 		log.Infof("Stopping %s (%s) with %s", c.Name(), shortID, signal)
 		if err := client.api.ContainerKill(bg, idStr, signal); err != nil {
+			if cerrdefs.IsNotFound(err) {
+				log.Debugf("Container %s already gone before kill, nothing to stop.", shortID)
+				return nil
+			}
 			return err
 		}
 	}
@@ -424,6 +436,13 @@ func (client dockerClient) RemoveImageByID(id t.ImageID) error {
 		image.RemoveOptions{
 			Force: true,
 		})
+	if err != nil && cerrdefs.IsNotFound(err) {
+		// The old image was already gone (e.g. a previous --cleanup run or a
+		// manual docker rmi removed it). Treat as success — the end state
+		// matches what we were trying to achieve.
+		log.Debugf("Image %s already removed, skipping.", id.ShortID())
+		return nil
+	}
 
 	if log.IsLevelEnabled(log.DebugLevel) {
 		deleted := strings.Builder{}

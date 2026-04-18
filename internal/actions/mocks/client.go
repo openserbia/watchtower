@@ -18,6 +18,7 @@ type MockClient struct {
 // TestData is the data used to perform the test
 type TestData struct {
 	TriedToRemoveImageCount int
+	TriedToRemoveImageIDs   []t.ImageID
 	NameOfContainerToKeep   string
 	Containers              []t.Container
 	Staleness               map[string]bool
@@ -60,9 +61,11 @@ func (client MockClient) RenameContainer(_ t.Container, _ string) error {
 	return nil
 }
 
-// RemoveImageByID increments the TriedToRemoveImageCount on being called
-func (client MockClient) RemoveImageByID(_ t.ImageID) error {
+// RemoveImageByID records each image ID it was asked to remove so tests can
+// assert that cleanup targets the old image rather than the newly-pulled one.
+func (client MockClient) RemoveImageByID(id t.ImageID) error {
 	client.TestData.TriedToRemoveImageCount++
+	client.TestData.TriedToRemoveImageIDs = append(client.TestData.TriedToRemoveImageIDs, id)
 	return nil
 }
 

@@ -51,7 +51,7 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 		}
 
 		if err != nil {
-			log.Infof("Unable to update container %q: %v. Proceeding to next.", targetContainer.Name(), err)
+			log.Warnf("Unable to update container %q: %v. Proceeding to next.", targetContainer.Name(), err)
 			stale = false
 			staleCheckFailed++
 			progress.AddSkipped(targetContainer, err)
@@ -108,8 +108,12 @@ func performRollingRestart(containers []types.Container, client container.Client
 				if err := restartStaleContainer(containers[i], client, params); err != nil {
 					failed[containers[i].ID()] = err
 				} else if containers[i].IsStale() {
-					// Only add (previously) stale containers' images to cleanup
-					cleanupImageIDs[containers[i].ImageID()] = true
+					// Only add (previously) stale containers' images to cleanup.
+					// Use SourceImageID so we target the image the old container
+					// was created from, not whatever imageInfo currently holds
+					// (which may be a freshly-pulled replacement when the old
+					// image has been GC'd — see Container.SourceImageID).
+					cleanupImageIDs[containers[i].SourceImageID()] = true
 				}
 			}
 		}
@@ -184,8 +188,10 @@ func restartContainersInSortedOrder(containers []types.Container, client contain
 			if err := restartStaleContainer(c, client, params); err != nil {
 				failed[c.ID()] = err
 			} else if c.IsStale() {
-				// Only add (previously) stale containers' images to cleanup
-				cleanupImageIDs[c.ImageID()] = true
+				// See the matching comment in performRollingRestart: use the
+				// creation-time image ID, not the inspected imageInfo, so we
+				// don't delete the replacement image after a fallback update.
+				cleanupImageIDs[c.SourceImageID()] = true
 			}
 		}
 	}

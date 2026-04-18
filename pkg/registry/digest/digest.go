@@ -19,6 +19,7 @@ import (
 	"github.com/openserbia/watchtower/internal/meta"
 	"github.com/openserbia/watchtower/pkg/registry/auth"
 	"github.com/openserbia/watchtower/pkg/registry/manifest"
+	"github.com/openserbia/watchtower/pkg/registry/retry"
 	"github.com/openserbia/watchtower/pkg/types"
 )
 
@@ -122,7 +123,7 @@ func GetDigest(url, token string) (string, error) {
 
 	logrus.WithField("url", url).Debug("Doing a HEAD request to fetch a digest")
 
-	res, err := client.Do(req)
+	res, err := retry.DoHTTP(client, req, logrus.WithField("url", url))
 	if err != nil {
 		return "", err
 	}

@@ -36,6 +36,7 @@ var (
 	noPull            bool
 	monitorOnly       bool
 	enableLabel       bool
+	auditUnmanaged    bool
 	disableContainers []string
 	notifier          t.Notifier
 	timeout           time.Duration
@@ -95,6 +96,7 @@ func PreRun(cmd *cobra.Command, _ []string) {
 	}
 
 	enableLabel, _ = f.GetBool("label-enable")
+	auditUnmanaged, _ = f.GetBool("audit-unmanaged")
 	disableContainers, _ = f.GetStringSlice("disable-containers")
 	lifecycleHooks, _ = f.GetBool("enable-lifecycle-hooks")
 	rollingRestart, _ = f.GetBool("rolling-restart")
@@ -362,6 +364,11 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 
 func runUpdatesWithNotifications(filter t.Filter) *metrics.Metric {
 	notifier.StartNotification()
+	if auditUnmanaged && enableLabel {
+		if err := actions.AuditUnmanaged(client, scope); err != nil {
+			log.WithError(err).Warn("Failed to audit unmanaged containers")
+		}
+	}
 	updateParams := t.UpdateParams{
 		Filter:          filter,
 		Cleanup:         cleanup,

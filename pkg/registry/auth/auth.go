@@ -15,6 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/openserbia/watchtower/pkg/registry/helpers"
+	"github.com/openserbia/watchtower/pkg/registry/retry"
 	"github.com/openserbia/watchtower/pkg/types"
 )
 
@@ -37,7 +38,7 @@ func GetToken(container types.Container, registryAuth string) (string, error) {
 	}
 
 	client := &http.Client{}
-	res, err := client.Do(req)
+	res, err := retry.DoHTTP(client, req, logrus.WithField("url", challengeURL.String()))
 	if err != nil {
 		return "", err
 	}
@@ -97,7 +98,7 @@ func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) 
 		logrus.Debug("No credentials found.")
 	}
 
-	authResponse, err := client.Do(r)
+	authResponse, err := retry.DoHTTP(&client, r, logrus.WithField("url", authURL.String()))
 	if err != nil {
 		return "", err
 	}

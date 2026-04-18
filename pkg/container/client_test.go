@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -127,13 +126,12 @@ var _ = Describe("the client", func() {
 			})
 		})
 		When("image is not found", func() {
-			It("should return an error", func() {
+			It("should treat NotFound as success since the end state already matches", func() {
 				image := util.GenerateRandomSHA256()
 				mockServer.AppendHandlers(mocks.RemoveImageHandler(nil))
 				c := dockerClient{api: docker}
 
-				err := c.RemoveImageByID(t.ImageID(image))
-				Expect(cerrdefs.IsNotFound(err)).To(BeTrue())
+				Expect(c.RemoveImageByID(t.ImageID(image))).To(Succeed())
 			})
 		})
 	})
@@ -215,6 +213,18 @@ var _ = Describe("the client", func() {
 				containers, err := client.ListContainers(filters.NoFilter)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(containers).NotTo(ContainElement(havingRestartingState(true)))
+			})
+		})
+		When(`a container is recreated between list and inspect`, func() {
+			It(`skips the vanished container instead of aborting the scan`, func() {
+				mockServer.AppendHandlers(mocks.ListContainersHandler("running"))
+				mockServer.AppendHandlers(mocks.GetContainerHandlers(&mocks.Watchtower)...)
+				mockServer.AppendHandlers(mocks.GetContainerHandler(string(mocks.Running.ContainerID()), nil))
+
+				client := dockerClient{api: docker, ClientOptions: ClientOptions{}}
+				containers, err := client.ListContainers(filters.NoFilter)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(containers).To(HaveLen(1))
 			})
 		})
 		When(`a container uses container network mode`, func() {
