@@ -10,6 +10,13 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-04-18
+
+### Fixed
+- Internal: named the two literal `2`s used in the rollback-timeout computation
+  so `golangci-lint`'s `mnd` rule stops flagging them. No user-visible behavior
+  change; ships a clean lint run for the release pipeline.
+
 ## [1.10.0] - 2026-04-18
 
 ### Added
@@ -122,6 +129,7 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged.
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.10.1...HEAD
+[1.10.1]: https://github.com/openserbia/watchtower/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/openserbia/watchtower/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/openserbia/watchtower/compare/v1.8.5...v1.9.0
