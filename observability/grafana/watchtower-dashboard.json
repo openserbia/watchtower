@@ -101,6 +101,69 @@
       "fieldConfig": {
         "defaults": {"custom": {"lineInterpolation": "stepAfter", "lineWidth": 1, "fillOpacity": 10}}
       }
+    },
+    {
+      "type": "piechart",
+      "title": "Watch status (managed / excluded / unmanaged)",
+      "description": "Current classification from the last audit pass. `unmanaged` = no com.centurylinklabs.watchtower.enable label. Pair with /v1/audit for per-container detail.",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "targets": [
+        {"expr": "watchtower_containers_managed{job=\"$job\", instance=\"$instance\"}", "legendFormat": "managed", "refId": "A"},
+        {"expr": "watchtower_containers_excluded{job=\"$job\", instance=\"$instance\"}", "legendFormat": "excluded", "refId": "B"},
+        {"expr": "watchtower_containers_unmanaged{job=\"$job\", instance=\"$instance\"}", "legendFormat": "unmanaged", "refId": "C"}
+      ],
+      "options": {
+        "pieType": "donut",
+        "legend": {"displayMode": "table", "placement": "right", "values": ["value"]},
+        "reduceOptions": {"calcs": ["lastNotNull"]}
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "mappings": [],
+          "color": {"mode": "palette-classic"}
+        },
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "unmanaged"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]},
+          {"matcher": {"id": "byName", "options": "excluded"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "gray"}}]},
+          {"matcher": {"id": "byName", "options": "managed"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}
+        ]
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Unmanaged containers (silently skipped)",
+      "description": "Count of containers with no com.centurylinklabs.watchtower.enable label. Under --label-enable these are invisible to Watchtower. Non-zero values suggest an operator forgot to label something — check /v1/audit for names or enable --audit-unmanaged for log warnings.",
+      "gridPos": {"h": 8, "w": 4, "x": 8, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "targets": [
+        {"expr": "watchtower_containers_unmanaged{job=\"$job\", instance=\"$instance\"}", "refId": "A"}
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}]
+          }
+        }
+      },
+      "options": {"colorMode": "background", "graphMode": "area"}
+    },
+    {
+      "type": "timeseries",
+      "title": "Watch-status history",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "targets": [
+        {"expr": "watchtower_containers_managed{job=\"$job\", instance=\"$instance\"}", "legendFormat": "managed", "refId": "A"},
+        {"expr": "watchtower_containers_excluded{job=\"$job\", instance=\"$instance\"}", "legendFormat": "excluded", "refId": "B"},
+        {"expr": "watchtower_containers_unmanaged{job=\"$job\", instance=\"$instance\"}", "legendFormat": "unmanaged", "refId": "C"}
+      ],
+      "fieldConfig": {
+        "defaults": {"custom": {"lineInterpolation": "stepAfter", "lineWidth": 1, "fillOpacity": 10, "stacking": {"mode": "normal"}}}
+      }
     }
   ],
   "refresh": "30s",

@@ -29,6 +29,9 @@ type Metrics struct {
 	total     prometheus.Counter
 	skipped   prometheus.Counter
 	rollbacks prometheus.Counter
+	managed   prometheus.Gauge
+	excluded  prometheus.Gauge
+	unmanaged prometheus.Gauge
 }
 
 // NewMetric returns a Metric with the counts taken from the appropriate types.Report fields
@@ -82,6 +85,18 @@ func Default() *Metrics {
 			Name: "watchtower_rollbacks_total",
 			Help: "Number of update rollbacks triggered by --health-check-gated since watchtower started. Each increment means a replacement container was created but reverted because it did not become healthy.",
 		}),
+		managed: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "watchtower_containers_managed",
+			Help: "Containers whose com.centurylinklabs.watchtower.enable label is set to true. Current state at the last classification pass.",
+		}),
+		excluded: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "watchtower_containers_excluded",
+			Help: "Containers whose com.centurylinklabs.watchtower.enable label is set to false (intentional opt-out). Current state at the last classification pass.",
+		}),
+		unmanaged: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "watchtower_containers_unmanaged",
+			Help: "Containers with no com.centurylinklabs.watchtower.enable label at all. Under --label-enable these are silently skipped — indistinguishable from intentional opt-outs. Pair with --audit-unmanaged for log warnings or /v1/audit for per-container detail.",
+		}),
 		channel: make(chan *Metric, metricChannelBuffer),
 	}
 
@@ -101,6 +116,16 @@ func RegisterScan(metric *Metric) {
 // was restored.
 func RegisterRollback() {
 	Default().rollbacks.Inc()
+}
+
+// SetAuditCounts updates the managed / excluded / unmanaged container gauges.
+// Called from the audit pass so a Grafana panel can show the watch-status
+// breakdown without operators having to hit /v1/audit manually.
+func SetAuditCounts(managed, excluded, unmanaged int) {
+	m := Default()
+	m.managed.Set(float64(managed))
+	m.excluded.Set(float64(excluded))
+	m.unmanaged.Set(float64(unmanaged))
 }
 
 // HandleUpdate dequeue the metric channel and processes it

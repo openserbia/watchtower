@@ -6,12 +6,14 @@ package actions
 import (
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/openserbia/watchtower/pkg/container"
 	"github.com/openserbia/watchtower/pkg/filters"
+	"github.com/openserbia/watchtower/pkg/metrics"
 	"github.com/openserbia/watchtower/pkg/sorter"
 	"github.com/openserbia/watchtower/pkg/types"
 )
@@ -37,12 +39,37 @@ func CheckForSanity(client container.Client, filter types.Filter, rollingRestart
 	return nil
 }
 
-// AuditUnmanaged logs a warning for each container that carries no
-// com.centurylinklabs.watchtower.enable label at all. With --label-enable set,
-// these containers are silently skipped — indistinguishable from containers
-// that were intentionally opted out with enable=false. The audit forces
-// operators to be explicit so security patches don't hide behind a missed label.
-func AuditUnmanaged(client container.Client, scope string) error {
+// unmanagedState tracks which containers we've already warned about across
+// polls. The audit deliberately emits at startup (empty known set → everything
+// new) and then stays quiet unless the set changes: a new unlabeled container
+// shows up (warn) or a previously-unlabeled one gets labeled or removed
+// (info). That turns a spammy per-poll warning into a steady-state signal
+// operators can actually act on.
+var (
+	auditMu        sync.Mutex
+	knownUnmanaged = make(map[string]struct{})
+)
+
+// ResetAuditStateForTest clears the in-memory audit cache. Intended for use
+// between test specs — callers in production code have no reason to invoke it.
+func ResetAuditStateForTest() {
+	auditMu.Lock()
+	defer auditMu.Unlock()
+	knownUnmanaged = make(map[string]struct{})
+}
+
+// AuditUnmanaged classifies every container visible to the daemon into
+// managed / excluded / unmanaged buckets, publishes those counts to
+// Prometheus so the Grafana dashboard can show them, and — when logWarnings
+// is true — logs change-detected warnings the first time each unmanaged
+// container is seen. Steady state is silent: subsequent polls with the same
+// set emit nothing unless the set changes (a new unlabeled container
+// appears, or a previously-unlabeled one gets labeled or removed).
+//
+// Metrics publication is unconditional — Prometheus gauges are always-on
+// observability. The logWarnings flag gates only the `docker logs` output,
+// typically wired to --audit-unmanaged.
+func AuditUnmanaged(client container.Client, scope string, logWarnings bool) error {
 	filter := filters.NoFilter
 	if scope != "" {
 		filter = filters.FilterByScope(scope, filter)
@@ -52,18 +79,53 @@ func AuditUnmanaged(client container.Client, scope string) error {
 		return err
 	}
 
+	var managed, excluded int
+	unmanagedNow := make(map[string]types.Container, len(containers))
 	for _, c := range containers {
 		if c.IsWatchtower() {
 			continue
 		}
-		if _, labeled := c.Enabled(); labeled {
+		enabled, labeled := c.Enabled()
+		switch {
+		case !labeled:
+			unmanagedNow[c.Name()] = c
+		case enabled:
+			managed++
+		default:
+			excluded++
+		}
+	}
+	metrics.SetAuditCounts(managed, excluded, len(unmanagedNow))
+
+	if !logWarnings {
+		return nil
+	}
+
+	auditMu.Lock()
+	defer auditMu.Unlock()
+
+	for name, c := range unmanagedNow {
+		if _, seen := knownUnmanaged[name]; seen {
 			continue
 		}
 		log.WithFields(log.Fields{
-			"container": c.Name(),
+			"container": name,
 			"image":     c.ImageName(),
 		}).Warn("Container has no com.centurylinklabs.watchtower.enable label — silently skipped under --label-enable. Set the label to true or false to make the intent explicit.")
 	}
+
+	for name := range knownUnmanaged {
+		if _, still := unmanagedNow[name]; still {
+			continue
+		}
+		log.WithField("container", name).Info("Previously-unmanaged container is now labeled or removed — audit cleared")
+	}
+
+	knownUnmanaged = make(map[string]struct{}, len(unmanagedNow))
+	for name := range unmanagedNow {
+		knownUnmanaged[name] = struct{}{}
+	}
+
 	return nil
 }
 

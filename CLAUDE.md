@@ -45,7 +45,6 @@ Entry points:
 
 - `main.go` → `cmd.Execute()` (Cobra).
 - `cmd/root.go` wires runtime state: flag parsing in `PreRun`, constructs the Docker `container.Client` and the `Notifier`, then `Run` either executes once (`--run-once`) or schedules updates via `robfig/cron`. A buffered channel (`updateLock`, capacity 1) serializes runs between the scheduler and the HTTP API — only one update is ever in flight.
-- `cmd/notify-upgrade.go` is a secondary subcommand added in `Execute()`.
 
 Package boundaries worth knowing before editing:
 

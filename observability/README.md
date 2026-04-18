@@ -13,6 +13,10 @@ Enable metrics with `WATCHTOWER_HTTP_API_METRICS=true` + `WATCHTOWER_HTTP_API_TO
 | `watchtower_containers_scanned` | gauge | Containers checked during the most recent poll. |
 | `watchtower_containers_updated` | gauge | Containers recreated during the most recent poll. |
 | `watchtower_containers_failed` | gauge | Containers that failed to update during the most recent poll. |
+| `watchtower_containers_managed` | gauge | Containers with `com.centurylinklabs.watchtower.enable=true`. Current state. |
+| `watchtower_containers_excluded` | gauge | Containers with `com.centurylinklabs.watchtower.enable=false` (intentional opt-out). Current state. |
+| `watchtower_containers_unmanaged` | gauge | Containers with no enable label at all. Silently skipped under `--label-enable`. Hit `GET /v1/audit` for the names. |
+| `watchtower_rollbacks_total` | counter | Update rollbacks triggered by `--health-check-gated`. |
 
 The gauges are reset each poll, so they answer "what did the last run do?" rather than "how many containers exist".
 

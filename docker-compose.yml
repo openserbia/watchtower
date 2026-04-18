@@ -16,6 +16,7 @@ services:
     image: prom/prometheus
     volumes:
       - ./prometheus/:/etc/prometheus/
+      - ./observability/prometheus/:/etc/prometheus/alerts/:ro
       - prometheus:/prometheus/
     ports:
       - 9090:9090
@@ -29,6 +30,7 @@ services:
     volumes:
       - grafana:/var/lib/grafana
       - ./grafana:/etc/grafana/provisioning
+      - ./observability/grafana/watchtower-dashboard.json:/etc/grafana/provisioning/dashboards/watchtower-dashboard.json:ro
   parent:
     image: nginx
     container_name: parent

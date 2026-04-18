@@ -10,6 +10,49 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+### Added
+- **`--http-api-audit`** flag (env: `WATCHTOWER_HTTP_API_AUDIT`) + new
+  `GET /v1/audit` endpoint that returns a JSON report of every container
+  classified as `managed` / `excluded` / `unmanaged`. Pull-model alternative
+  to the log-based `--audit-unmanaged` for scripts, dashboards, and
+  post-deploy verification. Token-gated like `/v1/update`.
+- **Three new Prometheus gauges** — `watchtower_containers_managed`,
+  `watchtower_containers_excluded`, `watchtower_containers_unmanaged` —
+  published every poll regardless of whether any audit flag is set, so the
+  Grafana dashboard shows the watch-status breakdown at a glance. Dashboard
+  (`observability/grafana/watchtower-dashboard.json`) adds a donut, a
+  stat-with-threshold for unmanaged, and a stacked history panel. Alerts
+  add `WatchtowerUnmanagedContainersPresent` (info, >1 h).
+- **`--http-api-metrics-no-auth`** flag (env:
+  `WATCHTOWER_HTTP_API_METRICS_NO_AUTH`). Exposes `/v1/metrics` without
+  bearer-token auth, matching Prometheus convention for trusted-network
+  scraping. `/v1/update` remains token-gated unconditionally. When only the
+  (public) metrics endpoint is enabled, `--http-api-token` is no longer
+  required to start the daemon.
+
+### Security
+- `api.RequireToken` now uses `crypto/subtle.ConstantTimeCompare` instead of
+  `!=` when checking the bearer token, closing a theoretical timing-oracle
+  on `:8080`.
+
+### Changed
+- `--audit-unmanaged` is no longer spammy. The audit warns about each
+  unlabeled container the first time it appears (startup baseline) and then
+  stays silent on subsequent polls unless the set changes — a new unlabeled
+  container shows up, or a previously-unlabeled one gets labeled or removed.
+  Same signal, orders of magnitude less log noise for stable homelabs.
+
+### Removed
+- **`notify-upgrade` subcommand** (`cmd/notify-upgrade.go`). The helper
+  generated a shoutrrr-URL env file from the pre-shoutrrr notification flags
+  — a migration tool for an upstream cut-over that happened years ago. The
+  legacy `--notification-email-*` / `--notification-slack-*` /
+  `--notification-gotify-*` / MSTeams flags remain supported via the shim in
+  `pkg/notifications`, so existing deployments keep working; only the
+  interactive converter is gone. Note: this is a CLI-surface removal and as
+  such is the first intentional break of upstream compatibility — tag as
+  v2.0.0 when releasing.
+
 ## [1.10.1] - 2026-04-18
 
 ### Fixed

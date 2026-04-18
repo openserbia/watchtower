@@ -1,3 +1,4 @@
+// Package cmd contains the watchtower (sub-)commands.
 package cmd
 
 import (
@@ -19,6 +20,7 @@ import (
 	"github.com/openserbia/watchtower/internal/flags"
 	"github.com/openserbia/watchtower/internal/meta"
 	"github.com/openserbia/watchtower/pkg/api"
+	apiAudit "github.com/openserbia/watchtower/pkg/api/audit"
 	apiMetrics "github.com/openserbia/watchtower/pkg/api/metrics"
 	"github.com/openserbia/watchtower/pkg/api/update"
 	"github.com/openserbia/watchtower/pkg/container"
@@ -75,7 +77,6 @@ func init() {
 
 // Execute the root func and exit in case of errors
 func Execute() {
-	rootCmd.AddCommand(notifyUpgradeCommand)
 	if err := rootCmd.Execute(); err != nil {
 		log.Fatal(err)
 	}
@@ -209,7 +210,19 @@ func Run(c *cobra.Command, names []string) {
 
 	if enableMetricsAPI {
 		metricsHandler := apiMetrics.New()
-		httpAPI.RegisterHandler(metricsHandler.Path, metricsHandler.Handle)
+		metricsNoAuth, _ := c.PersistentFlags().GetBool("http-api-metrics-no-auth")
+		if metricsNoAuth {
+			log.Warn("Serving /v1/metrics without token auth — ensure :8080 is on a trusted network, bound to localhost, or fronted by a reverse proxy.")
+			httpAPI.RegisterPublicHandler(metricsHandler.Path, metricsHandler.Handle)
+		} else {
+			httpAPI.RegisterHandler(metricsHandler.Path, metricsHandler.Handle)
+		}
+	}
+
+	enableAuditAPI, _ := c.PersistentFlags().GetBool("http-api-audit")
+	if enableAuditAPI {
+		auditHandler := apiAudit.New(client, scope)
+		httpAPI.RegisterFunc(auditHandler.Path, auditHandler.Handle)
 	}
 
 	if err := httpAPI.Start(enableUpdateAPI && !unblockHTTPAPI); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -375,10 +388,11 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 
 func runUpdatesWithNotifications(filter t.Filter) *metrics.Metric {
 	notifier.StartNotification()
-	if auditUnmanaged && enableLabel {
-		if err := actions.AuditUnmanaged(client, scope); err != nil {
-			log.WithError(err).Warn("Failed to audit unmanaged containers")
-		}
+	// Always-on: classify containers and publish managed/excluded/unmanaged
+	// gauges so the Grafana dashboard has data to show. Log warnings are
+	// opt-in via --audit-unmanaged (only meaningful under --label-enable).
+	if err := actions.AuditUnmanaged(client, scope, auditUnmanaged && enableLabel); err != nil {
+		log.WithError(err).Warn("Failed to audit container watch status")
 	}
 	updateParams := t.UpdateParams{
 		Filter:             filter,

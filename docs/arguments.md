@@ -461,6 +461,42 @@ Environment Variable: WATCHTOWER_HTTP_API_METRICS
              Default: false
 ```
 
+## Public metrics endpoint
+When set, `/v1/metrics` is served without bearer-token auth. Intended for homelab / trusted-network
+Prometheus scrapers where token plumbing is more friction than protection, and the real access boundary
+is a localhost bind or reverse proxy in front of `:8080`. The `/v1/update` endpoint remains token-gated
+regardless. When only `--http-api-metrics` + `--http-api-metrics-no-auth` are set (no `--http-api-update`),
+`--http-api-token` is no longer required.
+
+```text
+            Argument: --http-api-metrics-no-auth
+Environment Variable: WATCHTOWER_HTTP_API_METRICS_NO_AUTH
+                Type: Boolean
+             Default: false
+```
+
+## Watch-status audit endpoint
+When set, `GET /v1/audit` returns a JSON report of every container the Docker daemon reports, classified
+as `managed` (`enable=true`), `excluded` (`enable=false`), or `unmanaged` (no label at all). Useful for
+post-deploy verification scripts, dashboards, or ad-hoc `curl | jq` during incident response — without
+parsing logs. Token-gated; pair with `--http-api-token`.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://watchtower:8080/v1/audit | jq
+# {
+#   "generated_at": "2026-04-18T12:00:00Z",
+#   "summary": {"managed": 5, "excluded": 2, "unmanaged": 3, "total": 10},
+#   "containers": [...]
+# }
+```
+
+```text
+            Argument: --http-api-audit
+Environment Variable: WATCHTOWER_HTTP_API_AUDIT
+                Type: Boolean
+             Default: false
+```
+
 ## Scheduling
 [Cron expression](https://pkg.go.dev/github.com/robfig/cron@v1.2.0?tab=doc#hdr-CRON_Expression_Format) in 6 fields (rather than the traditional 5) which defines when and how often to check for new images. Either `--interval` or the schedule expression
 can be defined, but not both. An example: `--schedule "0 0 4 * * *"`

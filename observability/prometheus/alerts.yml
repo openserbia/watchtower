@@ -55,6 +55,24 @@ groups:
             for the container name and reason. Common causes: registry
             unreachable, pull-rate-limited, image missing required config.
 
+      - alert: WatchtowerUnmanagedContainersPresent
+        # With --label-enable set, containers that have no enable label at all
+        # are silently skipped — indistinguishable from an intentional opt-out.
+        # Non-zero for more than an hour usually means a new service landed
+        # without the label. Hit /v1/audit for the names.
+        expr: |
+          watchtower_containers_unmanaged{job="watchtower"} > 0
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "Watchtower on {{ $labels.instance }} has {{ $value }} unmanaged container(s)"
+          description: |
+            One or more containers have no com.centurylinklabs.watchtower.enable
+            label and are being silently skipped under --label-enable. Call
+            `/v1/audit` to see which, then decide whether to label them true
+            (watch) or false (explicit opt-out).
+
       - alert: WatchtowerRollbackTriggered
         # One rollback is meaningful — a published image came up unhealthy and
         # Watchtower reverted to the previous version. Typically indicates a

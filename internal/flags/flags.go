@@ -193,6 +193,16 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"",
 		envBool("WATCHTOWER_HTTP_API_METRICS"),
 		"Runs Watchtower with the Prometheus metrics API enabled")
+	flags.BoolP(
+		"http-api-metrics-no-auth",
+		"",
+		envBool("WATCHTOWER_HTTP_API_METRICS_NO_AUTH"),
+		"Expose /v1/metrics without token authentication. Conventional for Prometheus scraping on trusted networks — pair with a localhost bind or firewall/reverse-proxy in front of :8080.")
+	flags.BoolP(
+		"http-api-audit",
+		"",
+		envBool("WATCHTOWER_HTTP_API_AUDIT"),
+		"Expose GET /v1/audit returning a JSON watch-status report (managed/excluded/unmanaged) for every container the Docker daemon reports. Token-gated.")
 
 	flags.StringP(
 		"http-api-token",

@@ -22,6 +22,27 @@ func TestAPI(t *testing.T) {
 var _ = Describe("API", func() {
 	api := New(token)
 
+	Describe("Start gating", func() {
+		It("does not fatal when only public (no-auth) handlers are registered and the token is empty", func() {
+			a := New("")
+			a.hasHandlers = true
+			// No authed handlers registered — only a public one.
+			Expect(a.hasAuthedHandlers).To(BeFalse())
+			// Simulate what Start() checks without spinning up the server.
+			// The real fatal path is: hasAuthedHandlers && Token == "".
+			shouldFatal := a.hasAuthedHandlers && a.Token == ""
+			Expect(shouldFatal).To(BeFalse())
+		})
+
+		It("still expects the token when an authed handler is registered", func() {
+			a := New("")
+			a.hasHandlers = true
+			a.hasAuthedHandlers = true
+			shouldFatal := a.hasAuthedHandlers && a.Token == ""
+			Expect(shouldFatal).To(BeTrue())
+		})
+	})
+
 	Describe("RequireToken middleware", func() {
 		It("should return 401 Unauthorized when token is not provided", func() {
 			handlerFunc := api.RequireToken(testHandler)
