@@ -176,6 +176,17 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 
 	imageInfo, err := client.api.ImageInspect(bg, containerInfo.Image)
 	if err != nil {
+		// The image the container was created from may have been garbage-collected
+		// off disk (e.g. a previous --cleanup run after the tag was moved to a
+		// newer digest). Fall back to inspecting by the image reference the
+		// container was created with — usually a name:tag that now points at the
+		// freshly-pulled digest — so updates can still proceed.
+		if ref := containerInfo.Config.Image; ref != "" && ref != containerInfo.Image && !strings.HasPrefix(ref, "sha256:") {
+			if fallbackInfo, fallbackErr := client.api.ImageInspect(bg, ref); fallbackErr == nil {
+				log.Warnf("Image %s for container %s is missing locally; falling back to %q for config", containerInfo.Image, containerInfo.Name, ref)
+				return &Container{containerInfo: &containerInfo, imageInfo: &fallbackInfo}, nil
+			}
+		}
 		log.Warnf("Failed to retrieve container image info: %v", err)
 		return &Container{containerInfo: &containerInfo, imageInfo: nil}, nil
 	}

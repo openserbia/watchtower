@@ -8,6 +8,7 @@ import (
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	cli "github.com/docker/docker/client"
 	. "github.com/onsi/ginkgo/v2"
@@ -330,6 +331,67 @@ var _ = Describe("the client", func() {
 				ctr.containerInfo.NetworkSettings = &container.NetworkSettings{Networks: endpoints}
 				Expect(ctr.ContainerInfo().NetworkSettings.Networks[`test`].Aliases).To(Equal(aliases))
 				Expect(client.GetNetworkConfig(ctr).EndpointsConfig[`test`].Aliases).To(Equal([]string{"One", "Two", "Four"}))
+			})
+		})
+	})
+	Describe(`GetContainer`, func() {
+		When(`the image referenced by the container has been removed locally`, func() {
+			missingImageID := "sha256:4d239725ac8da47ecfcf04356f19845a4207c3423f61979151bff56612f04807"
+			imageRef := "testimage:latest"
+
+			newContainerInfo := func(id string) *container.InspectResponse {
+				return &container.InspectResponse{
+					ContainerJSONBase: &container.ContainerJSONBase{
+						ID:         id,
+						Image:      missingImageID,
+						Name:       "/" + id,
+						HostConfig: &container.HostConfig{},
+					},
+					Config: &container.Config{Image: imageRef},
+				}
+			}
+			notFound := ghttp.RespondWithJSONEncoded(http.StatusNotFound, struct{ Message string }{Message: "No such image"})
+
+			It(`falls back to inspecting by the image reference so updates can proceed`, func() {
+				containerID := "fallback-cont-id"
+				fallbackID := "sha256:b00ed20a1dd0000000000000000000000000000000000000000000000000000a"
+				fallbackImage := &image.InspectResponse{ID: fallbackID, RepoTags: []string{imageRef}}
+
+				mockServer.AppendHandlers(
+					mocks.GetContainerHandler(containerID, newContainerInfo(containerID)),
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", HaveSuffix("/images/%s/json", missingImageID)),
+						notFound,
+					),
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", HaveSuffix("/images/%s/json", imageRef)),
+						ghttp.RespondWithJSONEncoded(http.StatusOK, fallbackImage),
+					),
+				)
+
+				result, err := dockerClient{api: docker}.GetContainer(t.ContainerID(containerID))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.ImageInfo()).NotTo(BeNil())
+				Expect(string(result.SafeImageID())).To(Equal(fallbackID))
+			})
+
+			It(`returns a nil imageInfo when the fallback lookup also fails`, func() {
+				containerID := "fallback-cont-miss"
+				mockServer.AppendHandlers(
+					mocks.GetContainerHandler(containerID, newContainerInfo(containerID)),
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", HaveSuffix("/images/%s/json", missingImageID)),
+						notFound,
+					),
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", HaveSuffix("/images/%s/json", imageRef)),
+						notFound,
+					),
+				)
+
+				result, err := dockerClient{api: docker}.GetContainer(t.ContainerID(containerID))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.ImageInfo()).To(BeNil())
 			})
 		})
 	})
