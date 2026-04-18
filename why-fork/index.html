@@ -1450,10 +1450,7 @@
 <li><strong>Strict TLS by default</strong> (noted above under v1.10).</li>
 </ul>
 <h2 id="known_rough_edges_fork_roadmap">Known rough edges (fork roadmap)<a class="headerlink" href="#known_rough_edges_fork_roadmap" title="Permanent link">&para;</a></h2>
-<p>Contributions welcome:</p>
-<ol>
-<li><strong><code>:latest</code> everywhere means a broken upstream push reaches prod in one poll interval.</strong> Not a fork bug — a deliberate tradeoff in Watchtower's design — but worth calling out so users opt in consciously. Mitigated in part by <code>--health-check-gated</code> + rollback, which reverts a broken push instead of leaving it running.</li>
-</ol>
+<p>Contributions welcome. The list is currently empty — the original "<code>:latest</code> everywhere means a broken upstream push reaches prod in one poll interval" rough edge was substantially addressed in v1.12.0 by <code>--image-cooldown</code> (supply-chain grace window: defer applying a pulled image until its digest has been stable for N) and <code>--health-check-gated</code> (revert to previous image if the replacement isn't healthy). Together they turn the classic fast-broken-push scenario into a non-event: operators who enable both can afford the one-poll detection gap because the gate holds the update and, if one slips through, the rollback catches it.</p>
 <p>See <a href="https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md">CHANGELOG.md</a> for rough edges that have already been fixed (auth-flake backoff, pull-failure log levels, label fail-open audit, compose-deploy races, GC'd source images, blanket TLS skip, unmanaged-audit spam, buildkit noise, and more).</p>
 <h2 id="migrating_from_upstream">Migrating from upstream<a class="headerlink" href="#migrating_from_upstream" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="w"> </span>services:

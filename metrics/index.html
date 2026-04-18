@@ -1204,6 +1204,11 @@ change once per scan.</p>
 <td>Rollbacks triggered by <a href="../arguments/#health_check_gated_updates"><code>--health-check-gated</code></a>. Each increment = a replacement container failed health check and the previous image was restored.</td>
 </tr>
 <tr>
+<td><code>watchtower_containers_in_cooldown</code></td>
+<td>gauge</td>
+<td>Containers currently waiting out a <a href="../arguments/#image_cooldown_supply-chain_gate"><code>--image-cooldown</code></a> window. Non-zero right after a fresh push; stuck non-zero means the author keeps re-pushing and resetting the clock.</td>
+</tr>
+<tr>
 <td><code>watchtower_image_fallback_total</code></td>
 <td>counter</td>
 <td>Times <code>GetContainer</code> fell back to inspecting by image reference because the source image ID was missing locally. Sustained counts indicate external tooling is deleting images Watchtower still needs. Background: <a href="https://github.com/containrrr/watchtower/issues/1217">upstream#1217</a>.</td>

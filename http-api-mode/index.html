@@ -914,9 +914,13 @@
 
   <h1>HTTP API Mode</h1>
 
-<p>Watchtower exposes a small HTTP control-plane on port <code>8080</code> with three
-optional endpoints. Each is opt-in via its own flag, and all share the
-same listener and bearer-token scheme.</p>
+<p>Watchtower exposes a small HTTP control-plane with three optional
+endpoints. Each is opt-in via its own flag, and all share the same
+listener and bearer-token scheme. The listener binds to <code>:8080</code> (all
+interfaces) by default; change that with
+<a href="../arguments/#http_api_host"><code>--http-api-host</code></a> — e.g.
+<code>127.0.0.1:8080</code> for a localhost-only bind, or <code>0.0.0.0:9090</code> to pick
+a different port.</p>
 <table>
 <thead>
 <tr>
@@ -960,15 +964,25 @@ and <code>--http-api-metrics-no-auth</code> is set, <code>--http-api-token</code
 required to start the daemon.</p>
 <h2 id="v1update"><code>/v1/update</code><a class="headerlink" href="#v1update" title="Permanent link">&para;</a></h2>
 <p>Triggers a scan + update cycle — the same work the scheduler would do
-at its next tick. The request blocks until the update completes (or is
-skipped because another update is already running). Responses:</p>
+at its next tick. The request blocks until the update completes. The
+response body is a small JSON envelope so automation can tell how the
+scan went without scraping logs.</p>
+<p>Responses:</p>
 <ul>
-<li><code>200</code> — update completed or was skipped because another was in flight.</li>
+<li><code>200</code> — update completed. Body reports per-scan counts:
+  <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;completed&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;scanned&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;updated&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;failed&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">}</span>
+</code></pre></div></li>
+<li><code>429</code> — another update was already in flight. Body carries a reason
+  so clients can retry with backoff:
+  <div class="highlight"><pre><span></span><code><span class="p">{</span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;skipped&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;reason&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;another update is already running&quot;</span><span class="p">}</span>
+</code></pre></div>
+  Targeted updates (<code>?image=&lt;name&gt;</code>) <strong>block</strong> on the lock instead of
+  429-ing, because a caller explicitly asking for an image usually wants
+  it eventually even if they have to wait.</li>
 <li><code>401</code> — missing or wrong bearer token.</li>
-<li>The handler does not stream per-container progress; scrape
-  <code>watchtower_scans_total</code> or tail the container's logs for in-flight
-  detail.</li>
 </ul>
+<p>The handler does not stream per-container progress; tail the container's
+logs or scrape <code>watchtower_scans_total</code> for in-flight detail.</p>
 <div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">watchtower</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openserbia/watchtower</span>
