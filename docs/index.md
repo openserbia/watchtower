@@ -1,5 +1,5 @@
 <p style="text-align: center; margin-left: 1.6rem;">
-  <img alt="Logotype depicting a lighthouse" src="./images/logo-450px.png" width="450" />
+  <img alt="Logotype depicting a lighthouse" src="./images/logo.png" width="450" />
 </p>
 <h1 align="center">
   Watchtower
