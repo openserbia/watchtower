@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="./logo.png" width="450" />
+  <img src="https://raw.githubusercontent.com/openserbia/watchtower/main/logo.png" width="450" />
 
   # Watchtower — the maintained fork
 
