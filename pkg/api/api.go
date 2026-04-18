@@ -13,11 +13,17 @@ import (
 	"github.com/openserbia/watchtower/pkg/metrics"
 )
 
-const tokenMissingMsg = "api token is empty or has not been set. exiting"
+const (
+	tokenMissingMsg = "api token is empty or has not been set. exiting"
+	// DefaultListenAddr is used when --http-api-host isn't set. Binds to
+	// every interface on port 8080, matching the pre-v1.12 behavior.
+	DefaultListenAddr = ":8080"
+)
 
 // API is the http server responsible for serving the HTTP API endpoints
 type API struct {
 	Token             string
+	ListenAddr        string
 	hasHandlers       bool
 	hasAuthedHandlers bool
 }
@@ -25,7 +31,8 @@ type API struct {
 // New is a factory function creating a new API instance
 func New(token string) *API {
 	return &API{
-		Token: token,
+		Token:      token,
+		ListenAddr: DefaultListenAddr,
 	}
 }
 
@@ -116,16 +123,22 @@ func (api *API) Start(block bool) error {
 		log.Fatal(tokenMissingMsg)
 	}
 
+	addr := api.ListenAddr
+	if addr == "" {
+		addr = DefaultListenAddr
+	}
+	log.Infof("Watchtower HTTP API listening on %s", addr)
+
 	if block {
-		runHTTPServer()
+		runHTTPServer(addr)
 	} else {
 		go func() {
-			runHTTPServer()
+			runHTTPServer(addr)
 		}()
 	}
 	return nil
 }
 
-func runHTTPServer() {
-	log.Fatal(http.ListenAndServe(":8080", nil))
+func runHTTPServer(addr string) {
+	log.Fatal(http.ListenAndServe(addr, nil))
 }

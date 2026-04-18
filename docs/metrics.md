@@ -62,6 +62,7 @@ Published every scan regardless of whether any audit flag is set.
 | Metric | Type | What it tells you |
 | --- | --- | --- |
 | `watchtower_rollbacks_total` | counter | Rollbacks triggered by [`--health-check-gated`](arguments.md#health_check_gated_updates). Each increment = a replacement container failed health check and the previous image was restored. |
+| `watchtower_containers_in_cooldown` | gauge | Containers currently waiting out a [`--image-cooldown`](arguments.md#image_cooldown_supply-chain_gate) window. Non-zero right after a fresh push; stuck non-zero means the author keeps re-pushing and resetting the clock. |
 | `watchtower_image_fallback_total` | counter | Times `GetContainer` fell back to inspecting by image reference because the source image ID was missing locally. Sustained counts indicate external tooling is deleting images Watchtower still needs. Background: [upstream#1217](https://github.com/containrrr/watchtower/issues/1217). |
 
 ### HTTP API (`/v1/*` endpoints)

@@ -45,6 +45,7 @@ type Metrics struct {
 	lastScanTime     prometheus.Gauge
 	pollInterval     prometheus.Gauge
 	pollDuration     prometheus.Histogram
+	inCooldown       prometheus.Gauge
 }
 
 // NewMetric returns a Metric with the counts taken from the appropriate types.Report fields
@@ -155,6 +156,10 @@ func Default() *Metrics {
 			Help:    "Wall-clock duration of each scan + update cycle. Buckets target homelab cadence (seconds, not sub-second).",
 			Buckets: []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 300},
 		}),
+		inCooldown: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "watchtower_containers_in_cooldown",
+			Help: "Containers with a pending --image-cooldown: a new digest has been detected but the supply-chain cooldown window hasn't elapsed yet. Non-zero is expected right after an image author pushes a new tag; a stuck non-zero value usually means the author keeps re-pushing.",
+		}),
 		channel: make(chan *Metric, metricChannelBuffer),
 	}
 
@@ -240,6 +245,12 @@ func SetPollInterval(d time.Duration) {
 // ObservePollDuration records the duration of a full scan cycle.
 func ObservePollDuration(d time.Duration) {
 	Default().pollDuration.Observe(d.Seconds())
+}
+
+// SetContainersInCooldown reports how many containers are currently awaiting
+// their --image-cooldown window to elapse.
+func SetContainersInCooldown(count int) {
+	Default().inCooldown.Set(float64(count))
 }
 
 // HandleUpdate dequeue the metric channel and processes it

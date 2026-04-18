@@ -115,9 +115,7 @@ Not upstream-bug repairs — additions that harden the same feature set.
 
 ## Known rough edges (fork roadmap)
 
-Contributions welcome:
-
-1. **`:latest` everywhere means a broken upstream push reaches prod in one poll interval.** Not a fork bug — a deliberate tradeoff in Watchtower's design — but worth calling out so users opt in consciously. Mitigated in part by `--health-check-gated` + rollback, which reverts a broken push instead of leaving it running.
+Contributions welcome. The list is currently empty — the original "`:latest` everywhere means a broken upstream push reaches prod in one poll interval" rough edge was substantially addressed in v1.12.0 by `--image-cooldown` (supply-chain grace window: defer applying a pulled image until its digest has been stable for N) and `--health-check-gated` (revert to previous image if the replacement isn't healthy). Together they turn the classic fast-broken-push scenario into a non-event: operators who enable both can afford the one-poll detection gap because the gate holds the update and, if one slips through, the rollback catches it.
 
 See [CHANGELOG.md](https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md) for rough edges that have already been fixed (auth-flake backoff, pull-failure log levels, label fail-open audit, compose-deploy races, GC'd source images, blanket TLS skip, unmanaged-audit spam, buildkit noise, and more).
 

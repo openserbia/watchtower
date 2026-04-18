@@ -1,6 +1,8 @@
 package container
 
 import (
+	"time"
+
 	dc "github.com/docker/docker/api/types/container"
 	"github.com/docker/go-connections/nat"
 	. "github.com/onsi/ginkgo/v2"
@@ -385,6 +387,31 @@ var _ = Describe("the container", func() {
 				Expect(preTimeout).To(Equal(3))
 				postTimeout := c.PostUpdateTimeout()
 				Expect(postTimeout).To(Equal(5))
+			})
+		})
+	})
+
+	Describe("StopTimeout", func() {
+		When("the container has no explicit StopTimeout", func() {
+			It("returns zero so the caller can fall back to the global flag", func() {
+				c := MockContainer(WithPortBindings())
+				Expect(c.StopTimeout()).To(Equal(time.Duration(0)))
+			})
+		})
+		When("the container sets StopTimeout to 45 seconds", func() {
+			It("reports 45s as a time.Duration", func() {
+				c := MockContainer(WithPortBindings())
+				secs := 45
+				c.containerInfo.Config.StopTimeout = &secs
+				Expect(c.StopTimeout()).To(Equal(45 * time.Second))
+			})
+		})
+		When("the container sets StopTimeout to zero", func() {
+			It("returns zero (operator asked for immediate kill, but our convention treats 0 as 'unset')", func() {
+				c := MockContainer(WithPortBindings())
+				secs := 0
+				c.containerInfo.Config.StopTimeout = &secs
+				Expect(c.StopTimeout()).To(Equal(time.Duration(0)))
 			})
 		})
 	})

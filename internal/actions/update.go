@@ -40,7 +40,20 @@ var (
 	// operators who want to force a retry after a restart are exactly who
 	// should benefit from that behavior.
 	failedRollbacks = make(map[string]time.Time)
+
+	pendingImagesMu sync.Mutex
+	// pendingImages tracks digests first seen during an active --image-cooldown
+	// window but not yet applied. Keyed by container name. When the digest
+	// matches the map entry and the cooldown has elapsed, the update proceeds;
+	// if the registry serves a different digest during the window (author
+	// re-pushed), the entry resets so the clock restarts.
+	pendingImages = make(map[string]pendingImage)
 )
+
+type pendingImage struct {
+	digest    types.ImageID
+	firstSeen time.Time
+}
 
 // rollbackCooldownRemaining reports how long the container should continue to
 // be skipped for being on post-rollback cooldown. Zero = not on cooldown.
@@ -65,6 +78,81 @@ func recordRollback(containerName string) {
 	failedRollbacks[containerName] = time.Now()
 }
 
+// resolveImageCooldown picks the effective cooldown for a container:
+// per-container label > global flag > 0 (disabled). Zero means "apply
+// immediately" — the pre-v1.12 behavior.
+func resolveImageCooldown(c types.Container, params types.UpdateParams) time.Duration {
+	if override, ok := c.ImageCooldown(); ok {
+		return override
+	}
+	return params.ImageCooldown
+}
+
+// evaluateImageCooldown is the single decision point for "should this digest
+// apply now?" under an active cooldown. Returns:
+//   - proceed=true when the cooldown has elapsed (and clears the pending entry)
+//   - proceed=false otherwise, with remaining giving the operator a useful
+//     "retry in N" number for the log line
+//
+// Resets the pending entry when the registry serves a different digest —
+// that's the signal the image author pushed a follow-up, so the clock should
+// restart with the new digest.
+func evaluateImageCooldown(containerName string, newest types.ImageID, cooldown time.Duration) (proceed bool, remaining time.Duration) {
+	pendingImagesMu.Lock()
+	defer pendingImagesMu.Unlock()
+
+	entry, tracked := pendingImages[containerName]
+	now := time.Now()
+
+	switch {
+	case !tracked, entry.digest != newest:
+		// First sighting of this digest (either no prior record, or the
+		// digest changed mid-cooldown). Record and defer.
+		pendingImages[containerName] = pendingImage{digest: newest, firstSeen: now}
+		return false, cooldown
+	case now.Sub(entry.firstSeen) >= cooldown:
+		// Stable long enough — apply and clear state.
+		delete(pendingImages, containerName)
+		return true, 0
+	default:
+		return false, cooldown - now.Sub(entry.firstSeen)
+	}
+}
+
+// pendingImageCount reports the number of containers currently inside an
+// active cooldown window. Used for watchtower_containers_in_cooldown.
+func pendingImageCount() int {
+	pendingImagesMu.Lock()
+	defer pendingImagesMu.Unlock()
+	return len(pendingImages)
+}
+
+// EvaluateImageCooldownForTest exposes the cooldown decision function for
+// external tests. Not for production use.
+func EvaluateImageCooldownForTest(containerName string, newest types.ImageID, cooldown time.Duration) (bool, time.Duration) {
+	return evaluateImageCooldown(containerName, newest, cooldown)
+}
+
+// ResetCooldownStateForTest clears the in-memory cooldown map. External
+// test-only helper.
+func ResetCooldownStateForTest() {
+	pendingImagesMu.Lock()
+	defer pendingImagesMu.Unlock()
+	pendingImages = make(map[string]pendingImage)
+}
+
+// RewindCooldownFirstSeenForTest shifts a container's recorded firstSeen
+// backwards by the given amount, simulating the passage of wall-clock time
+// without making tests sleep.
+func RewindCooldownFirstSeenForTest(containerName string, by time.Duration) {
+	pendingImagesMu.Lock()
+	defer pendingImagesMu.Unlock()
+	if entry, ok := pendingImages[containerName]; ok {
+		entry.firstSeen = entry.firstSeen.Add(-by)
+		pendingImages[containerName] = entry
+	}
+}
+
 // errNoHealthcheck signals that the container has no HEALTHCHECK defined and
 // health gating cannot be enforced. Treated as a warning, not a failure.
 var errNoHealthcheck = errors.New("container has no HEALTHCHECK; gating skipped")
@@ -79,6 +167,7 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 	defer func() {
 		metrics.SetLastScanTimestamp(time.Now())
 		metrics.ObservePollDuration(time.Since(start))
+		metrics.SetContainersInCooldown(pendingImageCount())
 	}()
 	progress := &session.Progress{}
 	staleCount := 0
@@ -103,6 +192,24 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 					"retry_in":  remaining.Round(time.Second),
 				}).Info("Skipping update: container is on post-rollback cooldown")
 				stale = false
+			}
+		}
+		// Supply-chain gate: hold the update until the new digest has been
+		// stable for the configured cooldown window. Runs after the rollback
+		// cooldown so a freshly-rolled-back container doesn't also get
+		// gated twice. Bypassed under --run-once because "defer to next
+		// poll" is meaningless when the daemon exits after this cycle —
+		// the operator explicitly asked for an immediate, one-shot update.
+		if stale && err == nil && !params.RunOnce {
+			if cooldown := resolveImageCooldown(targetContainer, params); cooldown > 0 {
+				if proceed, remaining := evaluateImageCooldown(targetContainer.Name(), newestImage, cooldown); !proceed {
+					log.WithFields(log.Fields{
+						"container": targetContainer.Name(),
+						"digest":    newestImage.ShortID(),
+						"retry_in":  remaining.Round(time.Second),
+					}).Info("Skipping update: image cooldown window has not elapsed")
+					stale = false
+				}
 			}
 		}
 		shouldUpdate := stale && !params.NoRestart && !targetContainer.IsMonitorOnly(params)
@@ -135,7 +242,7 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 		}
 	}
 
-	containers, err = sorter.SortByDependencies(containers)
+	containers, err = sorter.SortByDependencies(containers, params.ComposeDependsOn)
 	if err != nil {
 		return nil, err
 	}

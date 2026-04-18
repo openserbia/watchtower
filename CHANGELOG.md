@@ -10,6 +10,71 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-04-18
+
+### Added
+- **`--compose-depends-on`** flag (env: `WATCHTOWER_COMPOSE_DEPENDS_ON`)
+  — honor Docker Compose's `depends_on` graph when ordering
+  stop/start during updates. Reads the `com.docker.compose.depends_on`
+  label Compose writes on every managed container and resolves service
+  names to real container names within the same Compose project. Opt-in
+  (default off preserves pre-v1.12 behaviour for stacks running fine on
+  the link-only model). Incompatible with `--rolling-restart` — a
+  warning fires at startup if both are set. Modifiers in the label
+  value (e.g. `db:service_healthy:true`) are parsed and stripped;
+  Watchtower only needs the graph edge, not Compose's startup
+  conditions.
+- New `Container.ComposeProject()`, `ComposeService()`,
+  `ComposeDependencies()` methods on the `types.Container` interface
+  for programmatic use.
+- **`--image-cooldown`** flag (env: `WATCHTOWER_IMAGE_COOLDOWN`) +
+  per-container label `com.centurylinklabs.watchtower.image-cooldown` —
+  supply-chain gate that defers applying a new image digest until it has
+  been stable for the configured duration. If the registry serves a
+  different digest during the window (author re-pushed), the clock
+  resets. Directly addresses the long-standing "broken `:latest` push
+  reaches prod in one poll interval" rough edge. Default `0` keeps
+  existing behavior unchanged.
+  - New Prometheus gauge `watchtower_containers_in_cooldown` tracks the
+    current count of deferred updates.
+  - Pairs with `--health-check-gated`: cooldown gates *when* to apply,
+    health-check gates *whether* the applied container works.
+  - Bypassed automatically under `--run-once` since "defer to next poll"
+    is meaningless when the daemon exits after this cycle.
+  - Own design — not a port of the upstream equivalent — because the
+    reset-on-republish semantics and label override slot directly into
+    the existing per-container configuration pattern.
+- **`--http-api-host`** flag (env: `WATCHTOWER_HTTP_API_HOST`) — bind
+  the HTTP API listener to a specific host:port. Defaults to `:8080`
+  (all interfaces, unchanged behavior). Useful for operators who want a
+  localhost-only bind (`127.0.0.1:8080`) without putting a reverse proxy
+  in front. Inspired by [nicholas-fedor/watchtower#697](https://github.com/nicholas-fedor/watchtower/pull/697).
+- **Auto-detect container stop timeout.** If a container was started
+  with its own `StopTimeout` (via `docker run --stop-timeout` or
+  Compose's `stop_grace_period`), Watchtower honors that value instead
+  of the global `--stop-timeout`. Matches Docker's own precedence of
+  per-container over daemon default. New `Container.StopTimeout()`
+  method on the `types.Container` interface. Inspired by
+  [nicholas-fedor/watchtower#1182](https://github.com/nicholas-fedor/watchtower/pull/1182).
+- **`--update-on-start`** flag (env: `WATCHTOWER_UPDATE_ON_START`) — run
+  one scan immediately at startup in addition to the scheduled cadence,
+  so operators can verify a fresh deployment without waiting for the
+  first poll interval. Skipped if the HTTP API already holds the update
+  lock at boot. Inspired by [nicholas-fedor/watchtower#672](https://github.com/nicholas-fedor/watchtower/pull/672).
+- **Structured JSON response from `GET /v1/update`**. The endpoint now
+  returns `{"status": "completed", "scanned": N, "updated": N, "failed": N}`
+  on success instead of an empty 200 body — automation can tell how the
+  scan went without scraping logs. Inspired by
+  [nicholas-fedor/watchtower#673](https://github.com/nicholas-fedor/watchtower/pull/673).
+
+### Changed
+- **`/v1/update` returns HTTP 429** (with a `{"status":"skipped","reason":...}`
+  body) when another update is already running, instead of silently
+  succeeding with 200. Lets clients retry with backoff. Targeted updates
+  (`?image=<name>`) still block on the lock rather than 429-ing, because a
+  caller explicitly asking for an image usually wants it eventually.
+  Inspired by [nicholas-fedor/watchtower#1304](https://github.com/nicholas-fedor/watchtower/pull/1304).
+
 ## [1.11.2] - 2026-04-18
 
 ### Fixed
@@ -257,7 +322,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged.
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.11.2...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.12.0...HEAD
+[1.12.0]: https://github.com/openserbia/watchtower/compare/v1.11.2...v1.12.0
 [1.11.2]: https://github.com/openserbia/watchtower/compare/v1.11.1...v1.11.2
 [1.11.1]: https://github.com/openserbia/watchtower/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/openserbia/watchtower/compare/v1.10.1...v1.11.0

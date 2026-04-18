@@ -17,4 +17,11 @@ type UpdateParams struct {
 	LabelPrecedence    bool
 	HealthCheckGated   bool
 	HealthCheckTimeout time.Duration
+	ImageCooldown      time.Duration
+	ComposeDependsOn   bool
+	// RunOnce is set when the caller is Watchtower's --run-once mode. Signals
+	// to supply-chain gates like --image-cooldown that deferring an update
+	// to "next poll" isn't meaningful — there is no next poll — so those
+	// gates should fall through and apply immediately.
+	RunOnce bool
 }

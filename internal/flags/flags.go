@@ -116,6 +116,12 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		envDuration("WATCHTOWER_HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
 		"Maximum time --health-check-gated will wait for the new container to report healthy before rolling back.")
 
+	flags.DurationP(
+		"image-cooldown",
+		"",
+		envDuration("WATCHTOWER_IMAGE_COOLDOWN"),
+		"Supply-chain gate: after a new image digest is detected, defer applying it until the digest has been stable for this duration. If the author re-pushes during the window, the clock resets. Set 0 (the default) to disable — matches pre-v1.12 behavior. Per-container override via the com.centurylinklabs.watchtower.image-cooldown label.")
+
 	flags.StringSliceP(
 		"disable-containers",
 		"x",
@@ -154,6 +160,12 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"Run once now and exit")
 
 	flags.BoolP(
+		"update-on-start",
+		"",
+		envBool("WATCHTOWER_UPDATE_ON_START"),
+		"Run an update scan immediately at startup in addition to the scheduled cadence. Useful for verifying a fresh deployment works without waiting for the first poll interval.")
+
+	flags.BoolP(
 		"include-restarting",
 		"",
 		envBool("WATCHTOWER_INCLUDE_RESTARTING"),
@@ -184,6 +196,12 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"Restart containers one at a time")
 
 	flags.BoolP(
+		"compose-depends-on",
+		"",
+		envBool("WATCHTOWER_COMPOSE_DEPENDS_ON"),
+		"Honor Docker Compose's `depends_on` declarations when ordering updates (reads the com.docker.compose.depends_on label). Opt-in because it can change stop/start ordering for Compose stacks that have been relying on Watchtower's simpler link-based graph. Incompatible with --rolling-restart — a warning fires at startup if both are set.")
+
+	flags.BoolP(
 		"http-api-update",
 		"",
 		envBool("WATCHTOWER_HTTP_API_UPDATE"),
@@ -209,6 +227,12 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"",
 		envString("WATCHTOWER_HTTP_API_TOKEN"),
 		"Sets an authentication token to HTTP API requests.")
+
+	flags.StringP(
+		"http-api-host",
+		"",
+		envString("WATCHTOWER_HTTP_API_HOST"),
+		"Address the HTTP API listens on. Defaults to ':8080' (all interfaces); set to '127.0.0.1:8080' for a localhost-only bind, or '0.0.0.0:9090' to pick a different port. Takes a Go net.Listen address (host:port).")
 
 	flags.BoolP(
 		"http-api-periodic-polls",

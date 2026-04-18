@@ -61,10 +61,15 @@ type Container interface {
 	ToRestart() bool
 	IsWatchtower() bool
 	StopSignal() string
+	StopTimeout() time.Duration
 	HasImageInfo() bool
 	ImageInfo() *image.InspectResponse
 	HealthCheckTimeout() (time.Duration, bool)
+	ImageCooldown() (time.Duration, bool)
 	IsInfrastructure() bool
+	ComposeProject() string
+	ComposeService() string
+	ComposeDependencies() []string
 	GetLifecyclePreCheckCommand() string
 	GetLifecyclePostCheckCommand() string
 	GetLifecyclePreUpdateCommand() string

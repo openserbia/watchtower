@@ -42,13 +42,16 @@ var (
 	auditUnmanaged     bool
 	healthCheckGated   bool
 	healthCheckTimeout time.Duration
+	imageCooldown      time.Duration
 	disableContainers  []string
 	notifier           t.Notifier
 	timeout            time.Duration
 	lifecycleHooks     bool
 	rollingRestart     bool
+	composeDependsOn   bool
 	scope              string
 	labelPrecedence    bool
+	runOnce            bool
 )
 
 var rootCmd = NewRootCommand()
@@ -103,6 +106,7 @@ func PreRun(cmd *cobra.Command, _ []string) {
 	auditUnmanaged, _ = f.GetBool("audit-unmanaged")
 	healthCheckGated, _ = f.GetBool("health-check-gated")
 	healthCheckTimeout, _ = f.GetDuration("health-check-timeout")
+	imageCooldown, _ = f.GetDuration("image-cooldown")
 	disableContainers, _ = f.GetStringSlice("disable-containers")
 
 	insecureRegistries, _ := f.GetStringSlice("insecure-registry")
@@ -112,6 +116,7 @@ func PreRun(cmd *cobra.Command, _ []string) {
 	}
 	lifecycleHooks, _ = f.GetBool("enable-lifecycle-hooks")
 	rollingRestart, _ = f.GetBool("rolling-restart")
+	composeDependsOn, _ = f.GetBool("compose-depends-on")
 	scope, _ = f.GetString("scope")
 	labelPrecedence, _ = f.GetBool("label-take-precedence")
 
@@ -151,7 +156,7 @@ func PreRun(cmd *cobra.Command, _ []string) {
 // Run is the main execution flow of the command
 func Run(c *cobra.Command, names []string) {
 	filter, filterDesc := filters.BuildFilter(names, disableContainers, enableLabel, scope)
-	runOnce, _ := c.PersistentFlags().GetBool("run-once")
+	runOnce, _ = c.PersistentFlags().GetBool("run-once")
 	enableUpdateAPI, _ := c.PersistentFlags().GetBool("http-api-update")
 	enableMetricsAPI, _ := c.PersistentFlags().GetBool("http-api-metrics")
 	unblockHTTPAPI, _ := c.PersistentFlags().GetBool("http-api-periodic-polls")
@@ -169,6 +174,10 @@ func Run(c *cobra.Command, names []string) {
 
 	if rollingRestart && monitorOnly {
 		log.Fatal("Rolling restarts is not compatible with the global monitor only flag")
+	}
+
+	if rollingRestart && composeDependsOn {
+		log.Warn("--rolling-restart is typically incompatible with --compose-depends-on: rolling restarts update containers one at a time without coordinating dependency chains, so a depends_on graph won't be respected. Pick one of the two for Compose stacks with meaningful dependencies.")
 	}
 
 	awaitDockerClient()
@@ -194,11 +203,20 @@ func Run(c *cobra.Command, names []string) {
 	updateLock <- true
 
 	httpAPI := api.New(apiToken)
+	if addr, _ := c.PersistentFlags().GetString("http-api-host"); addr != "" {
+		httpAPI.ListenAddr = addr
+	}
 
 	if enableUpdateAPI {
-		updateHandler := update.New(func(images []string) {
+		updateHandler := update.New(func(images []string) update.Response {
 			metric := runUpdatesWithNotifications(filters.FilterByImage(images, filter))
 			metrics.RegisterScan(metric)
+			return update.Response{
+				Status:  "completed",
+				Scanned: metric.Scanned,
+				Updated: metric.Updated,
+				Failed:  metric.Failed,
+			}
 		}, updateLock)
 		httpAPI.RegisterFunc(updateHandler.Path, updateHandler.Handle)
 		// If polling isn't enabled the scheduler is never started, and
@@ -379,6 +397,26 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 
 	writeStartupMessage(c, firstFire, filtering)
 
+	// Opt-in: fire one scan right away so operators can verify a fresh
+	// deployment without waiting for the first scheduled tick. Skipped if
+	// the HTTP API would race us for the lock.
+	if updateOnStart, _ := c.PersistentFlags().GetBool("update-on-start"); updateOnStart {
+		log.Info("--update-on-start: running an initial scan before the scheduler begins")
+		select {
+		case v := <-lock:
+			// Release inside a closure so a panic in runUpdatesWithNotifications
+			// doesn't wedge both the scheduler and the HTTP API. Matches the
+			// pattern used by the scheduler callback below.
+			func() {
+				defer func() { lock <- v }()
+				metric := runUpdatesWithNotifications(filter)
+				metrics.RegisterScan(metric)
+			}()
+		default:
+			log.Debug("Skipped initial scan: another update is already holding the lock")
+		}
+	}
+
 	scheduler.Start()
 
 	// Graceful shut-down on SIGINT/SIGTERM
@@ -413,6 +451,9 @@ func runUpdatesWithNotifications(filter t.Filter) *metrics.Metric {
 		NoPull:             noPull,
 		HealthCheckGated:   healthCheckGated,
 		HealthCheckTimeout: healthCheckTimeout,
+		ImageCooldown:      imageCooldown,
+		ComposeDependsOn:   composeDependsOn,
+		RunOnce:            runOnce,
 	}
 	result, err := actions.Update(client, updateParams)
 	if err != nil {

@@ -225,6 +225,32 @@ Environment Variable: WATCHTOWER_LABEL_ENABLE
              Default: false
 ```
 
+## HTTP API listen address
+Address the HTTP API listens on. Accepts any Go `net.Listen` address (`host:port`). Defaults to `:8080`
+(all interfaces). Set to `127.0.0.1:8080` to bind to loopback only — useful when a reverse proxy on the
+same host terminates TLS / routing in front of Watchtower — or `0.0.0.0:9090` to pick a different port.
+
+```text
+            Argument: --http-api-host
+Environment Variable: WATCHTOWER_HTTP_API_HOST
+                Type: String (host:port)
+             Default: :8080
+             Example: 127.0.0.1:8080
+```
+
+## Run an update on start
+When set, Watchtower runs one scan immediately at startup in addition to the scheduled cadence. Useful
+for verifying a fresh deployment works without waiting for the first poll interval. If the HTTP API is
+already holding the update lock when Watchtower boots (rare — typically only matters in orchestrated
+handoff scenarios), the initial scan is skipped with a debug log and the scheduler takes over normally.
+
+```text
+            Argument: --update-on-start
+Environment Variable: WATCHTOWER_UPDATE_ON_START
+                Type: Boolean
+             Default: false
+```
+
 ## Audit unmanaged containers
 Warn when a container has no `com.centurylinklabs.watchtower.enable` label at all. Under `--label-enable`, such
 containers are silently skipped, which is indistinguishable from an intentional opt-out. Enabling this flag
@@ -519,8 +545,81 @@ Environment Variable: WATCHTOWER_ROLLING_RESTART
              Default: false
 ```
 
+## Compose depends_on ordering
+Honor Docker Compose's `depends_on` declarations when ordering stop/start during an update. Watchtower
+reads the `com.docker.compose.depends_on` label Compose writes on every managed container and resolves
+service names to their real container names within the same Compose project — so an api service that
+declares `depends_on: [db]` in its compose file gets restarted after db without operators having to
+duplicate the graph in `com.centurylinklabs.watchtower.depends-on` labels.
+
+Opt-in because the augmented graph changes stop/start ordering for Compose stacks that have been
+running fine on the link-only model; leave the flag off and pre-v1.12 behavior is preserved.
+
+Incompatible with `--rolling-restart` — rolling restarts update one container at a time without
+coordinating dependency chains, so a depends_on graph wouldn't be respected anyway. A warning fires at
+startup if both are set; pick one.
+
+Service modifiers in the label value (Compose v2 serialises entries like
+`db:service_healthy:true,cache:service_started:false`) are stripped — Watchtower only needs the graph
+edge, not the condition/required flags which govern Compose's own startup ordering.
+
+```text
+            Argument: --compose-depends-on
+Environment Variable: WATCHTOWER_COMPOSE_DEPENDS_ON
+                Type: Boolean
+             Default: false
+```
+
+## Image cooldown (supply-chain gate)
+After a new image digest is detected, defer applying it until the digest has been stable for this
+duration. Protects against the "broken `:latest` push reaches every host in one poll interval" failure
+mode — the image author gets a grace window to notice and roll back before Watchtower actually restarts
+anything. If the registry serves a different digest during the window (author re-pushed), the clock
+**resets** so the fresh digest has to prove itself too.
+
+Set `0` (the default) to disable — matches pre-v1.12 behavior. Per-container override via the
+`com.centurylinklabs.watchtower.image-cooldown` label: production services get a longer grace period
+than dev containers inheriting the fleet-wide default.
+
+Pairs naturally with [`--health-check-gated`](arguments.md#health_check_gated_updates). Cooldown gates
+*when* to apply; health-check gates *whether* the applied container works. The cooldown state is
+in-memory and resets on daemon restart — operators who want to force an immediate apply can just
+restart Watchtower.
+
+**Interaction with `--run-once`:** cooldown is automatically bypassed when Watchtower runs in
+one-shot mode. "Defer to the next poll" has no meaning when there is no next poll, so `--run-once`
+takes precedence and updates apply immediately regardless of the cooldown window.
+
+The metric `watchtower_containers_in_cooldown` reports the current count of pending containers; a log
+line at `info` level surfaces each deferral with the remaining time.
+
+```text
+            Argument: --image-cooldown
+Environment Variable: WATCHTOWER_IMAGE_COOLDOWN
+                Type: Duration
+             Default: 0 (disabled)
+             Example: 1h  (treat as prod); 24h (strict)
+```
+
+Per-container override:
+
+```yaml
+services:
+  payments-api:
+    image: myorg/payments:latest
+    labels:
+      com.centurylinklabs.watchtower.image-cooldown: 24h   # strict
+  frontend-dev:
+    image: myorg/frontend:dev
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+      # no label → inherits the global --image-cooldown
+```
+
 ## Wait until timeout
 Timeout before the container is forcefully stopped. When set, this option will change the default (`10s`) wait time to the given value. An example: `--stop-timeout 30s` will set the timeout to 30 seconds.
+
+Per-container override: if a container was started with its own `StopTimeout` (via `docker run --stop-timeout` or Compose's `stop_grace_period`), Watchtower honors that value instead of the global flag for *that* container only. Matches Docker's own precedence of per-container configuration over daemon default.
 
 ```text
             Argument: --stop-timeout

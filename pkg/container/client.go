@@ -219,6 +219,15 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 	idStr := string(c.ID())
 	shortID := c.ID().ShortID()
 
+	// Honor the container's own StopTimeout (from `docker run --stop-timeout`
+	// or Compose's `stop_grace_period`) when set — matches Docker's precedence
+	// of per-container over daemon default. Fall back to watchtower's global
+	// --stop-timeout.
+	if perContainer := c.StopTimeout(); perContainer > 0 {
+		log.Debugf("Using per-container stop timeout of %s for %s (global was %s)", perContainer, c.Name(), timeout)
+		timeout = perContainer
+	}
+
 	if c.IsRunning() {
 		log.Infof("Stopping %s (%s) with %s", c.Name(), shortID, signal)
 		if err := client.api.ContainerKill(bg, idStr, signal); err != nil {

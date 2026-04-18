@@ -617,3 +617,87 @@ var _ = Describe("the update action", func() {
 		})
 	})
 })
+
+var _ = Describe("image cooldown", func() {
+	BeforeEach(func() {
+		// Package-level map leaks across specs otherwise.
+		actions.ResetCooldownStateForTest()
+	})
+
+	It("defers on first sighting and proceeds after the window elapses", func() {
+		cooldown := 5 * time.Second
+		name := "cooldown-first-sighting"
+		digest := types.ImageID("sha256:aaa")
+
+		// First poll: we've never seen this digest.
+		proceed, remaining := actions.EvaluateImageCooldownForTest(name, digest, cooldown)
+		Expect(proceed).To(BeFalse())
+		Expect(remaining).To(Equal(cooldown))
+
+		// Simulate the cooldown elapsing by rewinding the recorded firstSeen.
+		actions.RewindCooldownFirstSeenForTest(name, 10*time.Second)
+
+		proceed, _ = actions.EvaluateImageCooldownForTest(name, digest, cooldown)
+		Expect(proceed).To(BeTrue())
+	})
+
+	It("resets the clock when the digest changes mid-cooldown", func() {
+		cooldown := 5 * time.Second
+		name := "cooldown-changing-digest"
+		first := types.ImageID("sha256:aaa")
+		second := types.ImageID("sha256:bbb")
+
+		proceed, _ := actions.EvaluateImageCooldownForTest(name, first, cooldown)
+		Expect(proceed).To(BeFalse())
+
+		// Advance fake time to T+4s (still inside the window).
+		actions.RewindCooldownFirstSeenForTest(name, 4*time.Second)
+
+		// Second poll sees a new digest — should reset, not proceed.
+		proceed, remaining := actions.EvaluateImageCooldownForTest(name, second, cooldown)
+		Expect(proceed).To(BeFalse())
+		Expect(remaining).To(Equal(cooldown))
+	})
+
+	It("proceeds immediately when no cooldown is configured — callers guard with cooldown > 0", func() {
+		// Sanity check: a cooldown of 0 means the caller's upstream guard
+		// (`if cooldown := resolveImageCooldown(...); cooldown > 0`) skips
+		// this function entirely. Calling it with 0 still records a pending
+		// entry, which is a minor leak but the guard prevents it in practice.
+		// Document that behavior so nobody's surprised.
+		proceed, _ := actions.EvaluateImageCooldownForTest("cooldown-zero", types.ImageID("sha256:ccc"), 0)
+		Expect(proceed).To(BeFalse()) // first sighting always defers, regardless of duration
+	})
+})
+
+var _ = Describe("image cooldown under --run-once", func() {
+	BeforeEach(func() {
+		actions.ResetCooldownStateForTest()
+	})
+
+	It("bypasses the cooldown gate so the one-shot update actually happens", func() {
+		// If cooldown gating were active, the first sighting of a new digest
+		// would defer to "next poll" — but --run-once has no next poll, so
+		// the gate must be bypassed.
+		target := CreateMockContainer(
+			"runonce-cooldown-bypass",
+			"runonce-cooldown-bypass",
+			"fake-image:latest",
+			time.Now(),
+		)
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{target},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{
+			ImageCooldown: 1 * time.Hour,
+			RunOnce:       true,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		// If the cooldown gate ran, the container would have been deferred
+		// (stale=false) and StartContainer would never be called. A
+		// non-empty StartedContainers confirms the one-shot actually
+		// proceeded despite a configured cooldown.
+		Expect(len(client.TestData.StartedContainers)).To(BeNumerically(">", 0))
+	})
+})

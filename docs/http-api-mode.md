@@ -1,6 +1,10 @@
-Watchtower exposes a small HTTP control-plane on port `8080` with three
-optional endpoints. Each is opt-in via its own flag, and all share the
-same listener and bearer-token scheme.
+Watchtower exposes a small HTTP control-plane with three optional
+endpoints. Each is opt-in via its own flag, and all share the same
+listener and bearer-token scheme. The listener binds to `:8080` (all
+interfaces) by default; change that with
+[`--http-api-host`](arguments.md#http_api_host) — e.g.
+`127.0.0.1:8080` for a localhost-only bind, or `0.0.0.0:9090` to pick
+a different port.
 
 | Endpoint     | Flag                 | Env                             | Default auth                    | Purpose |
 | ------------ | -------------------- | ------------------------------- | ------------------------------- | ------- |
@@ -20,14 +24,28 @@ required to start the daemon.
 ## `/v1/update`
 
 Triggers a scan + update cycle — the same work the scheduler would do
-at its next tick. The request blocks until the update completes (or is
-skipped because another update is already running). Responses:
+at its next tick. The request blocks until the update completes. The
+response body is a small JSON envelope so automation can tell how the
+scan went without scraping logs.
 
-- `200` — update completed or was skipped because another was in flight.
+Responses:
+
+- `200` — update completed. Body reports per-scan counts:
+  ```json
+  {"status": "completed", "scanned": 12, "updated": 2, "failed": 0}
+  ```
+- `429` — another update was already in flight. Body carries a reason
+  so clients can retry with backoff:
+  ```json
+  {"status": "skipped", "reason": "another update is already running"}
+  ```
+  Targeted updates (`?image=<name>`) **block** on the lock instead of
+  429-ing, because a caller explicitly asking for an image usually wants
+  it eventually even if they have to wait.
 - `401` — missing or wrong bearer token.
-- The handler does not stream per-container progress; scrape
-  `watchtower_scans_total` or tail the container's logs for in-flight
-  detail.
+
+The handler does not stream per-container progress; tail the container's
+logs or scrape `watchtower_scans_total` for in-flight detail.
 
 ```yaml
 services:

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	dockercontainer "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -270,6 +271,23 @@ func (c Container) PostUpdateTimeout() int {
 // signal, the empty string "" is returned.
 func (c Container) StopSignal() string {
 	return c.getLabelValueOrEmpty(signalLabel)
+}
+
+// StopTimeout returns the container's configured SIGTERM-to-SIGKILL grace
+// period if one was set on the container itself (via `docker run
+// --stop-timeout` or Compose's `stop_grace_period`). Returns 0 when the
+// container carries no explicit timeout, in which case the caller should
+// fall back to the global --stop-timeout flag. Matches upstream Docker's
+// precedence of per-container timeout over daemon default.
+func (c Container) StopTimeout() time.Duration {
+	if c.containerInfo == nil || c.containerInfo.Config == nil {
+		return 0
+	}
+	secs := c.containerInfo.Config.StopTimeout
+	if secs == nil || *secs <= 0 {
+		return 0
+	}
+	return time.Duration(*secs) * time.Second
 }
 
 // GetCreateConfig returns the container's current Config converted into a format
