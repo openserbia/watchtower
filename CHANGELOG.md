@@ -10,6 +10,40 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.11.2] - 2026-04-18
+
+### Fixed
+- **`docs/introduction.md`** — the `centurylink/wetty-cli` example image
+  was an upstream-era artefact. Replaced with a coherent `nginx:latest`
+  walkthrough (container name, image, and port mapping now match).
+- **`docs/notifications.md`** — the shoutrrr reference pointed at the
+  upstream `containrrr/shoutrrr` project and its `v0.8` docs, but the
+  fork actually vendors `nicholas-fedor/shoutrrr v0.14.3`. Updated the
+  link and added a one-line note on fork lineage + URL compatibility.
+- **`docs/secure-connections.md`** — rewritten around the supported
+  `DOCKER_HOST` + `DOCKER_CERT_PATH` + `DOCKER_TLS_VERIFY` path with a
+  Compose example. `docker-machine` demoted to a "works if you still
+  have the certs it generated" footnote (Docker archived the tool in
+  2023). Added a pointer differentiating daemon TLS from registry TLS.
+- **`docs/http-api-mode.md`** — removed a reference to a
+  `WatchtowerAPIUnauthorizedBurst` alert that was dropped during the
+  production-tuning pass but still advertised as "shipped"; replaced
+  with the PromQL snippet for operators who want to compose their own.
+  Added an **Env** column to the endpoint table, tightened the
+  `/v1/update` response-shape prose, quoted Compose port mappings.
+- **`docs/why-fork.md`** — expanded *What changed* from a single
+  toolchain table into four grouped tables (Project health, Update
+  behavior, Security, Observability) so the comparison isn't just
+  "we updated Go". Added rows for the shoutrrr swap, registry TLS
+  default change, constant-time token compare, `/v1/audit`, metric
+  count, and the shipped observability bundle.
+
+### Changed
+- **CI workflows** — set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`
+  across every GitHub Actions workflow so JS-based actions run on
+  Node 24 uniformly (instead of inheriting whatever default the
+  specific action ships with).
+
 ## [1.11.1] - 2026-04-18
 
 ### Added
@@ -223,7 +257,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged.
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.11.1...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.11.2...HEAD
+[1.11.2]: https://github.com/openserbia/watchtower/compare/v1.11.1...v1.11.2
 [1.11.1]: https://github.com/openserbia/watchtower/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/openserbia/watchtower/compare/v1.10.1...v1.11.0
 [1.10.1]: https://github.com/openserbia/watchtower/compare/v1.10.0...v1.10.1
