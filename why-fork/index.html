@@ -8,13 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://openserbia.github.io/watchtower/container-selection/">
+        <link rel="canonical" href="https://openserbia.github.io/watchtower/why-fork/">
       
       
-        <link rel="prev" href="../template-preview/">
+        <link rel="prev" href="../introduction/">
       
       
-        <link rel="next" href="../private-registries/">
+        <link rel="next" href="../usage-overview/">
       
       
         
@@ -25,7 +25,7 @@
     
     
       
-        <title>Container selection - Watchtower</title>
+        <title>Why this fork? - Watchtower</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#full_exclude" class="md-skip">
+        <a href="#why_this_fork" class="md-skip">
           Skip to content
         </a>
       
@@ -113,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Container selection
+              Why this fork?
             
           </span>
         </div>
@@ -309,10 +309,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../why-fork/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why this fork?
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -328,6 +355,125 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drop-in_compatible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Drop-in compatible
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what_changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What changed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#images_and_module_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Images and module path
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Versioning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream_bugs_this_fork_has_fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream bugs this fork has fixed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reliability_and_performance_improvements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reliability and performance improvements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known_rough_edges_fork_roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known rough edges (fork roadmap)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrating_from_upstream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrating from upstream
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -471,35 +617,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Container selection
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../container-selection/" class="md-nav__link">
         
   
   
@@ -515,46 +636,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#full_exclude" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Full Exclude
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#monitor_only" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Monitor Only
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -819,6 +900,8 @@
   
   
   
+    
+  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -827,10 +910,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#full_exclude" class="md-nav__link">
+  <a href="#requirements" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Full Exclude
+        Requirements
       
     </span>
   </a>
@@ -838,10 +921,87 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#monitor_only" class="md-nav__link">
+  <a href="#drop-in_compatible" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Monitor Only
+        Drop-in compatible
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what_changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What changed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#images_and_module_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Images and module path
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Versioning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream_bugs_this_fork_has_fixed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Upstream bugs this fork has fixed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reliability_and_performance_improvements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reliability and performance improvements
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known_rough_edges_fork_roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known rough edges (fork roadmap)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migrating_from_upstream" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrating from upstream
       
     </span>
   </a>
@@ -868,74 +1028,111 @@
   
 
 
-  <h1>Container selection</h1>
-
-<p>By default, watchtower will watch all containers. However, sometimes only some containers should be updated.</p>
-<p>There are two options:</p>
+<h1 id="why_this_fork">Why this fork?<a class="headerlink" href="#why_this_fork" title="Permanent link">&para;</a></h1>
+<p><code>containrrr/watchtower</code> is the de-facto Docker auto-updater, but the <a href="https://github.com/containrrr/watchtower/discussions/2135">upstream repository stopped accepting changes in late 2024</a>. <code>openserbia/watchtower</code> exists to keep the project alive with a modern toolchain and fixes driven by real-world homelab usage.</p>
+<h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
+<p><strong>Docker Engine 20.10 or newer.</strong> Watchtower auto-negotiates the Docker API version with the daemon, so older engines may work but aren't tested and are out of scope for bug reports.</p>
+<h2 id="drop-in_compatible">Drop-in compatible<a class="headerlink" href="#drop-in_compatible" title="Permanent link">&para;</a></h2>
+<p>Swap the image name and you're done. The fork deliberately preserves:</p>
 <ul>
-<li><strong>Fully exclude</strong>: You can choose to exclude containers entirely from being watched by watchtower.</li>
-<li><strong>Monitor only</strong>: In this mode, watchtower checks for container updates, sends notifications and invokes the <a href="https://openserbia.github.io/watchtower/lifecycle-hooks/">pre-check/post-check hooks</a> on the containers but does <strong>not</strong> perform the update.</li>
+<li><strong>CLI flags</strong> — every upstream flag and environment variable still works.</li>
+<li><strong>Labels</strong> — <code>com.centurylinklabs.watchtower.*</code> are unchanged (enable, scope, lifecycle hooks, etc.).</li>
+<li><strong>HTTP API</strong> — <code>/v1/update</code> and <code>/v1/metrics</code> behave identically, same token-gating.</li>
+<li><strong>Notification backends</strong> — shoutrrr, email, Slack, MS Teams, Gotify, and the legacy shims.</li>
 </ul>
-<h2 id="full_exclude">Full Exclude<a class="headerlink" href="#full_exclude" title="Permanent link">&para;</a></h2>
-<p>If you need to exclude some containers, set the <em>com.centurylinklabs.watchtower.enable</em> label to <code>false</code>.  For clarity this should be set <strong>on the container(s)</strong> you wish to be ignored, this is not set on watchtower.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">dockerfile</label><label for="__tabbed_1_2">docker run</label><label for="__tabbed_1_3">docker-compose</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><span class="k">LABEL</span><span class="w"> </span>com.centurylinklabs.watchtower.enable<span class="o">=</span><span class="s2">&quot;false&quot;</span>
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--label<span class="o">=</span>com.centurylinklabs.watchtower.enable<span class="o">=</span><span class="nb">false</span><span class="w"> </span>someimage
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3&quot;</span>
-<span class="nt">services</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">someimage</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">someimage</span>
-<span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;com.centurylinklabs.watchtower.enable=false&quot;</span>
-</code></pre></div>
-</div>
-</div>
-</div>
-<p>If instead you want to <a href="https://openserbia.github.io/watchtower/arguments/#filter_by_enable_label">only include containers with the enable label</a>, pass the <code>--label-enable</code> flag or the <code>WATCHTOWER_LABEL_ENABLE</code> environment variable on startup for watchtower and set the <em>com.centurylinklabs.watchtower.enable</em> label with a value of <code>true</code> on the containers you want to watch.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="2:3"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><input id="__tabbed_2_3" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">dockerfile</label><label for="__tabbed_2_2">docker run</label><label for="__tabbed_2_3">docker-compose</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><span class="k">LABEL</span><span class="w"> </span>com.centurylinklabs.watchtower.enable<span class="o">=</span><span class="s2">&quot;true&quot;</span>
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--label<span class="o">=</span>com.centurylinklabs.watchtower.enable<span class="o">=</span><span class="nb">true</span><span class="w"> </span>someimage
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3&quot;</span>
-<span class="nt">services</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">someimage</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">someimage</span>
-<span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;com.centurylinklabs.watchtower.enable=true&quot;</span>
-</code></pre></div>
-</div>
-</div>
-</div>
-<p>If you wish to create a monitoring scope, you will need to <a href="https://openserbia.github.io/watchtower/running-multiple-instances">run multiple instances and set a scope for each of them</a>.</p>
-<p>Watchtower filters running containers by testing them against each configured criteria. A container is monitored if all criteria are met. For example:</p>
+<p>No config migration. No flag rename. No label rewrite.</p>
+<h2 id="what_changed">What changed<a class="headerlink" href="#what_changed" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><code>containrrr/watchtower</code></th>
+<th><strong><code>openserbia/watchtower</code></strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Maintenance status</td>
+<td>Archived / unmaintained</td>
+<td><strong>Active</strong></td>
+</tr>
+<tr>
+<td>Go version</td>
+<td>1.20</td>
+<td><strong>1.26</strong></td>
+</tr>
+<tr>
+<td>Linter</td>
+<td>golangci-lint v1</td>
+<td><strong>golangci-lint v2</strong> (gofumpt + gci)</td>
+</tr>
+<tr>
+<td>Dev environment</td>
+<td>Ad-hoc</td>
+<td><strong>Devbox-pinned</strong> (reproducible, matches CI)</td>
+</tr>
+<tr>
+<td>Module path</td>
+<td><code>github.com/containrrr/watchtower</code></td>
+<td><code>github.com/openserbia/watchtower</code></td>
+</tr>
+<tr>
+<td>Dependency updates</td>
+<td>Stale</td>
+<td>Tracked via Dependabot</td>
+</tr>
+<tr>
+<td>CI</td>
+<td>Travis-era workflows</td>
+<td><strong>Devbox + go-task on GitHub Actions</strong></td>
+</tr>
+<tr>
+<td>Knowledge graph for contributors</td>
+<td>—</td>
+<td><a href="https://github.com/openserbia/code-review-graph"><code>code-review-graph</code></a> MCP support wired in</td>
+</tr>
+</tbody>
+</table>
+<h2 id="images_and_module_path">Images and module path<a class="headerlink" href="#images_and_module_path" title="Permanent link">&para;</a></h2>
 <ul>
-<li>If a container's name is on the monitoring name list (not empty <code>--name</code> argument) but it is not enabled (<em>centurylinklabs.watchtower.enable=false</em>), it won't be monitored;</li>
-<li>If a container's name is not on the monitoring name list (not empty <code>--name</code> argument), even if it is enabled (<em>centurylinklabs.watchtower.enable=true</em> and <code>--label-enable</code> flag is set), it won't be monitored;</li>
+<li><strong>Docker Hub:</strong> <a href="https://hub.docker.com/r/openserbia/watchtower"><code>openserbia/watchtower</code></a></li>
+<li><strong>GHCR:</strong> <a href="https://github.com/openserbia/watchtower/pkgs/container/watchtower"><code>ghcr.io/openserbia/watchtower</code></a></li>
+<li><strong>Go module:</strong> <code>github.com/openserbia/watchtower</code></li>
 </ul>
-<h2 id="monitor_only">Monitor Only<a class="headerlink" href="#monitor_only" title="Permanent link">&para;</a></h2>
-<p>Individual containers can be marked to only be monitored (without being updated).</p>
-<p>To do so, set the <em>com.centurylinklabs.watchtower.monitor-only</em> label to <code>true</code> on that container.</p>
-<div class="highlight"><pre><span></span><code><span class="k">LABEL</span><span class="w"> </span>com.centurylinklabs.watchtower.monitor-only<span class="o">=</span><span class="s2">&quot;true&quot;</span>
+<p>Multi-arch images (amd64, arm64, arm/v6, arm/v7, 386, riscv64) live under the same <code>:latest</code> / <code>:&lt;version&gt;</code> tag — Docker picks the right variant for your host.</p>
+<h2 id="versioning">Versioning<a class="headerlink" href="#versioning" title="Permanent link">&para;</a></h2>
+<p>This fork picks up the upstream version line: <code>v1.7.1</code> was upstream's last tag, so the fork starts at <code>v1.8.0</code>. Semver applies — patch bumps for fixes and dep updates, minor for behavior-preserving additions, and <code>v2.0.0</code> will signal the first intentional break of upstream compatibility (CLI flags, labels, or HTTP API).</p>
+<h2 id="upstream_bugs_this_fork_has_fixed">Upstream bugs this fork has fixed<a class="headerlink" href="#upstream_bugs_this_fork_has_fixed" title="Permanent link">&para;</a></h2>
+<p>Concrete repairs for issues left open on <code>containrrr/watchtower</code> when it was archived. Examples:</p>
+<ul>
+<li><a href="https://github.com/containrrr/watchtower/issues/966">upstream#966</a> — <code>--cleanup</code> deletes the freshly-pulled replacement image and logs <code>conflict: unable to delete ... image is being used by running container</code>.</li>
+<li><a href="https://github.com/containrrr/watchtower/issues/1217">upstream#1217</a> — nil-pointer panic in <code>Container.ImageID()</code> when a container's source image has been garbage-collected.</li>
+<li><a href="https://github.com/containrrr/watchtower/issues/1413">upstream#1413</a> — <code>Unable to update container: Error: No such image</code> loop that permanently wedges the affected container.</li>
+</ul>
+<p>See <a href="https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md">CHANGELOG.md</a> for the full list per release.</p>
+<h2 id="reliability_and_performance_improvements">Reliability and performance improvements<a class="headerlink" href="#reliability_and_performance_improvements" title="Permanent link">&para;</a></h2>
+<p>Not upstream-bug repairs — additions that harden the same feature set:</p>
+<ul>
+<li><strong>Bounded exponential backoff on registry HTTP calls.</strong> The oauth challenge, bearer-token exchange, and manifest HEAD retry up to 3 times (500 ms → 4 s + jitter) on network errors, 5xx, 429, and the 401/403/404 flakes seen on registry oauth endpoints under load. Previously a single transient failure wedged the affected image until the next poll.</li>
+<li><strong>In-memory bearer-token cache.</strong> A poll across N containers on the same registry+repository scope now issues one token exchange instead of N. Keyed by auth URL + credential hash, respects the registry's <code>expires_in</code> (default 60 s per the Docker token spec) minus a 10 s skew. Cuts registry traffic dramatically on larger deployments and further reduces oauth-flake exposure.</li>
+<li><strong><code>--audit-unmanaged</code> flag.</strong> With <code>--label-enable</code> active, warns once per poll for every container missing <code>com.centurylinklabs.watchtower.enable</code> so silent exclusions stop looking identical to intentional opt-outs.</li>
+</ul>
+<h2 id="known_rough_edges_fork_roadmap">Known rough edges (fork roadmap)<a class="headerlink" href="#known_rough_edges_fork_roadmap" title="Permanent link">&para;</a></h2>
+<p>Contributions welcome:</p>
+<ol>
+<li><strong>No self-metrics wired up by default.</strong> Prometheus metrics exist (<code>WATCHTOWER_HTTP_API_METRICS=true</code> + token) but nothing ships ready-to-scrape. Alerts like <code>scanned &gt; 0 AND updated == 0 AND image_age &gt; N days</code> would catch silent-failure modes automatically.</li>
+<li><strong><code>:latest</code> everywhere means a broken upstream push reaches prod in one poll interval.</strong> Not a fork bug — a deliberate tradeoff in Watchtower's design — but worth calling out so users opt in consciously.</li>
+</ol>
+<p>See <a href="https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md">CHANGELOG.md</a> for rough edges that have already been fixed (auth-flake backoff, pull-failure log levels, label fail-open audit, compose-deploy races, GC'd source images, and more).</p>
+<h2 id="migrating_from_upstream">Migrating from upstream<a class="headerlink" href="#migrating_from_upstream" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="w"> </span>services:
+<span class="w"> </span>  watchtower:
+<span class="gd">-    image: containrrr/watchtower:latest</span>
+<span class="gi">+    image: openserbia/watchtower:latest</span>
+<span class="w"> </span>    volumes:
+<span class="w"> </span>      - /var/run/docker.sock:/var/run/docker.sock
 </code></pre></div>
-<p>Or, it can be specified as part of the <code>docker run</code> command line:</p>
-<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--label<span class="o">=</span>com.centurylinklabs.watchtower.monitor-only<span class="o">=</span><span class="nb">true</span><span class="w"> </span>someimage
-</code></pre></div>
-<p>When the label is specified on a container, watchtower treats that container exactly as if <a href="https://openserbia.github.io/watchtower/arguments/#without_updating_containers"><code>WATCHTOWER_MONITOR_ONLY</code></a> was set, but the effect is limited to the individual container. </p>
+<p>That's the whole migration for the common case. If you pin a specific version, the fork resumes the version line at <code>v1.8.0</code> and later.</p>
 
 
 

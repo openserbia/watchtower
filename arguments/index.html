@@ -312,6 +312,33 @@
   
   
     <li class="md-nav__item">
+      <a href="../why-fork/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why this fork?
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../usage-overview/" class="md-nav__link">
         
   
@@ -622,6 +649,78 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audit_unmanaged_containers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit unmanaged containers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#insecure_registries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Insecure registries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#registry_ca_bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registry CA bundle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health-check_gated_updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health-check gated updates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health-check_timeout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health-check timeout
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Health-check timeout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rollback_cooldown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollback cooldown
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1406,6 +1505,78 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#audit_unmanaged_containers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audit unmanaged containers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#insecure_registries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Insecure registries
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#registry_ca_bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registry CA bundle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health-check_gated_updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health-check gated updates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health-check_timeout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health-check timeout
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Health-check timeout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rollback_cooldown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollback cooldown
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#filter_by_disable_label" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1813,6 +1984,68 @@ Environment Variable: WATCHTOWER_LABEL_ENABLE
                 Type: Boolean
              Default: false
 </code></pre></div>
+<h2 id="audit_unmanaged_containers">Audit unmanaged containers<a class="headerlink" href="#audit_unmanaged_containers" title="Permanent link">&para;</a></h2>
+<p>Warn when a container has no <code>com.centurylinklabs.watchtower.enable</code> label at all. Under <code>--label-enable</code>, such
+containers are silently skipped, which is indistinguishable from an intentional opt-out. Enabling this flag
+prints one warning per poll per unlabeled container so silent exclusions become visible.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --audit-unmanaged
+Environment Variable: WATCHTOWER_AUDIT_UNMANAGED
+                Type: Boolean
+             Default: false
+</code></pre></div>
+<h2 id="insecure_registries">Insecure registries<a class="headerlink" href="#insecure_registries" title="Permanent link">&para;</a></h2>
+<p>Skip TLS certificate verification for specific registry hosts. Opt-in per host — the default is strict
+verification (TLS 1.2+, system trust store). Accepts a comma-separated list of <code>host</code> or <code>host:port</code> entries
+that must match the registry's address verbatim. Use sparingly; prefer <code>--registry-ca-bundle</code> for registries
+with self-signed certs you trust.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --insecure-registry
+Environment Variable: WATCHTOWER_INSECURE_REGISTRY
+                Type: Comma-separated strings
+             Default: (empty)
+             Example: registry.lab.local,staging.internal:5000
+</code></pre></div>
+<h2 id="registry_ca_bundle">Registry CA bundle<a class="headerlink" href="#registry_ca_bundle" title="Permanent link">&para;</a></h2>
+<p>Extend the system trust store with additional CA certificates in PEM format — for registries presenting
+certs signed by a private CA. The file must contain at least one valid PEM certificate; system roots are
+preserved so public registries continue to work.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --registry-ca-bundle
+Environment Variable: WATCHTOWER_REGISTRY_CA_BUNDLE
+                Type: Path
+             Default: (empty)
+             Example: /etc/ssl/private-ca.pem
+</code></pre></div>
+<h2 id="health-check_gated_updates">Health-check gated updates<a class="headerlink" href="#health-check_gated_updates" title="Permanent link">&para;</a></h2>
+<p>After creating the replacement container, wait for it to report <code>healthy</code> before considering the update
+successful. If the container reports <code>unhealthy</code> or stays <code>starting</code> past the timeout, Watchtower stops it
+and recreates the old container from the previous image. Containers with no <code>HEALTHCHECK</code> are updated
+without gating and generate a warning so operators know the flag is effectively a no-op for them.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --health-check-gated
+Environment Variable: WATCHTOWER_HEALTH_CHECK_GATED
+                Type: Boolean
+             Default: false
+</code></pre></div>
+<h2 id="health-check_timeout">Health-check timeout<a class="headerlink" href="#health-check_timeout" title="Permanent link">&para;</a></h2>
+<p>Global fallback for how long <code>--health-check-gated</code> will wait for the replacement container to report
+healthy before rolling back. Durations accept Go format (<code>30s</code>, <code>2m</code>, <code>5m30s</code>).</p>
+<p>Watchtower picks the effective timeout for each container from the first match of:</p>
+<ol>
+<li>The container label <code>com.centurylinklabs.watchtower.health-check-timeout=&lt;duration&gt;</code> (operator override).</li>
+<li>A value derived from the container's own <code>HEALTHCHECK</code>: <code>start_period + retries × (interval + timeout)</code>.</li>
+<li>This flag.</li>
+<li>60 seconds (hard fallback).</li>
+</ol>
+<div class="highlight"><pre><span></span><code>            Argument: --health-check-timeout
+Environment Variable: WATCHTOWER_HEALTH_CHECK_TIMEOUT
+                Type: Duration
+             Default: 60s
+</code></pre></div>
+<h3 id="rollback_cooldown">Rollback cooldown<a class="headerlink" href="#rollback_cooldown" title="Permanent link">&para;</a></h3>
+<p>When <code>--health-check-gated</code> reverts a container, Watchtower skips that container's updates for one hour
+after the rollback. This prevents a thrash loop when an image author keeps pushing broken versions — the
+stop/start cycle wouldn't fix anything and just generates log noise. The cooldown is in-memory; restarting
+the Watchtower daemon clears it.</p>
+<p>The Prometheus counter <code>watchtower_rollbacks_total</code> tracks every rollback; pair with the shipped
+<code>WatchtowerRollbackTriggered</code> alert in <code>observability/prometheus/alerts.yml</code> to get paged when this happens.</p>
 <h2 id="filter_by_disable_label">Filter by disable label<a class="headerlink" href="#filter_by_disable_label" title="Permanent link">&para;</a></h2>
 <p><strong>Do not</strong> Monitor and update containers that have <code>com.centurylinklabs.watchtower.enable</code> label set to false and 
 no <code>--label-enable</code> argument is passed. Note that only one or the other (targeting by enable label) can be 
