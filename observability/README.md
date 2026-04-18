@@ -16,6 +16,7 @@ Enable metrics with `WATCHTOWER_HTTP_API_METRICS=true` + `WATCHTOWER_HTTP_API_TO
 | `watchtower_containers_managed` | gauge | Containers with `com.centurylinklabs.watchtower.enable=true`. Current state. |
 | `watchtower_containers_excluded` | gauge | Containers with `com.centurylinklabs.watchtower.enable=false` (intentional opt-out). Current state. |
 | `watchtower_containers_unmanaged` | gauge | Containers with no enable label at all. Silently skipped under `--label-enable`. Hit `GET /v1/audit` for the names. |
+| `watchtower_containers_infrastructure` | gauge | Docker-managed scaffolding containers (`moby/buildkit*`, `docker/desktop-*`, anything with `com.docker.buildx.*` or `com.docker.desktop.*` labels). Tracked separately so they don't inflate the unmanaged bucket every `docker buildx build`. |
 | `watchtower_rollbacks_total` | counter | Update rollbacks triggered by `--health-check-gated`. |
 | `watchtower_api_requests_total` | counter | HTTP requests to `/v1/*` endpoints. Labels: `endpoint`, `status`. |
 | `watchtower_registry_requests_total` | counter | Outbound registry calls. Labels: `host`, `operation` (`challenge`/`token`/`digest`), `outcome` (`success`/`error`/`retried`). |

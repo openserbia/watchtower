@@ -134,14 +134,15 @@
     },
     {
       "type": "piechart",
-      "title": "Watch status (managed / excluded / unmanaged)",
-      "description": "Current classification from the last audit pass. `unmanaged` = no com.centurylinklabs.watchtower.enable label. Pair with /v1/audit for per-container detail.",
+      "title": "Watch status",
+      "description": "Current classification from the last audit pass. `unmanaged` = no com.centurylinklabs.watchtower.enable label. `infrastructure` = Docker-managed scaffolding (buildkit, Docker Desktop). Pair with /v1/audit for per-container detail.",
       "gridPos": {"h": 8, "w": 8, "x": 0, "y": 12},
       "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
       "targets": [
         {"expr": "watchtower_containers_managed{job=\"$job\", instance=~\"$instance\"}", "legendFormat": "managed", "refId": "A"},
         {"expr": "watchtower_containers_excluded{job=\"$job\", instance=~\"$instance\"}", "legendFormat": "excluded", "refId": "B"},
-        {"expr": "watchtower_containers_unmanaged{job=\"$job\", instance=~\"$instance\"}", "legendFormat": "unmanaged", "refId": "C"}
+        {"expr": "watchtower_containers_unmanaged{job=\"$job\", instance=~\"$instance\"}", "legendFormat": "unmanaged", "refId": "C"},
+        {"expr": "watchtower_containers_infrastructure{job=\"$job\", instance=~\"$instance\"}", "legendFormat": "infrastructure", "refId": "D"}
       ],
       "options": {
         "pieType": "donut",
@@ -157,7 +158,8 @@
         "overrides": [
           {"matcher": {"id": "byName", "options": "unmanaged"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]},
           {"matcher": {"id": "byName", "options": "excluded"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "gray"}}]},
-          {"matcher": {"id": "byName", "options": "managed"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}
+          {"matcher": {"id": "byName", "options": "managed"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]},
+          {"matcher": {"id": "byName", "options": "infrastructure"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}]}
         ]
       }
     },
@@ -189,7 +191,8 @@
       "targets": [
         {"expr": "watchtower_containers_managed{job=\"$job\", instance=~\"$instance\"}", "legendFormat": "managed", "refId": "A"},
         {"expr": "watchtower_containers_excluded{job=\"$job\", instance=~\"$instance\"}", "legendFormat": "excluded", "refId": "B"},
-        {"expr": "watchtower_containers_unmanaged{job=\"$job\", instance=~\"$instance\"}", "legendFormat": "unmanaged", "refId": "C"}
+        {"expr": "watchtower_containers_unmanaged{job=\"$job\", instance=~\"$instance\"}", "legendFormat": "unmanaged", "refId": "C"},
+        {"expr": "watchtower_containers_infrastructure{job=\"$job\", instance=~\"$instance\"}", "legendFormat": "infrastructure", "refId": "D"}
       ],
       "fieldConfig": {
         "defaults": {"custom": {"lineInterpolation": "stepAfter", "lineWidth": 1, "fillOpacity": 10, "stacking": {"mode": "normal"}}}

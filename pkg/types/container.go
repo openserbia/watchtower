@@ -64,6 +64,7 @@ type Container interface {
 	HasImageInfo() bool
 	ImageInfo() *image.InspectResponse
 	HealthCheckTimeout() (time.Duration, bool)
+	IsInfrastructure() bool
 	GetLifecyclePreCheckCommand() string
 	GetLifecyclePostCheckCommand() string
 	GetLifecyclePreUpdateCommand() string

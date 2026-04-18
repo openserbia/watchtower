@@ -54,7 +54,8 @@ Published every scan regardless of whether any audit flag is set.
 | --- | --- | --- |
 | `watchtower_containers_managed` | gauge | Containers with `com.centurylinklabs.watchtower.enable=true`. |
 | `watchtower_containers_excluded` | gauge | Containers with `com.centurylinklabs.watchtower.enable=false` (intentional opt-out). |
-| `watchtower_containers_unmanaged` | gauge | Containers with no `enable` label at all. Under `--label-enable` these are silently skipped — hit [`/v1/audit`](arguments.md#watch_status_audit_endpoint) for names or enable [`--audit-unmanaged`](arguments.md#audit_unmanaged_containers) for log warnings. |
+| `watchtower_containers_unmanaged` | gauge | Containers with no `enable` label at all. Under `--label-enable` these are silently skipped — hit [`/v1/audit`](arguments.md#watch_status_audit_endpoint) for names or enable [`--audit-unmanaged`](arguments.md#audit_unmanaged_containers) for log warnings. Excludes Docker-managed infrastructure (buildkit etc.), which is tracked separately in `watchtower_containers_infrastructure`. |
+| `watchtower_containers_infrastructure` | gauge | Docker-managed scaffolding (`moby/buildkit*` image prefix, `docker/desktop-*` image prefix, `com.docker.buildx.*` / `com.docker.desktop.*` label prefixes). Not a user workload; tracked separately so transient builder containers don't show up as unmanaged noise. |
 
 ### Update lifecycle
 

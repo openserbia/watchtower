@@ -75,6 +75,53 @@ func TestAudit_ReturnsCategorizedReport(t *testing.T) {
 	}
 }
 
+func TestAudit_ClassifiesInfrastructureSeparately(t *testing.T) {
+	enableLabel := "com.centurylinklabs.watchtower.enable"
+	// buildkit: matched by image prefix
+	buildkit := mocks.CreateMockContainerWithConfig(
+		"buildx_buildkit_default0", "buildx_buildkit_default0",
+		"moby/buildkit:v0.12.0", true, false, time.Now(),
+		&dockerContainer.Config{Image: "moby/buildkit:v0.12.0", Labels: map[string]string{}, ExposedPorts: map[nat.Port]struct{}{}},
+	)
+	// desktop: matched by image prefix
+	desktop := mocks.CreateMockContainerWithConfig(
+		"docker-desktop-kubernetes", "docker-desktop-kubernetes",
+		"docker/desktop-kubernetes:v1.28.2", true, false, time.Now(),
+		&dockerContainer.Config{Image: "docker/desktop-kubernetes:v1.28.2", Labels: map[string]string{}, ExposedPorts: map[nat.Port]struct{}{}},
+	)
+	// labeled infrastructure: matched by label prefix, even if image is unrelated
+	buildxLabeled := mocks.CreateMockContainerWithConfig(
+		"some-buildx-helper", "some-buildx-helper",
+		"alpine:3.18", true, false, time.Now(),
+		&dockerContainer.Config{Image: "alpine:3.18", Labels: map[string]string{"com.docker.buildx.refresh": "true"}, ExposedPorts: map[nat.Port]struct{}{}},
+	)
+	containers := []types.Container{
+		buildkit, desktop, buildxLabeled,
+		newMock("real-svc", map[string]string{enableLabel: "true"}),
+		newMock("unlabeled-svc", map[string]string{}),
+	}
+	client := mocks.CreateMockClient(&mocks.TestData{Containers: containers}, false, false)
+	handler := apiAudit.New(client, "")
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, apiAudit.Path, nil)
+	rec := httptest.NewRecorder()
+	handler.Handle(rec, req)
+
+	var report apiAudit.Report
+	if err := json.NewDecoder(rec.Body).Decode(&report); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if report.Summary.Infrastructure != 3 {
+		t.Fatalf("expected 3 infrastructure entries, got %d (%+v)", report.Summary.Infrastructure, report.Summary)
+	}
+	if report.Summary.Unmanaged != 1 {
+		t.Fatalf("expected 1 unmanaged, got %d", report.Summary.Unmanaged)
+	}
+	if report.Summary.Managed != 1 {
+		t.Fatalf("expected 1 managed, got %d", report.Summary.Managed)
+	}
+}
+
 func TestAudit_SortsAlphabetically(t *testing.T) {
 	containers := []types.Container{
 		newMock("charlie", map[string]string{}),

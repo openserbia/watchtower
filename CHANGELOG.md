@@ -10,6 +10,21 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-04-18
+
+### Added
+- **`infrastructure` audit bucket** — containers matching Docker-managed
+  scaffolding (image prefixes `moby/buildkit*` / `docker/desktop-*`, label
+  prefixes `com.docker.buildx.*` / `com.docker.desktop.*`) are now
+  classified as `infrastructure` instead of `unmanaged`. Silences the
+  recurring audit warning every `docker buildx build` caused by the
+  ephemeral `buildx_buildkit_*` container. Exposed via:
+  - New `watchtower_containers_infrastructure` Prometheus gauge.
+  - New `"status": "infrastructure"` entries in `GET /v1/audit`.
+  - New fourth slice on the Grafana watch-status donut + stacked history.
+  - New `Container.IsInfrastructure()` method on the `types.Container`
+    interface for programmatic use.
+
 ## [1.11.0] - 2026-04-18
 
 ### Added
@@ -208,7 +223,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged.
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.11.0...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.11.1...HEAD
+[1.11.1]: https://github.com/openserbia/watchtower/compare/v1.11.0...v1.11.1
 [1.11.0]: https://github.com/openserbia/watchtower/compare/v1.10.1...v1.11.0
 [1.10.1]: https://github.com/openserbia/watchtower/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/openserbia/watchtower/compare/v1.9.0...v1.10.0

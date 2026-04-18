@@ -2,6 +2,7 @@ package container
 
 import (
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -41,6 +42,48 @@ func (c Container) GetLifecyclePreUpdateCommand() string {
 // GetLifecyclePostUpdateCommand returns the post-update command set in the container metadata or an empty string
 func (c Container) GetLifecyclePostUpdateCommand() string {
 	return c.getLabelValueOrEmpty(postUpdateLabel)
+}
+
+// infrastructureImagePrefixes lists image-name prefixes that identify
+// containers Docker's own tooling spawns (buildx builder, Docker Desktop
+// internals). Matched case-insensitively against the container's image
+// reference. Kept conservative — generic container managers (Portainer,
+// Watchtower-adjacent) aren't in here because operators often *want* them
+// watched.
+var infrastructureImagePrefixes = []string{
+	"moby/buildkit",
+	"docker/desktop-",
+}
+
+// infrastructureLabelPrefixes lists label-key prefixes that mark a
+// container as Docker-managed infrastructure. Buildkit containers carry
+// com.docker.buildx.*; Docker Desktop internals carry com.docker.desktop.*.
+var infrastructureLabelPrefixes = []string{
+	"com.docker.buildx.",
+	"com.docker.desktop.",
+}
+
+// IsInfrastructure reports whether this container is Docker-managed
+// scaffolding (buildx builder, Desktop internals) rather than a user
+// workload. Such containers come and go on their own cadence and shouldn't
+// count toward the "unmanaged" audit bucket — they'd otherwise generate
+// noise every `docker buildx build` invocation.
+func (c Container) IsInfrastructure() bool {
+	imageName := strings.ToLower(c.ImageName())
+	for _, prefix := range infrastructureImagePrefixes {
+		if strings.HasPrefix(imageName, prefix) {
+			return true
+		}
+	}
+	for key := range c.containerInfo.Config.Labels {
+		lowered := strings.ToLower(key)
+		for _, prefix := range infrastructureLabelPrefixes {
+			if strings.HasPrefix(lowered, prefix) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // HealthCheckTimeout returns the per-container override for --health-check-gated

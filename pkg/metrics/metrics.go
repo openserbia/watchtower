@@ -34,6 +34,7 @@ type Metrics struct {
 	managed          prometheus.Gauge
 	excluded         prometheus.Gauge
 	unmanaged        prometheus.Gauge
+	infrastructure   prometheus.Gauge
 	apiRequests      *prometheus.CounterVec
 	registryRequests *prometheus.CounterVec
 	registryRetries  *prometheus.CounterVec
@@ -107,7 +108,11 @@ func Default() *Metrics {
 		}),
 		unmanaged: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "watchtower_containers_unmanaged",
-			Help: "Containers with no com.centurylinklabs.watchtower.enable label at all. Under --label-enable these are silently skipped — indistinguishable from intentional opt-outs. Pair with --audit-unmanaged for log warnings or /v1/audit for per-container detail.",
+			Help: "Containers with no com.centurylinklabs.watchtower.enable label at all. Under --label-enable these are silently skipped — indistinguishable from intentional opt-outs. Pair with --audit-unmanaged for log warnings or /v1/audit for per-container detail. Excludes Docker-managed infrastructure (buildkit etc.), which lives in watchtower_containers_infrastructure.",
+		}),
+		infrastructure: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "watchtower_containers_infrastructure",
+			Help: "Docker-managed infrastructure containers (moby/buildkit builders, Docker Desktop internals). Not user workloads — tracked separately so they don't inflate the unmanaged bucket every `docker buildx build` invocation.",
 		}),
 		apiRequests: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "watchtower_api_requests_total",
@@ -171,14 +176,15 @@ func RegisterRollback() {
 	Default().rollbacks.Inc()
 }
 
-// SetAuditCounts updates the managed / excluded / unmanaged container gauges.
-// Called from the audit pass so a Grafana panel can show the watch-status
-// breakdown without operators having to hit /v1/audit manually.
-func SetAuditCounts(managed, excluded, unmanaged int) {
+// SetAuditCounts updates the managed / excluded / unmanaged / infrastructure
+// container gauges. Called from the audit pass so a Grafana panel can show the
+// watch-status breakdown without operators having to hit /v1/audit manually.
+func SetAuditCounts(managed, excluded, unmanaged, infrastructure int) {
 	m := Default()
 	m.managed.Set(float64(managed))
 	m.excluded.Set(float64(excluded))
 	m.unmanaged.Set(float64(unmanaged))
+	m.infrastructure.Set(float64(infrastructure))
 }
 
 // RegisterAPIRequest increments watchtower_api_requests_total. status is the

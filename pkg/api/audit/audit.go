@@ -36,6 +36,11 @@ const (
 	// these are silently skipped unless the operator notices them via
 	// --audit-unmanaged or this endpoint.
 	StatusUnmanaged Status = "unmanaged"
+	// StatusInfrastructure — a Docker-managed scaffolding container (buildx
+	// builder, Docker Desktop internals). Not a user workload; tracked as a
+	// distinct bucket so it doesn't inflate the unmanaged count every
+	// `docker buildx build` run.
+	StatusInfrastructure Status = "infrastructure"
 )
 
 // Entry is a single container's audit line.
@@ -47,10 +52,11 @@ type Entry struct {
 
 // Summary is a count-by-status digest returned alongside the full listing.
 type Summary struct {
-	Managed   int `json:"managed"`
-	Excluded  int `json:"excluded"`
-	Unmanaged int `json:"unmanaged"`
-	Total     int `json:"total"`
+	Managed        int `json:"managed"`
+	Excluded       int `json:"excluded"`
+	Unmanaged      int `json:"unmanaged"`
+	Infrastructure int `json:"infrastructure"`
+	Total          int `json:"total"`
 }
 
 // Report is the /v1/audit response envelope.
@@ -118,6 +124,12 @@ func buildReport(containers []types.Container, scope string) Report {
 		}
 		enabled, labeled := c.Enabled()
 		switch {
+		case c.IsInfrastructure():
+			// Classify infrastructure before unmanaged — a buildkit container
+			// won't have the enable label but isn't something an operator is
+			// expected to opt in or out of.
+			entry.Status = StatusInfrastructure
+			report.Summary.Infrastructure++
 		case !labeled:
 			entry.Status = StatusUnmanaged
 			report.Summary.Unmanaged++

@@ -40,6 +40,29 @@ var _ = Describe("AuditUnmanaged", func() {
 		)
 	}
 
+	It("treats Docker infrastructure (buildkit) as its own bucket, not unmanaged", func() {
+		buildkit := CreateMockContainerWithConfig(
+			"buildx_buildkit_default0", "buildx_buildkit_default0",
+			"moby/buildkit:v0.12.0", true, false, time.Now(),
+			&dockerContainer.Config{
+				Image:        "moby/buildkit:v0.12.0",
+				Labels:       map[string]string{},
+				ExposedPorts: map[nat.Port]struct{}{},
+			},
+		)
+		testData := &TestData{
+			Containers: []types.Container{
+				buildkit,
+				newMock("real-svc", map[string]string{}),
+			},
+		}
+		client := CreateMockClient(testData, false, false)
+
+		Expect(actions.AuditUnmanaged(client, "", true)).To(Succeed())
+		Expect(logBuf.String()).NotTo(ContainSubstring("buildx_buildkit"))
+		Expect(logBuf.String()).To(ContainSubstring("real-svc"))
+	})
+
 	It("warns about containers without the enable label", func() {
 		testData := &TestData{
 			Containers: []types.Container{

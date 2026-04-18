@@ -79,7 +79,7 @@ func AuditUnmanaged(client container.Client, scope string, logWarnings bool) err
 		return err
 	}
 
-	var managed, excluded int
+	var managed, excluded, infrastructure int
 	unmanagedNow := make(map[string]types.Container, len(containers))
 	for _, c := range containers {
 		if c.IsWatchtower() {
@@ -87,6 +87,11 @@ func AuditUnmanaged(client container.Client, scope string, logWarnings bool) err
 		}
 		enabled, labeled := c.Enabled()
 		switch {
+		case c.IsInfrastructure():
+			// Docker-managed scaffolding (buildx, Desktop). Labelling these
+			// manually is pointless because they're recreated on every build
+			// — bucket them separately so they stop inflating "unmanaged".
+			infrastructure++
 		case !labeled:
 			unmanagedNow[c.Name()] = c
 		case enabled:
@@ -95,7 +100,7 @@ func AuditUnmanaged(client container.Client, scope string, logWarnings bool) err
 			excluded++
 		}
 	}
-	metrics.SetAuditCounts(managed, excluded, len(unmanagedNow))
+	metrics.SetAuditCounts(managed, excluded, len(unmanagedNow), infrastructure)
 
 	if !logWarnings {
 		return nil
