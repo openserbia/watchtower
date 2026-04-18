@@ -370,7 +370,14 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 		return err
 	}
 
-	writeStartupMessage(c, scheduler.Entries()[0].Schedule.Next(time.Now()), filtering)
+	schedule := scheduler.Entries()[0].Schedule
+	firstFire := schedule.Next(time.Now())
+	// Derive the cadence between two consecutive fires. For fixed interval
+	// schedules this is exact; for irregular cron expressions it's a best-effort
+	// approximation of "typical gap" — good enough for the staleness alert.
+	metrics.SetPollInterval(schedule.Next(firstFire).Sub(firstFire))
+
+	writeStartupMessage(c, firstFire, filtering)
 
 	scheduler.Start()
 

@@ -42,6 +42,7 @@ type Metrics struct {
 	authCacheMisses  prometheus.Counter
 	imageFallback    prometheus.Counter
 	lastScanTime     prometheus.Gauge
+	pollInterval     prometheus.Gauge
 	pollDuration     prometheus.Histogram
 }
 
@@ -140,6 +141,10 @@ func Default() *Metrics {
 			Name: "watchtower_last_scan_timestamp_seconds",
 			Help: "Unix timestamp of the most recent completed scan. Staleness alert: (time() - watchtower_last_scan_timestamp_seconds) > expected_interval.",
 		}),
+		pollInterval: promauto.NewGauge(prometheus.GaugeOpts{
+			Name: "watchtower_poll_interval_seconds",
+			Help: "Configured time between scans, derived from the active schedule. Lets alerts scale staleness thresholds to the actual cadence instead of hardcoding a window (long-cadence deployments like 12h otherwise false-alarm).",
+		}),
 		pollDuration: promauto.NewHistogram(prometheus.HistogramOpts{
 			Name:    "watchtower_poll_duration_seconds",
 			Help:    "Wall-clock duration of each scan + update cycle. Buckets target homelab cadence (seconds, not sub-second).",
@@ -218,6 +223,12 @@ func RegisterImageFallback() { Default().imageFallback.Inc() }
 // SetLastScanTimestamp records the completion time of the latest scan cycle.
 func SetLastScanTimestamp(t time.Time) {
 	Default().lastScanTime.Set(float64(t.Unix()))
+}
+
+// SetPollInterval records the configured seconds between scheduled scans,
+// derived from the active cron expression at startup.
+func SetPollInterval(d time.Duration) {
+	Default().pollInterval.Set(d.Seconds())
 }
 
 // ObservePollDuration records the duration of a full scan cycle.

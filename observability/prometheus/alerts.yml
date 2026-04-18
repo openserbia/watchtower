@@ -10,18 +10,26 @@ groups:
   - name: watchtower
     rules:
       - alert: WatchtowerScansStopped
+        # Fires when the latest scan timestamp is older than twice the
+        # configured poll interval — scales to any cadence (60 s or 12 h).
+        # The `unless absent(...)` guard prevents firing on instances that
+        # have never reported a poll interval (e.g. --run-once invocations
+        # that happen to expose /v1/metrics before exiting).
         expr: |
-          increase(watchtower_scans_total{job="watchtower"}[2h]) == 0
+          (time() - watchtower_last_scan_timestamp_seconds{job="watchtower"})
+            > (2 * watchtower_poll_interval_seconds{job="watchtower"})
+          unless absent(watchtower_poll_interval_seconds{job="watchtower"})
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Watchtower on {{ $labels.instance }} has not scanned in 2h"
+          summary: "Watchtower on {{ $labels.instance }} is overdue for a scan"
           description: |
-            The watchtower scheduler hasn't advanced `watchtower_scans_total` in
-            the last 2 hours. Either the poll interval is longer than the
-            alert window (check WATCHTOWER_POLL_INTERVAL) or the scheduler is
-            wedged.
+            The latest scan is older than 2× the configured poll interval
+            ({{ $value | humanizeDuration }} since last scan). Either the
+            scheduler is wedged, the container crashed, or the Docker socket
+            is unreachable. Check the watchtower container logs and
+            `watchtower_poll_interval_seconds` for the active cadence.
 
       - alert: WatchtowerAllScansSkipped
         expr: |

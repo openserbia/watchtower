@@ -24,6 +24,7 @@ Enable metrics with `WATCHTOWER_HTTP_API_METRICS=true` + `WATCHTOWER_HTTP_API_TO
 | `watchtower_auth_cache_hits_total` / `watchtower_auth_cache_misses_total` | counter | Bearer-token cache (v1.9+) hit/miss counts. |
 | `watchtower_image_fallback_total` | counter | Times `GetContainer` fell back to inspecting by image reference because the source image ID was missing locally. |
 | `watchtower_last_scan_timestamp_seconds` | gauge | Unix epoch of the latest completed scan. |
+| `watchtower_poll_interval_seconds` | gauge | Configured time between scans, derived from the active schedule at startup. Used by the staleness alert to scale the threshold to the operator's cadence. |
 | `watchtower_poll_duration_seconds` | histogram | Wall-clock duration of each scan + update cycle. Buckets: 0.5s → 5m. |
 
 The gauges are reset each poll, so they answer "what did the last run do?" rather than "how many containers exist".

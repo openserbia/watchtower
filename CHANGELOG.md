@@ -23,6 +23,11 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   (`observability/grafana/watchtower-dashboard.json`) adds a donut, a
   stat-with-threshold for unmanaged, and a stacked history panel. Alerts
   add `WatchtowerUnmanagedContainersPresent` (info, >1 h).
+- **`watchtower_poll_interval_seconds`** gauge — configured scan cadence
+  derived from the active schedule at startup. Replaces the hardcoded 2 h
+  window in the `WatchtowerScansStopped` alert with
+  `(time() - last_scan) > 2 × poll_interval`, so long-cadence deployments
+  (e.g. `@every 12h`) no longer false-alarm.
 - **Reliability / security observability.** Seven new metrics:
   `watchtower_api_requests_total{endpoint, status}`,
   `watchtower_registry_requests_total{host, operation, outcome}`,
