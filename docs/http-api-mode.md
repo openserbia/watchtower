@@ -2,22 +2,32 @@ Watchtower exposes a small HTTP control-plane on port `8080` with three
 optional endpoints. Each is opt-in via its own flag, and all share the
 same listener and bearer-token scheme.
 
-| Endpoint     | Flag                        | Default auth | Purpose                                                          |
-| ------------ | --------------------------- | ------------ | ---------------------------------------------------------------- |
-| `/v1/update` | `--http-api-update`         | Bearer token | Trigger a scan and update cycle on demand.                       |
-| `/v1/metrics`| `--http-api-metrics`        | Bearer token (optional opt-out) | Prometheus exposition format for all watchtower metrics. |
-| `/v1/audit`  | `--http-api-audit`          | Bearer token | JSON report of every container's watch status (managed / excluded / unmanaged / infrastructure). |
+| Endpoint     | Flag                 | Env                             | Default auth                    | Purpose |
+| ------------ | -------------------- | ------------------------------- | ------------------------------- | ------- |
+| `/v1/update` | `--http-api-update`  | `WATCHTOWER_HTTP_API_UPDATE`    | Bearer token (always required)  | Trigger a scan and update cycle on demand. |
+| `/v1/metrics`| `--http-api-metrics` | `WATCHTOWER_HTTP_API_METRICS`   | Bearer token (optional opt-out) | Prometheus exposition format for every watchtower metric. |
+| `/v1/audit`  | `--http-api-audit`   | `WATCHTOWER_HTTP_API_AUDIT`     | Bearer token                    | JSON watch-status report (`managed` / `excluded` / `unmanaged` / `infrastructure`). |
 
 Set `--http-api-token` (env `WATCHTOWER_HTTP_API_TOKEN`) and bind port
 `8080` to enable any of them. The token check uses
 `crypto/subtle.ConstantTimeCompare`, so timing-based probes aren't
 useful.
 
+The only exception: if `/v1/metrics` is the **only** endpoint enabled
+and `--http-api-metrics-no-auth` is set, `--http-api-token` is not
+required to start the daemon.
+
 ## `/v1/update`
 
-Triggers a scan + update cycle, the same work the scheduler would do at
-its next tick. Returns `200 OK` once the update completes (or is skipped
-because another update is already running).
+Triggers a scan + update cycle — the same work the scheduler would do
+at its next tick. The request blocks until the update completes (or is
+skipped because another update is already running). Responses:
+
+- `200` — update completed or was skipped because another was in flight.
+- `401` — missing or wrong bearer token.
+- The handler does not stream per-container progress; scrape
+  `watchtower_scans_total` or tail the container's logs for in-flight
+  detail.
 
 ```yaml
 services:
@@ -31,7 +41,7 @@ services:
     environment:
       WATCHTOWER_HTTP_API_TOKEN: mytoken
     ports:
-      - 8080:8080
+      - "8080:8080"
 ```
 
 By default, enabling this flag **disables** periodic polling (`--interval`
@@ -110,7 +120,7 @@ services:
     environment:
       WATCHTOWER_HTTP_API_TOKEN: mytoken
     ports:
-      - 8080:8080
+      - "8080:8080"
 ```
 
 ```bash
@@ -148,6 +158,7 @@ curl -s -H "Authorization: Bearer mytoken" http://localhost:8080/v1/audit | jq
   matters.
 - Non-2xx responses are counted in `watchtower_api_requests_total{status}`
   — a burst of `401` on `/v1/update` usually means credential stuffing.
-  See the shipped `WatchtowerAPIUnauthorizedBurst` alert template in
-  [`observability/prometheus/alerts.yml`](https://github.com/openserbia/watchtower/blob/main/observability/prometheus/alerts.yml)
-  for a starting point.
+  No alert for this ships by default (homelab context — `/v1/update`
+  sees negligible traffic so a threshold alert would be trivially
+  noise-tunable per-deployment). Operators who want one can add:
+  `sum(increase(watchtower_api_requests_total{endpoint="/v1/update", status="401"}[10m])) > 5`.

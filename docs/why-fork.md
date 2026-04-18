@@ -19,16 +19,48 @@ No config migration. No flag rename. No label rewrite.
 
 ## What changed
 
+### Project health
+
 |                                   | `containrrr/watchtower`            | **`openserbia/watchtower`**                                                                   |
 | --------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------- |
 | Maintenance status                | Archived / unmaintained            | **Active**                                                                                    |
 | Go version                        | 1.20                               | **1.26**                                                                                      |
 | Linter                            | golangci-lint v1                   | **golangci-lint v2** (gofumpt + gci)                                                          |
 | Dev environment                   | Ad-hoc                             | **Devbox-pinned** (reproducible, matches CI)                                                  |
+| Tests                             | `go test`                          | **`go test -race` by default** (CGO-enabled lane)                                             |
 | Module path                       | `github.com/containrrr/watchtower` | `github.com/openserbia/watchtower`                                                            |
 | Dependency updates                | Stale                              | Tracked via Dependabot                                                                        |
 | CI                                | Travis-era workflows               | **Devbox + go-task on GitHub Actions**                                                        |
 | Knowledge graph for contributors  | —                                  | [`code-review-graph`](https://github.com/openserbia/code-review-graph) MCP support wired in   |
+| Shoutrrr library                  | `containrrr/shoutrrr` (paused)     | **`nicholas-fedor/shoutrrr`** v0.14 (active fork, URL-compatible)                             |
+
+### Update behavior
+
+|                                   | `containrrr/watchtower`              | **`openserbia/watchtower`**                                                                 |
+| --------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Health-check gating               | —                                    | **`--health-check-gated`** with auto-rollback; per-container label override; cooldown        |
+| Registry retry                    | None — single request, then bail     | **Bounded exp backoff** (3 tries, 500 ms → 4 s + jitter) on network / 5xx / 429 / oauth flake |
+| Bearer-token auth                 | One exchange per image               | **In-memory cache** keyed on auth URL + credential, respects `expires_in`                   |
+| Stuck on GC'd source image        | Container becomes un-updatable (upstream#1217) | **Fallback to image-reference inspection** — update proceeds cleanly                     |
+| `--cleanup` after retag           | Deletes replacement image (upstream#966) | Targets the original image via `SourceImageID()`; `NotFound` treated as success          |
+| Compose-deploy race               | Aborts the scan on container NotFound | Skipped container, scan continues                                                          |
+
+### Security
+
+|                                   | `containrrr/watchtower`              | **`openserbia/watchtower`**                                                                 |
+| --------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Registry TLS (default)            | `InsecureSkipVerify: true` hardcoded | **Strict TLS 1.2+, system trust store**                                                    |
+| Registry TLS (opt-out)            | —                                    | **`--insecure-registry`** per host, **`--registry-ca-bundle`** for private CAs             |
+| Bearer-token comparison           | `!=` (timing-sensitive)              | **`crypto/subtle.ConstantTimeCompare`**                                                    |
+
+### Observability
+
+|                                   | `containrrr/watchtower`              | **`openserbia/watchtower`**                                                                 |
+| --------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| HTTP API endpoints                | `/v1/update`, `/v1/metrics`          | + **`/v1/audit`** (JSON watch-status report) + **`--http-api-metrics-no-auth`** for public scrape |
+| Prometheus metrics                | 5 (scan cycle only)                  | **~20** (request / registry / Docker-API / auth-cache counters; fallback & rollback counters; poll-duration histogram; watch-status gauges; infrastructure bucket) |
+| Ready-to-ship dashboard           | —                                    | **Grafana JSON + Prometheus alerts** under [`observability/`](https://github.com/openserbia/watchtower/tree/main/observability) |
+| Unmanaged-container visibility    | Silent skip under `--label-enable`   | **`--audit-unmanaged`** (change-detecting logs) + `/v1/audit` + `watchtower_containers_unmanaged` gauge + shipped alert |
 
 ## Images and module path
 
