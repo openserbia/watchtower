@@ -52,6 +52,14 @@ Concrete repairs for issues left open on `containrrr/watchtower` when it was arc
 
 See [CHANGELOG.md](https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md) for the full list per release.
 
+## Reliability and performance improvements
+
+Not upstream-bug repairs — additions that harden the same feature set:
+
+- **Bounded exponential backoff on registry HTTP calls.** The oauth challenge, bearer-token exchange, and manifest HEAD retry up to 3 times (500 ms → 4 s + jitter) on network errors, 5xx, 429, and the 401/403/404 flakes seen on registry oauth endpoints under load. Previously a single transient failure wedged the affected image until the next poll.
+- **In-memory bearer-token cache.** A poll across N containers on the same registry+repository scope now issues one token exchange instead of N. Keyed by auth URL + credential hash, respects the registry's `expires_in` (default 60 s per the Docker token spec) minus a 10 s skew. Cuts registry traffic dramatically on larger deployments and further reduces oauth-flake exposure.
+- **`--audit-unmanaged` flag.** With `--label-enable` active, warns once per poll for every container missing `com.centurylinklabs.watchtower.enable` so silent exclusions stop looking identical to intentional opt-outs.
+
 ## Known rough edges (fork roadmap)
 
 Contributions welcome:

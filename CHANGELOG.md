@@ -10,6 +10,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-04-18
+
 ### Added
 - **`--audit-unmanaged`** flag (env: `WATCHTOWER_AUDIT_UNMANAGED`). With
   `--label-enable` active, warns once per poll for every container that carries
@@ -19,6 +21,12 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   Wraps the oauth challenge, bearer-token exchange, and manifest HEAD with up to
   3 attempts (500 ms → 4 s + jitter) on network errors, 5xx, 429, and the
   401/403/404 flakes observed on registry oauth endpoints under load.
+- **In-memory bearer-token cache** (`pkg/registry/auth`). Cuts registry
+  authentication traffic dramatically: a poll across N containers on the same
+  registry+repository scope now issues one token exchange instead of N. Keyed
+  by auth URL + credential hash, respects the registry's `expires_in` (default
+  60 s per the Docker token spec) minus a 10 s skew, and is concurrency-safe.
+  Also reduces exposure to the oauth-endpoint flakes the retry wrapper handles.
 
 ### Fixed
 - **Containers stuck un-updatable after their source image is garbage-collected.**
@@ -53,4 +61,5 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged.
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.8.5...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/openserbia/watchtower/compare/v1.8.5...v1.9.0

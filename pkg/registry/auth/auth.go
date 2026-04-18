@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	ref "github.com/distribution/reference"
 	"github.com/sirupsen/logrus"
@@ -84,7 +85,14 @@ func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) 
 		return "", err
 	}
 
-	r, err := http.NewRequestWithContext(context.Background(), http.MethodGet, authURL.String(), nil)
+	authURLString := authURL.String()
+	key := cacheKey(authURLString, registryAuth)
+	if header, ok := bearerCache.get(key); ok {
+		logrus.WithField("url", authURLString).Debug("Using cached bearer token")
+		return header, nil
+	}
+
+	r, err := http.NewRequestWithContext(context.Background(), http.MethodGet, authURLString, nil)
 	if err != nil {
 		return "", err
 	}
@@ -98,7 +106,7 @@ func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) 
 		logrus.Debug("No credentials found.")
 	}
 
-	authResponse, err := retry.DoHTTP(&client, r, logrus.WithField("url", authURL.String()))
+	authResponse, err := retry.DoHTTP(&client, r, logrus.WithField("url", authURLString))
 	if err != nil {
 		return "", err
 	}
@@ -112,7 +120,14 @@ func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) 
 		return "", err
 	}
 
-	return fmt.Sprintf("Bearer %s", tokenResponse.Token), nil
+	header := fmt.Sprintf("Bearer %s", tokenResponse.Token)
+	ttl := defaultTokenTTL
+	if tokenResponse.ExpiresIn > 0 {
+		ttl = time.Duration(tokenResponse.ExpiresIn) * time.Second
+	}
+	bearerCache.set(key, header, ttl)
+
+	return header, nil
 }
 
 // GetAuthURL from the instructions in the challenge

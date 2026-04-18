@@ -68,7 +68,7 @@ Full flag reference, notification setup, lifecycle hooks, HTTP API, and metrics 
 
 ## Why this fork
 
-`containrrr/watchtower` stopped accepting changes in late 2024. This fork keeps it alive with a modern toolchain (Go 1.26, golangci-lint v2, Devbox-pinned CI) and fixes real-world bugs that went unmerged upstream — e.g. [upstream#966](https://github.com/containrrr/watchtower/issues/966), [#1217](https://github.com/containrrr/watchtower/issues/1217), [#1413](https://github.com/containrrr/watchtower/issues/1413).
+`containrrr/watchtower` stopped accepting changes in late 2024. This fork keeps it alive with a modern toolchain (Go 1.26, golangci-lint v2, Devbox-pinned CI), fixes real-world bugs left unmerged upstream ([upstream#966](https://github.com/containrrr/watchtower/issues/966), [#1217](https://github.com/containrrr/watchtower/issues/1217), [#1413](https://github.com/containrrr/watchtower/issues/1413)), and adds reliability improvements — bounded retries and bearer-token caching on registry calls — that cut traffic and harden against oauth flakes.
 
 **Drop-in compatible** — same CLI flags, labels (`com.centurylinklabs.watchtower.*`), HTTP API, and notification backends. Swap the image name and you're done. Migration diff, full comparison table, and roadmap: **[Why this fork?](https://openserbia.github.io/watchtower/why-fork/)**.
 
