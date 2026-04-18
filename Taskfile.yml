@@ -53,10 +53,12 @@ tasks:
       - golangci-lint run
 
   test:
-    desc: Run all tests with coverage
+    desc: Run all tests with coverage and the race detector
     deps: [deps]
+    env:
+      CGO_ENABLED: 1
     cmds:
-      - go test -mod vendor -v -covermode=atomic -coverprofile=coverage.out ./...
+      - go test -mod vendor -race -v -covermode=atomic -coverprofile=coverage.out ./...
 
   build:
     desc: Build the watchtower binary

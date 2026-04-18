@@ -27,7 +27,7 @@ devbox run -- task              # list targets
 devbox run -- task deps         # go mod download + tidy + vendor
 devbox run -- task fmt          # gci + gofumpt
 devbox run -- task lint         # golangci-lint (auto-runs fmt first)
-devbox run -- task test         # go test -mod vendor with coverage
+devbox run -- task test         # go test -mod vendor with coverage and -race
 devbox run -- task build        # ./build/watchtower with version ldflags
 devbox run -- task tplprev      # WASM template-preview bundle
 devbox run -- task docker:build # dev-self-contained Docker image

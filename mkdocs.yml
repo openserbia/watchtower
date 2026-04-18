@@ -37,6 +37,7 @@ markdown_extensions:
 nav:
    - 'Home': 'index.md'
    - 'Introduction': 'introduction.md'
+   - 'Why this fork?': 'why-fork.md'
    - 'Usage overview': 'usage-overview.md'
    - 'Updating': 'updating.md'
    - 'Arguments': 'arguments.md'
