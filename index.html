@@ -315,10 +315,49 @@
   <a href="#quick_start" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick Start
+        Quick start
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Quick start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#run_it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scoping_what_it_updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scoping what it updates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whats_next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's next
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -790,10 +829,49 @@
   <a href="#quick_start" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quick Start
+        Quick start
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Quick start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#run_it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scoping_what_it_updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scoping what it updates
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whats_next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's next
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -827,60 +905,78 @@
 <p align="center">
   A container-based solution for automating Docker container base image updates.
   <br/><br/>
-  <a href="https://circleci.com/gh/containrrr/watchtower">
-    <img alt="Circle CI" src="https://circleci.com/gh/containrrr/watchtower.svg?style=shield" />
+  <a href="https://github.com/openserbia/watchtower/actions/workflows/pull-request.yml">
+    <img alt="CI" src="https://github.com/openserbia/watchtower/actions/workflows/pull-request.yml/badge.svg" />
   </a>
-  <a href="https://codecov.io/gh/containrrr/watchtower">
-    <img alt="Codecov" src="https://codecov.io/gh/containrrr/watchtower/branch/main/graph/badge.svg">
+  <a href="https://codecov.io/gh/openserbia/watchtower">
+    <img alt="Codecov" src="https://codecov.io/gh/openserbia/watchtower/branch/main/graph/badge.svg" />
   </a>
-  <a href="https://godoc.org/github.com/openserbia/watchtower">
-    <img alt="GoDoc" src="https://godoc.org/github.com/openserbia/watchtower?status.svg" />
+  <a href="https://pkg.go.dev/github.com/openserbia/watchtower">
+    <img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/openserbia/watchtower.svg" />
   </a>
   <a href="https://goreportcard.com/report/github.com/openserbia/watchtower">
     <img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/openserbia/watchtower" />
   </a>
   <a href="https://github.com/openserbia/watchtower/releases">
-    <img alt="latest version" src="https://img.shields.io/github/tag/containrrr/watchtower.svg" />
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/openserbia/watchtower?sort=semver" />
   </a>
   <a href="https://www.apache.org/licenses/LICENSE-2.0">
-    <img alt="Apache-2.0 License" src="https://img.shields.io/github/license/containrrr/watchtower.svg" />
+    <img alt="Apache-2.0 License" src="https://img.shields.io/github/license/openserbia/watchtower.svg" />
   </a>
-  <a href="https://www.codacy.com/gh/containrrr/watchtower/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=containrrr/watchtower&amp;utm_campaign=Badge_Grade">
-    <img alt="Codacy Badge" src="https://app.codacy.com/project/badge/Grade/1c48cfb7646d4009aa8c6f71287670b8"/>
-  </a>
-  <a href="https://github.com/openserbia/watchtower/#contributors">
-    <img alt="All Contributors" src="https://img.shields.io/github/all-contributors/containrrr/watchtower" />
-  </a>
-  <a href="https://hub.docker.com/r/containrrr/watchtower">
-    <img alt="Pulls from DockerHub" src="https://img.shields.io/docker/pulls/containrrr/watchtower.svg" />
+  <a href="https://hub.docker.com/r/openserbia/watchtower">
+    <img alt="Pulls from DockerHub" src="https://img.shields.io/docker/pulls/openserbia/watchtower.svg" />
   </a>
 </p>
 
-<h2 id="quick_start">Quick Start<a class="headerlink" href="#quick_start" title="Permanent link">&para;</a></h2>
-<p>With watchtower you can update the running version of your containerized app simply by pushing a new image to the Docker
-Hub or your own image registry. Watchtower will pull down your new image, gracefully shut down your existing container
-and restart it with the same options that were used when it was deployed initially. Run the watchtower container with
-the following command:</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">docker run</label><label for="__tabbed_1_2">docker-compose.yml</label></div>
+<h2 id="quick_start">Quick start<a class="headerlink" href="#quick_start" title="Permanent link">&para;</a></h2>
+<p>Watchtower watches the Docker daemon it's pointed at, polls the registries of the running containers' images, and — when a digest changes — gracefully stops each stale container and recreates it with the same config (volumes, networks, env, command).</p>
+<p>Pull from either registry; the images are identical:</p>
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>pull<span class="w"> </span>openserbia/watchtower<span class="w">          </span><span class="c1"># Docker Hub</span>
+docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/openserbia/watchtower<span class="w">  </span><span class="c1"># GitHub Container Registry</span>
+</code></pre></div>
+<h3 id="run_it">Run it<a class="headerlink" href="#run_it" title="Permanent link">&para;</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">docker run</label><label for="__tabbed_1_2">docker-compose</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code>$<span class="w"> </span>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
---name<span class="w"> </span>watchtower<span class="w"> </span><span class="se">\</span>
--v<span class="w"> </span>/var/run/docker.sock:/var/run/docker.sock<span class="w"> </span><span class="se">\</span>
-containrrr/watchtower
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>--detach<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--name<span class="w"> </span>watchtower<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--restart<span class="w"> </span>unless-stopped<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--volume<span class="w"> </span>/var/run/docker.sock:/var/run/docker.sock<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>openserbia/watchtower<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--interval<span class="w"> </span><span class="m">60</span><span class="w"> </span>--cleanup
 </code></pre></div>
 </div>
 <div class="tabbed-block">
-<div class="highlight"><pre><span></span><code><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3&quot;</span>
-<span class="nt">services</span><span class="p">:</span>
+<div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">watchtower</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">containrrr/watchtower</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openserbia/watchtower:latest</span>
+<span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">watchtower</span>
+<span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
 <span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--interval=60</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--cleanup</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--label-enable</span>
 </code></pre></div>
 </div>
 </div>
 </div>
+<p>That's enough to start: Watchtower polls every 60 s and deletes old images after a successful update.</p>
+<h3 id="scoping_what_it_updates">Scoping what it updates<a class="headerlink" href="#scoping_what_it_updates" title="Permanent link">&para;</a></h3>
+<p>By default, every container on the host is a candidate. To opt in only a chosen set, pass <code>--label-enable</code> and label the target containers:</p>
+<div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--label<span class="w"> </span>com.centurylinklabs.watchtower.enable<span class="o">=</span><span class="nb">true</span><span class="w"> </span>my-app:latest
+</code></pre></div>
+<p>Omit the label to keep a container untouched (databases, stateful services, anything with a manual release process).</p>
+<h3 id="whats_next">What's next<a class="headerlink" href="#whats_next" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><a href="arguments/">Arguments</a></strong> — every flag and <code>WATCHTOWER_*</code> env var</li>
+<li><strong><a href="container-selection/">Container selection</a></strong> — include/exclude by label, scope, or name</li>
+<li><strong><a href="notifications/">Notifications</a></strong> — Shoutrrr, email, Slack, Teams, Gotify</li>
+<li><strong><a href="private-registries/">Private registries</a></strong> — credentials via <code>config.json</code></li>
+<li><strong><a href="http-api-mode/">HTTP API mode</a></strong> — trigger updates and scrape Prometheus metrics</li>
+<li><strong><a href="lifecycle-hooks/">Lifecycle hooks</a></strong> — pre/post scripts inside the target container</li>
+</ul>
 
 
 
