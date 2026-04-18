@@ -463,9 +463,14 @@ func rollback(client container.Client, old types.Container, newID types.Containe
 	// image is also unhealthy (shared root cause: env changed, dependency
 	// dropped, volume corrupted) there's nothing automation can do; surface
 	// it loudly for the operator.
-	rollbackTimeout := resolveHealthCheckTimeout(old, params) / 2
-	if rollbackTimeout < healthPollInterval*2 {
-		rollbackTimeout = healthPollInterval * 2
+	const (
+		rollbackTimeoutDivisor = 2
+		rollbackFloorPolls     = 2
+	)
+	rollbackTimeout := resolveHealthCheckTimeout(old, params) / rollbackTimeoutDivisor
+	floor := healthPollInterval * rollbackFloorPolls
+	if rollbackTimeout < floor {
+		rollbackTimeout = floor
 	}
 	if err := waitForHealthy(client, rolledBackID, rollbackTimeout); err != nil {
 		if errors.Is(err, errNoHealthcheck) {
