@@ -10,6 +10,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-04-18
+
 ### Added
 - **`--http-api-audit`** flag (env: `WATCHTOWER_HTTP_API_AUDIT`) + new
   `GET /v1/audit` endpoint that returns a JSON report of every container
@@ -65,12 +67,6 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   (public) metrics endpoint is enabled, `--http-api-token` is no longer
   required to start the daemon.
 
-### Security
-- `api.RequireToken` now uses `crypto/subtle.ConstantTimeCompare` instead of
-  `!=` when checking the bearer token, closing a theoretical timing-oracle
-  on `:8080`.
-
-### Changed
 - `--audit-unmanaged` is no longer spammy. The audit warns about each
   unlabeled container the first time it appears (startup baseline) and then
   stays silent on subsequent polls unless the set changes — a new unlabeled
@@ -79,14 +75,19 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ### Removed
 - **`notify-upgrade` subcommand** (`cmd/notify-upgrade.go`). The helper
-  generated a shoutrrr-URL env file from the pre-shoutrrr notification flags
-  — a migration tool for an upstream cut-over that happened years ago. The
-  legacy `--notification-email-*` / `--notification-slack-*` /
-  `--notification-gotify-*` / MSTeams flags remain supported via the shim in
-  `pkg/notifications`, so existing deployments keep working; only the
-  interactive converter is gone. Note: this is a CLI-surface removal and as
-  such is the first intentional break of upstream compatibility — tag as
-  v2.0.0 when releasing.
+  generated a shoutrrr-URL env file from the pre-shoutrrr notification
+  flags — a migration tool for an upstream cut-over that happened years
+  ago and nobody invokes any more. The legacy `--notification-email-*` /
+  `--notification-slack-*` / `--notification-gotify-*` / MSTeams flags
+  remain supported via the shim in `pkg/notifications`, so existing
+  deployments keep working. If you were scripting `docker run openserbia/watchtower
+  notify-upgrade`, that invocation now exits with "unknown command"; either
+  pin to `v1.10.x` or switch to writing shoutrrr URLs directly.
+
+### Security
+- `api.RequireToken` now uses `crypto/subtle.ConstantTimeCompare` instead of
+  `!=` when checking the bearer token, closing a theoretical timing-oracle
+  on `:8080`.
 
 ## [1.10.1] - 2026-04-18
 
@@ -207,7 +208,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged.
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.10.1...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/openserbia/watchtower/compare/v1.10.1...v1.11.0
 [1.10.1]: https://github.com/openserbia/watchtower/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/openserbia/watchtower/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/openserbia/watchtower/compare/v1.8.5...v1.9.0
