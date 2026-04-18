@@ -64,3 +64,11 @@ jobs:
           tags: |
             openserbia/watchtower:latest-dev
             ghcr.io/openserbia/watchtower:latest-dev
+      - name: Sync Docker Hub description
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: openserbia/watchtower
+          short-description: Automate Docker container base image updates (openserbia fork of containrrr/watchtower)
+          readme-filepath: ./README.md
