@@ -109,7 +109,7 @@ Drop-in compatible: same CLI flags, same labels (`com.centurylinklabs.watchtower
 
 ## Known rough edges (fork roadmap)
 
-This fork tracks a running deployment (Timeweb private registry, ~13 watched images, 60s poll) and collects fixes for behaviors that bite in that setup. Contributions welcome on any of these:
+This fork tracks a running deployment and collects fixes for behaviors that bite in that setup. Contributions welcome on any of these:
 
 1. **No retry-with-backoff on registry auth flakes.** When the registry's oauth endpoint returns a transient 403/404, Watchtower logs `no available image info. Proceeding to next.` and waits for the next poll with an identical request — no exponential backoff, no per-repository circuit breaker. A flaky registry can wedge a single image for minutes while manual `docker pull` succeeds instantly.
 2. **Pull failures logged at `info`, not `error`.** `WATCHTOWER_NOTIFICATIONS_LEVEL=error` silently swallows repeated failed pulls for a single container. Neither Watchtower nor a success-only event watcher notifies on a stuck-in-failure loop.
