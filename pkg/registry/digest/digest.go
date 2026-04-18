@@ -104,7 +104,7 @@ func GetDigest(url, token string) (string, error) {
 
 	logrus.WithField("url", url).Debug("Doing a HEAD request to fetch a digest")
 
-	res, err := retry.DoHTTP(client, req, logrus.WithField("url", url))
+	res, err := retry.DoHTTP(client, req, "digest", logrus.WithField("url", url))
 	if err != nil {
 		return "", err
 	}

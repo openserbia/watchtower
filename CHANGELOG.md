@@ -23,6 +23,20 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   (`observability/grafana/watchtower-dashboard.json`) adds a donut, a
   stat-with-threshold for unmanaged, and a stacked history panel. Alerts
   add `WatchtowerUnmanagedContainersPresent` (info, >1 h).
+- **Reliability / security observability.** Seven new metrics:
+  `watchtower_api_requests_total{endpoint, status}`,
+  `watchtower_registry_requests_total{host, operation, outcome}`,
+  `watchtower_registry_retries_total{host}`,
+  `watchtower_docker_api_errors_total{operation}`,
+  `watchtower_auth_cache_hits_total` / `watchtower_auth_cache_misses_total`,
+  `watchtower_image_fallback_total`,
+  `watchtower_last_scan_timestamp_seconds`, and
+  `watchtower_poll_duration_seconds` (histogram). Dashboard gets a
+  "Reliability & Security" row with poll-duration p50/p95, registry-outcome
+  rate, non-2xx API request breakdown, Docker API error rate, bearer-cache
+  hit ratio, and 24 h image-fallback count. Alerts add
+  `WatchtowerRegistryErrorsSustained`, `WatchtowerAPIUnauthorizedBurst`,
+  and `WatchtowerDockerAPIErrorsSustained`.
 - **`--http-api-metrics-no-auth`** flag (env:
   `WATCHTOWER_HTTP_API_METRICS_NO_AUTH`). Exposes `/v1/metrics` without
   bearer-token auth, matching Prometheus convention for trusted-network

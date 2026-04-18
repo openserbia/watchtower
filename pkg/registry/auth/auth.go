@@ -15,6 +15,7 @@ import (
 	ref "github.com/distribution/reference"
 	"github.com/sirupsen/logrus"
 
+	"github.com/openserbia/watchtower/pkg/metrics"
 	"github.com/openserbia/watchtower/pkg/registry/helpers"
 	"github.com/openserbia/watchtower/pkg/registry/retry"
 	"github.com/openserbia/watchtower/pkg/registry/transport"
@@ -40,7 +41,7 @@ func GetToken(container types.Container, registryAuth string) (string, error) {
 	}
 
 	client := transport.Client(challengeURL.Host)
-	res, err := retry.DoHTTP(client, req, logrus.WithField("url", challengeURL.String()))
+	res, err := retry.DoHTTP(client, req, "challenge", logrus.WithField("url", challengeURL.String()))
 	if err != nil {
 		return "", err
 	}
@@ -89,9 +90,11 @@ func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) 
 	authURLString := authURL.String()
 	key := cacheKey(authURLString, registryAuth)
 	if header, ok := bearerCache.get(key); ok {
+		metrics.RegisterAuthCacheHit()
 		logrus.WithField("url", authURLString).Debug("Using cached bearer token")
 		return header, nil
 	}
+	metrics.RegisterAuthCacheMiss()
 
 	r, err := http.NewRequestWithContext(context.Background(), http.MethodGet, authURLString, nil)
 	if err != nil {
@@ -107,7 +110,7 @@ func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) 
 		logrus.Debug("No credentials found.")
 	}
 
-	authResponse, err := retry.DoHTTP(client, r, logrus.WithField("url", authURLString))
+	authResponse, err := retry.DoHTTP(client, r, "token", logrus.WithField("url", authURLString))
 	if err != nil {
 		return "", err
 	}

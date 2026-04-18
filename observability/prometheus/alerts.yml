@@ -89,6 +89,54 @@ groups:
             name and the last-reported health status before the service owner
             tries to ship the next version.
 
+      - alert: WatchtowerRegistryErrorsSustained
+        # Any persistent non-zero registry error rate means pulls and digest
+        # comparisons are failing. Different from an auth flake (retried
+        # outcome) — "error" means the request never succeeded at all.
+        expr: |
+          sum by (host) (rate(watchtower_registry_requests_total{job="watchtower", outcome="error"}[10m])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watchtower sees sustained registry errors to {{ $labels.host }}"
+          description: |
+            Outbound requests to {{ $labels.host }} have been failing for
+            15m. Check credentials, network reachability, and whether
+            TLS verification needs a --registry-ca-bundle / --insecure-registry
+            override.
+
+      - alert: WatchtowerAPIUnauthorizedBurst
+        # Non-zero 401s on /v1/update specifically — credential stuffing or
+        # misconfigured client. /v1/metrics 401s during scraper-setup churn
+        # are filtered out.
+        expr: |
+          sum(increase(watchtower_api_requests_total{job="watchtower", endpoint="/v1/update", status="401"}[10m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watchtower /v1/update is receiving unauthorized requests"
+          description: |
+            More than 5 × 401s on /v1/update in the last 10m. Usually a
+            credential-stuffing attempt or a misconfigured automation client.
+            Rotate --http-api-token and audit where it's been shared.
+
+      - alert: WatchtowerDockerAPIErrorsSustained
+        # Sustained Docker-socket errors point at permission issues, daemon
+        # load, or a half-broken daemon upgrade.
+        expr: |
+          sum(rate(watchtower_docker_api_errors_total{job="watchtower"}[5m])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watchtower on {{ $labels.instance }} sees sustained Docker API errors"
+          description: |
+            Errors against the Docker engine API have been non-zero for 15m.
+            Common causes: socket permissions flipped, daemon under load,
+            or a partial Docker upgrade. Hit `docker info` on the host.
+
       - alert: WatchtowerScansWithoutUpdates
         # If every poll scans containers but never finds anything to update
         # for a long window, either nothing is being released (fine) or the

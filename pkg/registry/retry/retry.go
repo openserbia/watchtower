@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/pkg/metrics"
 )
 
 // Tunables are deliberately conservative: registry flakes usually recover
@@ -31,7 +33,12 @@ var (
 // (network errors, 5xx, 429, and the 401/403/404 responses observed when
 // registry oauth endpoints flake). The caller's req must be safe to replay —
 // registry flows are all GET/HEAD, so that's the case everywhere this is used.
-func DoHTTP(client *http.Client, req *http.Request, logger *logrus.Entry) (*http.Response, error) {
+//
+// operation is a short logical label ("challenge" / "token" / "digest") used
+// for the watchtower_registry_requests_total metric. Pass "" to skip metric
+// emission (useful in tests).
+func DoHTTP(client *http.Client, req *http.Request, operation string, logger *logrus.Entry) (*http.Response, error) {
+	host := req.URL.Host
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		if attempt > 0 {
@@ -39,16 +46,25 @@ func DoHTTP(client *http.Client, req *http.Request, logger *logrus.Entry) (*http
 			if logger != nil {
 				logger.Debugf("Retrying registry request after %s (attempt %d/%d)", delay, attempt+1, maxAttempts)
 			}
+			if operation != "" {
+				metrics.RegisterRegistryRetry(host)
+			}
 			time.Sleep(delay)
 		}
 
 		res, err := client.Do(req)
 		if err != nil {
 			lastErr = err
+			if operation != "" {
+				metrics.RegisterRegistryRequest(host, operation, "error")
+			}
 			continue
 		}
 
 		if !isTransientStatus(res.StatusCode) {
+			if operation != "" {
+				metrics.RegisterRegistryRequest(host, operation, "success")
+			}
 			return res, nil
 		}
 
@@ -57,6 +73,9 @@ func DoHTTP(client *http.Client, req *http.Request, logger *logrus.Entry) (*http
 		_, _ = io.Copy(io.Discard, res.Body)
 		_ = res.Body.Close()
 		lastErr = fmt.Errorf("registry returned %s", res.Status)
+		if operation != "" {
+			metrics.RegisterRegistryRequest(host, operation, "retried")
+		}
 	}
 	return nil, lastErr
 }

@@ -6,8 +6,11 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/openserbia/watchtower/pkg/metrics"
 )
 
 const tokenMissingMsg = "api token is empty or has not been set. exiting"
@@ -46,14 +49,14 @@ func (api *API) RequireToken(fn http.HandlerFunc) http.HandlerFunc {
 func (api *API) RegisterFunc(path string, fn http.HandlerFunc) {
 	api.hasHandlers = true
 	api.hasAuthedHandlers = true
-	http.HandleFunc(path, api.RequireToken(fn))
+	http.HandleFunc(path, instrument(path, api.RequireToken(fn)))
 }
 
 // RegisterHandler is a wrapper around http.Handler that also sets the flag used to determine whether to launch the API
 func (api *API) RegisterHandler(path string, handler http.Handler) {
 	api.hasHandlers = true
 	api.hasAuthedHandlers = true
-	http.Handle(path, api.RequireToken(handler.ServeHTTP))
+	http.Handle(path, instrument(path, api.RequireToken(handler.ServeHTTP)))
 }
 
 // RegisterPublicHandler registers a handler without token auth. Used for the
@@ -64,7 +67,42 @@ func (api *API) RegisterHandler(path string, handler http.Handler) {
 // firewall) are expected to provide the real access boundary.
 func (api *API) RegisterPublicHandler(path string, handler http.Handler) {
 	api.hasHandlers = true
-	http.Handle(path, handler)
+	http.Handle(path, instrument(path, handler.ServeHTTP))
+}
+
+// instrument wraps a handler so every request increments
+// watchtower_api_requests_total with the response status. Uses a thin
+// response-writer shim to capture the status after the handler has finished.
+func instrument(path string, next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		next(sw, r)
+		metrics.RegisterAPIRequest(path, strconv.Itoa(sw.status))
+	}
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status      int
+	wroteHeader bool
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	if !w.wroteHeader {
+		w.status = code
+		w.wroteHeader = true
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+// Write implicitly commits 200 if WriteHeader wasn't called — mirror that
+// into the captured status so /v1/metrics-style handlers (which rely on the
+// implicit 200) are counted correctly.
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if !w.wroteHeader {
+		w.wroteHeader = true
+	}
+	return w.ResponseWriter.Write(b)
 }
 
 // Start the API and serve over HTTP. Requires an API Token to be set.

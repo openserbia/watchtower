@@ -16,6 +16,7 @@ import (
 	sdkClient "github.com/docker/docker/client"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/openserbia/watchtower/pkg/metrics"
 	"github.com/openserbia/watchtower/pkg/registry"
 	"github.com/openserbia/watchtower/pkg/registry/digest"
 	t "github.com/openserbia/watchtower/pkg/types"
@@ -118,6 +119,7 @@ func (client dockerClient) ListContainers(fn t.Filter) ([]t.Container, error) {
 			Filters: filter,
 		})
 	if err != nil {
+		metrics.RegisterDockerAPIError("list")
 		return nil, err
 	}
 
@@ -164,6 +166,7 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 
 	containerInfo, err := client.api.ContainerInspect(bg, string(containerID))
 	if err != nil {
+		metrics.RegisterDockerAPIError("inspect")
 		return &Container{}, err
 	}
 
@@ -171,6 +174,7 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 	if found && netType == "container" {
 		parentContainer, err := client.api.ContainerInspect(bg, netContainerID)
 		if err != nil {
+			metrics.RegisterDockerAPIError("inspect")
 			log.WithFields(map[string]interface{}{
 				"container":         containerInfo.Name,
 				"error":             err,
@@ -184,6 +188,7 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 
 	imageInfo, err := client.api.ImageInspect(bg, containerInfo.Image)
 	if err != nil {
+		metrics.RegisterDockerAPIError("image_inspect")
 		// The image the container was created from may have been garbage-collected
 		// off disk (e.g. a previous --cleanup run after the tag was moved to a
 		// newer digest). Fall back to inspecting by the image reference the
@@ -191,9 +196,11 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 		// freshly-pulled digest — so updates can still proceed.
 		if ref := containerInfo.Config.Image; ref != "" && ref != containerInfo.Image && !strings.HasPrefix(ref, "sha256:") {
 			if fallbackInfo, fallbackErr := client.api.ImageInspect(bg, ref); fallbackErr == nil {
+				metrics.RegisterImageFallback()
 				log.Warnf("Image %s for container %s is missing locally; falling back to %q for config", containerInfo.Image, containerInfo.Name, ref)
 				return &Container{containerInfo: &containerInfo, imageInfo: &fallbackInfo}, nil
 			}
+			metrics.RegisterDockerAPIError("image_inspect")
 		}
 		log.Warnf("Failed to retrieve container image info: %v", err)
 		return &Container{containerInfo: &containerInfo, imageInfo: nil}, nil
@@ -219,6 +226,7 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 				log.Debugf("Container %s already gone before kill, nothing to stop.", shortID)
 				return nil
 			}
+			metrics.RegisterDockerAPIError("kill")
 			return err
 		}
 	}
@@ -236,6 +244,7 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 				log.Debugf("Container %s not found, skipping removal.", shortID)
 				return nil
 			}
+			metrics.RegisterDockerAPIError("remove")
 			return err
 		}
 	}
@@ -294,6 +303,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 
 	createdContainer, err := client.api.ContainerCreate(bg, config, hostConfig, simpleNetworkConfig, nil, name)
 	if err != nil {
+		metrics.RegisterDockerAPIError("create")
 		return "", err
 	}
 
@@ -301,6 +311,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 		for k := range simpleNetworkConfig.EndpointsConfig {
 			err = client.api.NetworkDisconnect(bg, k, createdContainer.ID, true)
 			if err != nil {
+				metrics.RegisterDockerAPIError("network_disconnect")
 				return "", err
 			}
 		}
@@ -308,6 +319,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 		for k, v := range networkConfig.EndpointsConfig {
 			err = client.api.NetworkConnect(bg, k, createdContainer.ID, v)
 			if err != nil {
+				metrics.RegisterDockerAPIError("network_connect")
 				return "", err
 			}
 		}
@@ -327,6 +339,7 @@ func (client dockerClient) doStartContainer(bg context.Context, c t.Container, c
 	log.Debugf("Starting container %s (%s)", name, t.ContainerID(creation.ID).ShortID())
 	err := client.api.ContainerStart(bg, creation.ID, container.StartOptions{})
 	if err != nil {
+		metrics.RegisterDockerAPIError("start")
 		return err
 	}
 	return nil
@@ -335,7 +348,11 @@ func (client dockerClient) doStartContainer(bg context.Context, c t.Container, c
 func (client dockerClient) RenameContainer(c t.Container, newName string) error {
 	bg := context.Background()
 	log.Debugf("Renaming container %s (%s) to %s", c.Name(), c.ID().ShortID(), newName)
-	return client.api.ContainerRename(bg, string(c.ID()), newName)
+	if err := client.api.ContainerRename(bg, string(c.ID()), newName); err != nil {
+		metrics.RegisterDockerAPIError("rename")
+		return err
+	}
+	return nil
 }
 
 func (client dockerClient) IsContainerStale(container t.Container, params t.UpdateParams) (stale bool, latestImage t.ImageID, err error) {
@@ -356,6 +373,7 @@ func (client dockerClient) HasNewImage(ctx context.Context, container t.Containe
 
 	newImageInfo, err := client.api.ImageInspect(ctx, imageName)
 	if err != nil {
+		metrics.RegisterDockerAPIError("image_inspect")
 		return false, currentImageID, err
 	}
 
@@ -414,6 +432,7 @@ func (client dockerClient) PullImage(ctx context.Context, container t.Container)
 
 	response, err := client.api.ImagePull(ctx, imageName, opts)
 	if err != nil {
+		metrics.RegisterDockerAPIError("image_pull")
 		log.Debugf("Error pulling image %s, %s", imageName, err)
 		return err
 	}
@@ -442,6 +461,9 @@ func (client dockerClient) RemoveImageByID(id t.ImageID) error {
 		// matches what we were trying to achieve.
 		log.Debugf("Image %s already removed, skipping.", id.ShortID())
 		return nil
+	}
+	if err != nil {
+		metrics.RegisterDockerAPIError("image_remove")
 	}
 
 	if log.IsLevelEnabled(log.DebugLevel) {
