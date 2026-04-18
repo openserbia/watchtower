@@ -93,6 +93,30 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"Warn about containers carrying no com.centurylinklabs.watchtower.enable label at all — silent exclusions that look identical to intentional opt-outs")
 
 	flags.StringSliceP(
+		"insecure-registry",
+		"",
+		regexp.MustCompile("[, ]+").Split(envString("WATCHTOWER_INSECURE_REGISTRY"), -1),
+		"Comma-separated list of registry hosts (\"host\" or \"host:port\") for which TLS certificate verification is skipped. Opt-in per host — default is strict verification.")
+
+	flags.StringP(
+		"registry-ca-bundle",
+		"",
+		envString("WATCHTOWER_REGISTRY_CA_BUNDLE"),
+		"Path to a PEM file containing additional trusted CA certificates. Extends the system trust store rather than replacing it.")
+
+	flags.BoolP(
+		"health-check-gated",
+		"",
+		envBool("WATCHTOWER_HEALTH_CHECK_GATED"),
+		"After creating the replacement container, wait until it reports healthy before considering the update successful. If it never becomes healthy (or is reported unhealthy), roll back to the previous image.")
+
+	flags.DurationP(
+		"health-check-timeout",
+		"",
+		envDuration("WATCHTOWER_HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
+		"Maximum time --health-check-gated will wait for the new container to report healthy before rolling back.")
+
+	flags.StringSliceP(
 		"disable-containers",
 		"x",
 		// Due to issue spf13/viper#380, can't use viper.GetStringSlice:
@@ -417,14 +441,19 @@ func envBool(key string) bool {
 	return viper.GetBool(key)
 }
 
-func envDuration(key string) time.Duration {
+func envDuration(key string, fallback ...time.Duration) time.Duration {
 	viper.MustBindEnv(key)
-	return viper.GetDuration(key)
+	v := viper.GetDuration(key)
+	if v == 0 && len(fallback) > 0 {
+		return fallback[0]
+	}
+	return v
 }
 
 const (
 	defaultStopTimeoutSeconds = 10
 	defaultSMTPPort           = 25
+	defaultHealthCheckTimeout = 60 * time.Second
 )
 
 // SetDefaults provides default values for environment variables

@@ -1,22 +1,26 @@
 package container
 
-import "strconv"
+import (
+	"strconv"
+	"time"
+)
 
 const (
-	watchtowerLabel        = "com.centurylinklabs.watchtower"
-	signalLabel            = "com.centurylinklabs.watchtower.stop-signal"
-	enableLabel            = "com.centurylinklabs.watchtower.enable"
-	monitorOnlyLabel       = "com.centurylinklabs.watchtower.monitor-only"
-	noPullLabel            = "com.centurylinklabs.watchtower.no-pull"
-	dependsOnLabel         = "com.centurylinklabs.watchtower.depends-on"
-	zodiacLabel            = "com.centurylinklabs.zodiac.original-image"
-	scope                  = "com.centurylinklabs.watchtower.scope"
-	preCheckLabel          = "com.centurylinklabs.watchtower.lifecycle.pre-check"
-	postCheckLabel         = "com.centurylinklabs.watchtower.lifecycle.post-check"
-	preUpdateLabel         = "com.centurylinklabs.watchtower.lifecycle.pre-update"
-	postUpdateLabel        = "com.centurylinklabs.watchtower.lifecycle.post-update"
-	preUpdateTimeoutLabel  = "com.centurylinklabs.watchtower.lifecycle.pre-update-timeout"
-	postUpdateTimeoutLabel = "com.centurylinklabs.watchtower.lifecycle.post-update-timeout"
+	watchtowerLabel         = "com.centurylinklabs.watchtower"
+	signalLabel             = "com.centurylinklabs.watchtower.stop-signal"
+	enableLabel             = "com.centurylinklabs.watchtower.enable"
+	monitorOnlyLabel        = "com.centurylinklabs.watchtower.monitor-only"
+	noPullLabel             = "com.centurylinklabs.watchtower.no-pull"
+	dependsOnLabel          = "com.centurylinklabs.watchtower.depends-on"
+	zodiacLabel             = "com.centurylinklabs.zodiac.original-image"
+	scope                   = "com.centurylinklabs.watchtower.scope"
+	preCheckLabel           = "com.centurylinklabs.watchtower.lifecycle.pre-check"
+	postCheckLabel          = "com.centurylinklabs.watchtower.lifecycle.post-check"
+	preUpdateLabel          = "com.centurylinklabs.watchtower.lifecycle.pre-update"
+	postUpdateLabel         = "com.centurylinklabs.watchtower.lifecycle.post-update"
+	preUpdateTimeoutLabel   = "com.centurylinklabs.watchtower.lifecycle.pre-update-timeout"
+	postUpdateTimeoutLabel  = "com.centurylinklabs.watchtower.lifecycle.post-update-timeout"
+	healthCheckTimeoutLabel = "com.centurylinklabs.watchtower.health-check-timeout"
 )
 
 // GetLifecyclePreCheckCommand returns the pre-check command set in the container metadata or an empty string
@@ -37,6 +41,22 @@ func (c Container) GetLifecyclePreUpdateCommand() string {
 // GetLifecyclePostUpdateCommand returns the post-update command set in the container metadata or an empty string
 func (c Container) GetLifecyclePostUpdateCommand() string {
 	return c.getLabelValueOrEmpty(postUpdateLabel)
+}
+
+// HealthCheckTimeout returns the per-container override for --health-check-gated
+// parsed from the com.centurylinklabs.watchtower.health-check-timeout label.
+// Second return is false when the label is absent or unparseable, so callers
+// can fall back to a computed-from-HEALTHCHECK default or the global flag.
+func (c Container) HealthCheckTimeout() (time.Duration, bool) {
+	raw, ok := c.getLabelValue(healthCheckTimeoutLabel)
+	if !ok || raw == "" {
+		return 0, false
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return 0, false
+	}
+	return d, true
 }
 
 // ContainsWatchtowerLabel takes a map of labels and values and tells

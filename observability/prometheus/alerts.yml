@@ -1,0 +1,92 @@
+# Prometheus alerting rules for Watchtower.
+#
+# Wire into a Prometheus rule_files entry:
+#   rule_files:
+#     - /etc/prometheus/watchtower-alerts.yml
+#
+# Assumes Watchtower is scraped as job "watchtower" with a single instance per
+# daemon; adjust the `job` label if you run multiple.
+groups:
+  - name: watchtower
+    rules:
+      - alert: WatchtowerScansStopped
+        expr: |
+          increase(watchtower_scans_total{job="watchtower"}[2h]) == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watchtower on {{ $labels.instance }} has not scanned in 2h"
+          description: |
+            The watchtower scheduler hasn't advanced `watchtower_scans_total` in
+            the last 2 hours. Either the poll interval is longer than the
+            alert window (check WATCHTOWER_POLL_INTERVAL) or the scheduler is
+            wedged.
+
+      - alert: WatchtowerAllScansSkipped
+        expr: |
+          (
+            increase(watchtower_scans_skipped{job="watchtower"}[30m])
+            /
+            (increase(watchtower_scans_total{job="watchtower"}[30m]) > 0)
+          ) >= 0.9
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watchtower on {{ $labels.instance }} is skipping most scans"
+          description: |
+            Over 90% of watchtower scans in the last 30m were skipped, which
+            usually means the HTTP API is triggering updates while another
+            scheduled run is still running. Check for stuck updates or shorten
+            the poll interval.
+
+      - alert: WatchtowerFailuresSustained
+        expr: |
+          watchtower_containers_failed{job="watchtower"} > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watchtower on {{ $labels.instance }} has containers stuck in failure"
+          description: |
+            `watchtower_containers_failed` has been non-zero for 30 minutes.
+            At least one container keeps failing to update — inspect the log
+            for the container name and reason. Common causes: registry
+            unreachable, pull-rate-limited, image missing required config.
+
+      - alert: WatchtowerRollbackTriggered
+        # One rollback is meaningful — a published image came up unhealthy and
+        # Watchtower reverted to the previous version. Typically indicates a
+        # broken release or a config drift between image and environment.
+        expr: |
+          increase(watchtower_rollbacks_total{job="watchtower"}[1h]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Watchtower on {{ $labels.instance }} rolled back an update"
+          description: |
+            A replacement container failed its health check and Watchtower
+            restored the previous image. Inspect the log for the container
+            name and the last-reported health status before the service owner
+            tries to ship the next version.
+
+      - alert: WatchtowerScansWithoutUpdates
+        # If every poll scans containers but never finds anything to update
+        # for a long window, either nothing is being released (fine) or the
+        # update path itself is silently broken. Paired with a stale-image-age
+        # alert at the daemon level this catches "wedged but not crashing".
+        expr: |
+          avg_over_time(watchtower_containers_scanned{job="watchtower"}[24h]) > 0
+          and
+          max_over_time(watchtower_containers_updated{job="watchtower"}[7d]) == 0
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "Watchtower on {{ $labels.instance }} has not updated anything in a week"
+          description: |
+            Containers are being scanned but nothing has been updated in the
+            last 7 days. If your stack pins digests this is expected; if you
+            use `:latest`, something is likely wrong with the update path
+            (auth flakes, pinned credentials, wedged container).

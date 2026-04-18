@@ -4,15 +4,13 @@ package digest
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
+	neturl "net/url"
 	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -20,20 +18,12 @@ import (
 	"github.com/openserbia/watchtower/pkg/registry/auth"
 	"github.com/openserbia/watchtower/pkg/registry/manifest"
 	"github.com/openserbia/watchtower/pkg/registry/retry"
+	"github.com/openserbia/watchtower/pkg/registry/transport"
 	"github.com/openserbia/watchtower/pkg/types"
 )
 
 // ContentDigestHeader is the key for the key-value pair containing the digest header
 const ContentDigestHeader = "Docker-Content-Digest"
-
-const (
-	dialerTimeout         = 30 * time.Second
-	dialerKeepAlive       = 30 * time.Second
-	idleConnMax           = 100
-	idleConnTimeout       = 90 * time.Second
-	tlsHandshakeTimeout   = 10 * time.Second
-	expectContinueTimeout = 1 * time.Second
-)
 
 // CompareDigest ...
 func CompareDigest(container types.Container, registryAuth string) (bool, error) {
@@ -90,20 +80,11 @@ func TransformAuth(registryAuth string) string {
 
 // GetDigest from registry using a HEAD request to prevent rate limiting
 func GetDigest(url, token string) (string, error) {
-	tr := &http.Transport{
-		Proxy: http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   dialerTimeout,
-			KeepAlive: dialerKeepAlive,
-		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          idleConnMax,
-		IdleConnTimeout:       idleConnTimeout,
-		TLSHandshakeTimeout:   tlsHandshakeTimeout,
-		ExpectContinueTimeout: expectContinueTimeout,
-		TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+	parsed, err := neturl.Parse(url)
+	if err != nil {
+		return "", fmt.Errorf("parse manifest URL %q: %w", url, err)
 	}
-	client := &http.Client{Transport: tr}
+	client := transport.Client(parsed.Host)
 
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodHead, url, nil)
 	req.Header.Set("User-Agent", meta.UserAgent)

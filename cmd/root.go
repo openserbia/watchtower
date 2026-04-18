@@ -25,25 +25,28 @@ import (
 	"github.com/openserbia/watchtower/pkg/filters"
 	"github.com/openserbia/watchtower/pkg/metrics"
 	"github.com/openserbia/watchtower/pkg/notifications"
+	"github.com/openserbia/watchtower/pkg/registry/transport"
 	t "github.com/openserbia/watchtower/pkg/types"
 )
 
 var (
-	client            container.Client
-	scheduleSpec      string
-	cleanup           bool
-	noRestart         bool
-	noPull            bool
-	monitorOnly       bool
-	enableLabel       bool
-	auditUnmanaged    bool
-	disableContainers []string
-	notifier          t.Notifier
-	timeout           time.Duration
-	lifecycleHooks    bool
-	rollingRestart    bool
-	scope             string
-	labelPrecedence   bool
+	client             container.Client
+	scheduleSpec       string
+	cleanup            bool
+	noRestart          bool
+	noPull             bool
+	monitorOnly        bool
+	enableLabel        bool
+	auditUnmanaged     bool
+	healthCheckGated   bool
+	healthCheckTimeout time.Duration
+	disableContainers  []string
+	notifier           t.Notifier
+	timeout            time.Duration
+	lifecycleHooks     bool
+	rollingRestart     bool
+	scope              string
+	labelPrecedence    bool
 )
 
 var rootCmd = NewRootCommand()
@@ -97,7 +100,15 @@ func PreRun(cmd *cobra.Command, _ []string) {
 
 	enableLabel, _ = f.GetBool("label-enable")
 	auditUnmanaged, _ = f.GetBool("audit-unmanaged")
+	healthCheckGated, _ = f.GetBool("health-check-gated")
+	healthCheckTimeout, _ = f.GetDuration("health-check-timeout")
 	disableContainers, _ = f.GetStringSlice("disable-containers")
+
+	insecureRegistries, _ := f.GetStringSlice("insecure-registry")
+	caBundle, _ := f.GetString("registry-ca-bundle")
+	if err := transport.Configure(insecureRegistries, caBundle); err != nil {
+		log.Fatalf("Failed to configure registry transport: %s", err)
+	}
 	lifecycleHooks, _ = f.GetBool("enable-lifecycle-hooks")
 	rollingRestart, _ = f.GetBool("rolling-restart")
 	scope, _ = f.GetString("scope")
@@ -370,15 +381,17 @@ func runUpdatesWithNotifications(filter t.Filter) *metrics.Metric {
 		}
 	}
 	updateParams := t.UpdateParams{
-		Filter:          filter,
-		Cleanup:         cleanup,
-		NoRestart:       noRestart,
-		Timeout:         timeout,
-		MonitorOnly:     monitorOnly,
-		LifecycleHooks:  lifecycleHooks,
-		RollingRestart:  rollingRestart,
-		LabelPrecedence: labelPrecedence,
-		NoPull:          noPull,
+		Filter:             filter,
+		Cleanup:            cleanup,
+		NoRestart:          noRestart,
+		Timeout:            timeout,
+		MonitorOnly:        monitorOnly,
+		LifecycleHooks:     lifecycleHooks,
+		RollingRestart:     rollingRestart,
+		LabelPrecedence:    labelPrecedence,
+		NoPull:             noPull,
+		HealthCheckGated:   healthCheckGated,
+		HealthCheckTimeout: healthCheckTimeout,
 	}
 	result, err := actions.Update(client, updateParams)
 	if err != nil {

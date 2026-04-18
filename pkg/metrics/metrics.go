@@ -22,12 +22,13 @@ type Metric struct {
 
 // Metrics is the handler processing all individual scan metrics
 type Metrics struct {
-	channel chan *Metric
-	scanned prometheus.Gauge
-	updated prometheus.Gauge
-	failed  prometheus.Gauge
-	total   prometheus.Counter
-	skipped prometheus.Counter
+	channel   chan *Metric
+	scanned   prometheus.Gauge
+	updated   prometheus.Gauge
+	failed    prometheus.Gauge
+	total     prometheus.Counter
+	skipped   prometheus.Counter
+	rollbacks prometheus.Counter
 }
 
 // NewMetric returns a Metric with the counts taken from the appropriate types.Report fields
@@ -77,6 +78,10 @@ func Default() *Metrics {
 			Name: "watchtower_scans_skipped",
 			Help: "Number of skipped scans since watchtower started",
 		}),
+		rollbacks: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "watchtower_rollbacks_total",
+			Help: "Number of update rollbacks triggered by --health-check-gated since watchtower started. Each increment means a replacement container was created but reverted because it did not become healthy.",
+		}),
 		channel: make(chan *Metric, metricChannelBuffer),
 	}
 
@@ -89,6 +94,13 @@ func Default() *Metrics {
 func RegisterScan(metric *Metric) {
 	metrics := Default()
 	metrics.Register(metric)
+}
+
+// RegisterRollback increments watchtower_rollbacks_total. Called by the health
+// gating flow when a replacement container was stopped and the previous image
+// was restored.
+func RegisterRollback() {
+	Default().rollbacks.Inc()
 }
 
 // HandleUpdate dequeue the metric channel and processes it

@@ -3,6 +3,7 @@ package types
 
 import (
 	"strings"
+	"time"
 
 	dc "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -62,6 +63,7 @@ type Container interface {
 	StopSignal() string
 	HasImageInfo() bool
 	ImageInfo() *image.InspectResponse
+	HealthCheckTimeout() (time.Duration, bool)
 	GetLifecyclePreCheckCommand() string
 	GetLifecyclePostCheckCommand() string
 	GetLifecyclePreUpdateCommand() string

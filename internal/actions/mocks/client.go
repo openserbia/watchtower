@@ -22,6 +22,15 @@ type TestData struct {
 	NameOfContainerToKeep   string
 	Containers              []t.Container
 	Staleness               map[string]bool
+	// HealthStatusByID lets tests return specific health states from
+	// GetContainer — used by --health-check-gated rollback tests.
+	HealthStatusByID  map[t.ContainerID]string
+	StartedContainers []t.Container
+	// NextStartContainerIDs, if non-empty, is consumed in order by
+	// StartContainer and returned instead of the container's own ID. Lets
+	// rollback tests distinguish the "new" container from the "rolled-back"
+	// one even though both come from the same underlying Container struct.
+	NextStartContainerIDs []t.ContainerID
 }
 
 // TriedToRemoveImage is a test helper function to check whether RemoveImageByID has been called
@@ -51,9 +60,18 @@ func (client MockClient) StopContainer(c t.Container, _ time.Duration) error {
 	return nil
 }
 
-// StartContainer is a mock method
-func (client MockClient) StartContainer(_ t.Container) (t.ContainerID, error) {
-	return "", nil
+// StartContainer is a mock method. Records each started container so tests
+// that exercise rollback can assert the old container came back, and returns
+// pre-seeded IDs from NextStartContainerIDs when set so "new" and "rolled-back"
+// containers can be addressed separately.
+func (client MockClient) StartContainer(c t.Container) (t.ContainerID, error) {
+	client.TestData.StartedContainers = append(client.TestData.StartedContainers, c)
+	if len(client.TestData.NextStartContainerIDs) > 0 {
+		id := client.TestData.NextStartContainerIDs[0]
+		client.TestData.NextStartContainerIDs = client.TestData.NextStartContainerIDs[1:]
+		return id, nil
+	}
+	return c.ID(), nil
 }
 
 // RenameContainer is a mock method
@@ -69,8 +87,13 @@ func (client MockClient) RemoveImageByID(id t.ImageID) error {
 	return nil
 }
 
-// GetContainer is a mock method
-func (client MockClient) GetContainer(_ t.ContainerID) (t.Container, error) {
+// GetContainer is a mock method. When HealthStatusByID is populated, returns a
+// container whose State.Health.Status reflects the configured value, so tests
+// can drive --health-check-gated rollback paths deterministically.
+func (client MockClient) GetContainer(id t.ContainerID) (t.Container, error) {
+	if status, ok := client.TestData.HealthStatusByID[id]; ok {
+		return ContainerWithHealthStatus(id, status), nil
+	}
 	return client.TestData.Containers[0], nil
 }
 

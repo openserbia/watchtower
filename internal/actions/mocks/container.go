@@ -142,3 +142,25 @@ func CreateMockContainerWithLinks(id, name, imageName string, created time.Time,
 		imageInfo,
 	)
 }
+
+// ContainerWithHealthStatus builds a mock container whose ContainerInfo carries
+// a State.Health.Status matching the provided string. Used by --health-check-gated
+// tests. Pass an empty string to simulate "no HEALTHCHECK defined".
+func ContainerWithHealthStatus(id wt.ContainerID, status string) wt.Container {
+	content := dockerContainer.InspectResponse{
+		ContainerJSONBase: &dockerContainer.ContainerJSONBase{
+			ID:    string(id),
+			Name:  string(id),
+			Image: "fake-image:latest",
+			State: &dockerContainer.State{Running: true},
+			HostConfig: &dockerContainer.HostConfig{
+				PortBindings: map[nat.Port][]nat.PortBinding{},
+			},
+		},
+		Config: &dockerContainer.Config{Image: "fake-image:latest", Labels: map[string]string{}},
+	}
+	if status != "" {
+		content.State.Health = &dockerContainer.Health{Status: status}
+	}
+	return container.NewContainer(&content, CreateMockImageInfo("fake-image:latest"))
+}

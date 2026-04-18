@@ -237,6 +237,74 @@ Environment Variable: WATCHTOWER_AUDIT_UNMANAGED
              Default: false
 ```
 
+## Insecure registries
+Skip TLS certificate verification for specific registry hosts. Opt-in per host — the default is strict
+verification (TLS 1.2+, system trust store). Accepts a comma-separated list of `host` or `host:port` entries
+that must match the registry's address verbatim. Use sparingly; prefer `--registry-ca-bundle` for registries
+with self-signed certs you trust.
+
+```text
+            Argument: --insecure-registry
+Environment Variable: WATCHTOWER_INSECURE_REGISTRY
+                Type: Comma-separated strings
+             Default: (empty)
+             Example: registry.lab.local,staging.internal:5000
+```
+
+## Registry CA bundle
+Extend the system trust store with additional CA certificates in PEM format — for registries presenting
+certs signed by a private CA. The file must contain at least one valid PEM certificate; system roots are
+preserved so public registries continue to work.
+
+```text
+            Argument: --registry-ca-bundle
+Environment Variable: WATCHTOWER_REGISTRY_CA_BUNDLE
+                Type: Path
+             Default: (empty)
+             Example: /etc/ssl/private-ca.pem
+```
+
+## Health-check gated updates
+After creating the replacement container, wait for it to report `healthy` before considering the update
+successful. If the container reports `unhealthy` or stays `starting` past the timeout, Watchtower stops it
+and recreates the old container from the previous image. Containers with no `HEALTHCHECK` are updated
+without gating and generate a warning so operators know the flag is effectively a no-op for them.
+
+```text
+            Argument: --health-check-gated
+Environment Variable: WATCHTOWER_HEALTH_CHECK_GATED
+                Type: Boolean
+             Default: false
+```
+
+## Health-check timeout
+Global fallback for how long `--health-check-gated` will wait for the replacement container to report
+healthy before rolling back. Durations accept Go format (`30s`, `2m`, `5m30s`).
+
+Watchtower picks the effective timeout for each container from the first match of:
+
+1. The container label `com.centurylinklabs.watchtower.health-check-timeout=<duration>` (operator override).
+2. A value derived from the container's own `HEALTHCHECK`: `start_period + retries × (interval + timeout)`.
+3. This flag.
+4. 60 seconds (hard fallback).
+
+```text
+            Argument: --health-check-timeout
+Environment Variable: WATCHTOWER_HEALTH_CHECK_TIMEOUT
+                Type: Duration
+             Default: 60s
+```
+
+### Rollback cooldown
+
+When `--health-check-gated` reverts a container, Watchtower skips that container's updates for one hour
+after the rollback. This prevents a thrash loop when an image author keeps pushing broken versions — the
+stop/start cycle wouldn't fix anything and just generates log noise. The cooldown is in-memory; restarting
+the Watchtower daemon clears it.
+
+The Prometheus counter `watchtower_rollbacks_total` tracks every rollback; pair with the shipped
+`WatchtowerRollbackTriggered` alert in `observability/prometheus/alerts.yml` to get paged when this happens.
+
 ## Filter by disable label
 __Do not__ Monitor and update containers that have `com.centurylinklabs.watchtower.enable` label set to false and 
 no `--label-enable` argument is passed. Note that only one or the other (targeting by enable label) can be 

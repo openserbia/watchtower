@@ -2,16 +2,72 @@ package actions
 
 import (
 	"errors"
+	"fmt"
+	"sync"
+	"time"
 
+	dockercontainer "github.com/docker/docker/api/types/container"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/openserbia/watchtower/internal/util"
 	"github.com/openserbia/watchtower/pkg/container"
 	"github.com/openserbia/watchtower/pkg/lifecycle"
+	"github.com/openserbia/watchtower/pkg/metrics"
 	"github.com/openserbia/watchtower/pkg/session"
 	"github.com/openserbia/watchtower/pkg/sorter"
 	"github.com/openserbia/watchtower/pkg/types"
 )
+
+const (
+	// healthPollInterval is how often the gating loop re-checks a container's
+	// health status. Short enough that a 30-second startup doesn't get flagged
+	// late; long enough that we don't hammer the Docker socket.
+	healthPollInterval = 2 * time.Second
+	// defaultHealthCheckTimeout mirrors the default on --health-check-timeout
+	// in internal/flags. Only used as a belt-and-braces fallback if the param
+	// arrives zero (e.g. old callers constructing UpdateParams by hand).
+	defaultHealthCheckTimeout = 60 * time.Second
+	// rollbackCooldown is how long we skip a container after its last rollback.
+	// Prevents the poll → stop → start → fail → rollback loop from thrashing
+	// every poll when an image author has pushed a broken version.
+	rollbackCooldown = 1 * time.Hour
+)
+
+var (
+	failedRollbacksMu sync.Mutex
+	// failedRollbacks tracks the last rollback time per container name. An
+	// in-memory map is intentional: watchtower state resets on restart, and
+	// operators who want to force a retry after a restart are exactly who
+	// should benefit from that behavior.
+	failedRollbacks = make(map[string]time.Time)
+)
+
+// rollbackCooldownRemaining reports how long the container should continue to
+// be skipped for being on post-rollback cooldown. Zero = not on cooldown.
+func rollbackCooldownRemaining(containerName string) time.Duration {
+	failedRollbacksMu.Lock()
+	defer failedRollbacksMu.Unlock()
+	last, ok := failedRollbacks[containerName]
+	if !ok {
+		return 0
+	}
+	remaining := rollbackCooldown - time.Since(last)
+	if remaining <= 0 {
+		delete(failedRollbacks, containerName)
+		return 0
+	}
+	return remaining
+}
+
+func recordRollback(containerName string) {
+	failedRollbacksMu.Lock()
+	defer failedRollbacksMu.Unlock()
+	failedRollbacks[containerName] = time.Now()
+}
+
+// errNoHealthcheck signals that the container has no HEALTHCHECK defined and
+// health gating cannot be enforced. Treated as a warning, not a failure.
+var errNoHealthcheck = errors.New("container has no HEALTHCHECK; gating skipped")
 
 // Update looks at the running Docker containers to see if any of the images
 // used to start those containers have been updated. If a change is detected in
@@ -35,6 +91,15 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 
 	for i, targetContainer := range containers {
 		stale, newestImage, err := client.IsContainerStale(targetContainer, params)
+		if stale && err == nil {
+			if remaining := rollbackCooldownRemaining(targetContainer.Name()); remaining > 0 {
+				log.WithFields(log.Fields{
+					"container": targetContainer.Name(),
+					"retry_in":  remaining.Round(time.Second),
+				}).Info("Skipping update: container is on post-rollback cooldown")
+				stale = false
+			}
+		}
 		shouldUpdate := stale && !params.NoRestart && !targetContainer.IsMonitorOnly(params)
 		if err == nil && shouldUpdate {
 			// Check to make sure we have all the necessary information for recreating the container
@@ -227,13 +292,203 @@ func restartStaleContainer(container types.Container, client container.Client, p
 	}
 
 	if !params.NoRestart {
-		if newContainerID, err := client.StartContainer(container); err != nil {
+		newContainerID, err := client.StartContainer(container)
+		if err != nil {
 			log.Error(err)
 			return err
-		} else if container.ToRestart() && params.LifecycleHooks {
+		}
+		if container.ToRestart() && params.LifecycleHooks {
 			lifecycle.ExecutePostUpdateCommand(client, newContainerID)
 		}
+		if params.HealthCheckGated {
+			if err := gateOnHealthCheck(client, container, newContainerID, params); err != nil {
+				return err
+			}
+		}
 	}
+	return nil
+}
+
+// resolveHealthCheckTimeout picks the timeout to use for gating a specific
+// container. Priority, highest first:
+//  1. The container's own `com.centurylinklabs.watchtower.health-check-timeout`
+//     label (operator override).
+//  2. The timeout implied by its HEALTHCHECK config: start_period +
+//     retries * (interval + timeout). This believes the image author's own
+//     declaration of how long the container needs.
+//  3. The global --health-check-timeout flag (params.HealthCheckTimeout).
+//  4. defaultHealthCheckTimeout as a final belt-and-braces.
+func resolveHealthCheckTimeout(c types.Container, params types.UpdateParams) time.Duration {
+	if override, ok := c.HealthCheckTimeout(); ok {
+		return override
+	}
+	if derived := derivedHealthCheckTimeout(c); derived > 0 {
+		return derived
+	}
+	if params.HealthCheckTimeout > 0 {
+		return params.HealthCheckTimeout
+	}
+	return defaultHealthCheckTimeout
+}
+
+// derivedHealthCheckTimeout computes an upper bound from the HEALTHCHECK
+// config: start_period + retries * (interval + timeout). Returns 0 when
+// neither the container override nor the image default define a HEALTHCHECK,
+// or when the declared retries is zero.
+func derivedHealthCheckTimeout(c types.Container) time.Duration {
+	hc := containerOrImageHealthcheck(c)
+	if hc == nil {
+		return 0
+	}
+	retries := hc.Retries
+	if retries <= 0 {
+		// Docker default; see docker/docker/api/types/container.HealthConfig.
+		const dockerDefaultRetries = 3
+		retries = dockerDefaultRetries
+	}
+	interval := hc.Interval
+	if interval <= 0 {
+		const dockerDefaultInterval = 30 * time.Second
+		interval = dockerDefaultInterval
+	}
+	perCheck := hc.Timeout
+	if perCheck <= 0 {
+		const dockerDefaultPerCheck = 30 * time.Second
+		perCheck = dockerDefaultPerCheck
+	}
+	return hc.StartPeriod + time.Duration(retries)*(interval+perCheck)
+}
+
+func containerOrImageHealthcheck(c types.Container) *dockercontainer.HealthConfig {
+	if info := c.ContainerInfo(); info != nil && info.Config != nil && info.Config.Healthcheck != nil {
+		return info.Config.Healthcheck
+	}
+	if img := c.ImageInfo(); img != nil && img.Config != nil && img.Config.Healthcheck != nil {
+		// image.InspectResponse.Config.Healthcheck is the same HealthcheckConfig
+		// type under the hood; promote it to the container's shape so the
+		// caller only has to handle one struct.
+		return &dockercontainer.HealthConfig{
+			Test:        img.Config.Healthcheck.Test,
+			Interval:    img.Config.Healthcheck.Interval,
+			Timeout:     img.Config.Healthcheck.Timeout,
+			StartPeriod: img.Config.Healthcheck.StartPeriod,
+			Retries:     img.Config.Healthcheck.Retries,
+		}
+	}
+	return nil
+}
+
+// gateOnHealthCheck blocks until the replacement container is healthy or until
+// the resolved timeout elapses. On failure it stops the new container and
+// restarts the old one from the same config+image that were running before.
+func gateOnHealthCheck(client container.Client, old types.Container, newID types.ContainerID, params types.UpdateParams) error {
+	timeout := resolveHealthCheckTimeout(old, params)
+	err := waitForHealthy(client, newID, timeout)
+	if errors.Is(err, errNoHealthcheck) {
+		log.WithField("container", old.Name()).Warn(
+			"--health-check-gated is set but the container has no HEALTHCHECK — update proceeded without gating. Add a HEALTHCHECK or remove the flag to silence this warning.",
+		)
+		return nil
+	}
+	if err == nil {
+		log.WithField("container", old.Name()).Debug("Container reported healthy; update accepted")
+		return nil
+	}
+
+	log.WithError(err).WithField("container", old.Name()).Error(
+		"Health check failed after update — rolling back to the previous image",
+	)
+	if rbErr := rollback(client, old, newID, params); rbErr != nil {
+		return fmt.Errorf("rollback failed for %s: %w (original health-check error: %v)", old.Name(), rbErr, err)
+	}
+	return fmt.Errorf("update of %s rolled back after failed health check: %w", old.Name(), err)
+}
+
+// waitForHealthy polls the container's State.Health.Status every
+// healthPollInterval. Returns nil once the status is Healthy, errNoHealthcheck
+// if the container has no HEALTHCHECK, or an error on Unhealthy / timeout.
+func waitForHealthy(client container.Client, id types.ContainerID, timeout time.Duration) error {
+	if timeout <= 0 {
+		timeout = defaultHealthCheckTimeout
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		c, err := client.GetContainer(id)
+		if err != nil {
+			return fmt.Errorf("inspect new container: %w", err)
+		}
+		info := c.ContainerInfo()
+		if info == nil || info.State == nil || info.State.Health == nil {
+			return errNoHealthcheck
+		}
+		switch info.State.Health.Status {
+		case dockercontainer.Healthy:
+			return nil
+		case dockercontainer.Unhealthy:
+			return fmt.Errorf("container reported unhealthy after %s", time.Since(deadline.Add(-timeout)).Round(time.Second))
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out after %s waiting for healthy (last status: %s)", timeout, info.State.Health.Status)
+		}
+		time.Sleep(healthPollInterval)
+	}
+}
+
+// rollback tears down the unhealthy replacement and re-creates the previous
+// container from the preserved Container struct. The old image is still on
+// disk at this point because cleanup runs only after all restarts complete.
+// The rolled-back container is itself health-gated with a shorter timeout
+// (half the effective); if it too reports unhealthy, rollback logs at error
+// and leaves the container in place rather than tearing the service down.
+// Every rollback — successful or not — arms the cooldown so the same
+// container isn't stopped and started every poll while the image author
+// re-pushes broken versions.
+func rollback(client container.Client, old types.Container, newID types.ContainerID, params types.UpdateParams) error {
+	defer recordRollback(old.Name())
+
+	newSnapshot, err := client.GetContainer(newID)
+	if err != nil {
+		log.WithError(err).Warnf("rollback: could not inspect new container %s, attempting restart of old anyway", newID.ShortID())
+	} else if stopErr := client.StopContainer(newSnapshot, params.Timeout); stopErr != nil {
+		log.WithError(stopErr).Warnf("rollback: failed to stop unhealthy new container %s", newSnapshot.Name())
+	}
+
+	rolledBackID, err := client.StartContainer(old)
+	if err != nil {
+		return err
+	}
+	metrics.RegisterRollback()
+
+	// Gate the rolled-back container with a shorter timeout. If the previous
+	// image is also unhealthy (shared root cause: env changed, dependency
+	// dropped, volume corrupted) there's nothing automation can do; surface
+	// it loudly for the operator.
+	rollbackTimeout := resolveHealthCheckTimeout(old, params) / 2
+	if rollbackTimeout < healthPollInterval*2 {
+		rollbackTimeout = healthPollInterval * 2
+	}
+	if err := waitForHealthy(client, rolledBackID, rollbackTimeout); err != nil {
+		if errors.Is(err, errNoHealthcheck) {
+			log.WithFields(log.Fields{
+				"container":   old.Name(),
+				"rollback":    true,
+				"rollback_ok": true,
+			}).Warn("Rollback complete — previous image restored (no HEALTHCHECK to verify)")
+			return nil
+		}
+		log.WithError(err).WithFields(log.Fields{
+			"container":       old.Name(),
+			"rollback":        true,
+			"rollback_failed": true,
+		}).Error("Rollback restored the previous image but it is also unhealthy — manual intervention required")
+		return fmt.Errorf("rolled-back container %s is also unhealthy: %w", old.Name(), err)
+	}
+
+	log.WithFields(log.Fields{
+		"container":   old.Name(),
+		"rollback":    true,
+		"rollback_ok": true,
+	}).Warn("Rollback complete — previous image restored")
 	return nil
 }
 

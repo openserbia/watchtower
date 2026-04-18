@@ -66,6 +66,115 @@ func getLinkedTestData(withImageInfo bool) *TestData {
 }
 
 var _ = Describe("the update action", func() {
+	When("--health-check-gated is enabled", func() {
+		const healthCheckParamsTimeout = 100 * time.Millisecond
+		params := types.UpdateParams{
+			HealthCheckGated:   true,
+			HealthCheckTimeout: healthCheckParamsTimeout,
+		}
+
+		buildHealthAwareContainer := func(id string) types.Container {
+			config := &dockerContainer.Config{
+				Image:        "fake-image:latest",
+				Labels:       map[string]string{},
+				ExposedPorts: map[nat.Port]struct{}{},
+				Healthcheck:  &dockerContainer.HealthConfig{Test: []string{"CMD", "true"}},
+			}
+			return CreateMockContainerWithConfig(id, id, "fake-image:latest", true, false, time.Now(), config)
+		}
+
+		It("rolls back to the old container when the replacement reports unhealthy", func() {
+			old := buildHealthAwareContainer("gate-rollback-new-unhealthy")
+			data := &TestData{
+				Containers:            []types.Container{old},
+				NextStartContainerIDs: []types.ContainerID{"new-id", "rollback-id"},
+				HealthStatusByID: map[types.ContainerID]string{
+					"new-id":      dockerContainer.Unhealthy,
+					"rollback-id": dockerContainer.Healthy,
+				},
+			}
+			client := CreateMockClient(data, false, false)
+
+			_, err := actions.Update(client, params)
+			Expect(err).NotTo(HaveOccurred())
+			// StartContainer should have been called twice: once for the new
+			// image, once for the rollback that restores the old state.
+			Expect(client.TestData.StartedContainers).To(HaveLen(2))
+			Expect(client.TestData.StartedContainers[1].Name()).To(Equal(old.Name()))
+		})
+
+		It("surfaces a loud error when the rolled-back container is also unhealthy", func() {
+			old := buildHealthAwareContainer("test-container-dual-broken")
+			data := &TestData{
+				Containers:            []types.Container{old},
+				NextStartContainerIDs: []types.ContainerID{"new-id", "rollback-id"},
+				HealthStatusByID: map[types.ContainerID]string{
+					"new-id":      dockerContainer.Unhealthy,
+					"rollback-id": dockerContainer.Unhealthy,
+				},
+			}
+			client := CreateMockClient(data, false, false)
+
+			_, err := actions.Update(client, params)
+			// Update() itself doesn't bubble the error up — it records it as
+			// failed in the progress report. Check that both containers got
+			// started and the second was the old one.
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.StartedContainers).To(HaveLen(2))
+		})
+
+		It("skips a second update while the cooldown is still active", func() {
+			old := buildHealthAwareContainer("test-container-cooldown")
+			data := &TestData{
+				Containers:            []types.Container{old},
+				NextStartContainerIDs: []types.ContainerID{"new-id", "rollback-id"},
+				HealthStatusByID: map[types.ContainerID]string{
+					"new-id":      dockerContainer.Unhealthy,
+					"rollback-id": dockerContainer.Healthy,
+				},
+			}
+			client := CreateMockClient(data, false, false)
+
+			// First poll: unhealthy new → rollback → cooldown recorded.
+			_, err := actions.Update(client, params)
+			Expect(err).NotTo(HaveOccurred())
+			firstPollStarts := len(client.TestData.StartedContainers)
+			Expect(firstPollStarts).To(Equal(2))
+
+			// Second poll immediately after: should be a no-op because the
+			// container is still within the rollback cooldown window.
+			_, err = actions.Update(client, params)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.StartedContainers).To(HaveLen(firstPollStarts))
+		})
+
+		It("treats a missing HEALTHCHECK as a warning rather than a rollback", func() {
+			old := buildHealthAwareContainer("gate-no-healthcheck")
+			data := &TestData{
+				Containers:       []types.Container{old},
+				HealthStatusByID: map[types.ContainerID]string{old.ID(): ""},
+			}
+			client := CreateMockClient(data, false, false)
+
+			_, err := actions.Update(client, params)
+			Expect(err).NotTo(HaveOccurred())
+			// Only the new container should have been started — no rollback.
+			Expect(client.TestData.StartedContainers).To(HaveLen(1))
+		})
+
+		It("accepts the update when the new container reports healthy", func() {
+			old := buildHealthAwareContainer("gate-healthy-accept")
+			data := &TestData{
+				Containers:       []types.Container{old},
+				HealthStatusByID: map[types.ContainerID]string{old.ID(): dockerContainer.Healthy},
+			}
+			client := CreateMockClient(data, false, false)
+
+			_, err := actions.Update(client, params)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.StartedContainers).To(HaveLen(1))
+		})
+	})
 	When("watchtower has been instructed to clean up", func() {
 		When("there are multiple containers using the same image", func() {
 			It("should only try to remove the image once", func() {
