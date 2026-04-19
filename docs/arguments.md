@@ -251,6 +251,32 @@ Environment Variable: WATCHTOWER_UPDATE_ON_START
              Default: false
 ```
 
+## Watch Docker engine for local rebuilds
+Subscribe to the Docker engine event stream (`/events`, filtered to `type=image` with `action=tag|load`)
+and fire a targeted scan when a locally-built image is tagged or loaded. Bridges the gap between running
+`docker build -t foo:latest .` and the next scheduled poll — the rebuilt container restarts within a
+couple of seconds instead of waiting the full poll interval.
+
+The watcher complements the poll loop; it does not replace it. Registry-backed images are still caught
+by the normal scheduled scan, and the poll loop remains the safety net for events lost during a daemon
+restart or a network blip. Event-triggered scans share the same update lock as the scheduler and the
+HTTP API, so they can never run concurrently with another update; a trigger arriving while an update is
+in progress is dropped and picked up by the next scheduled scan.
+
+A burst of tag events (e.g. a multi-stage build that tags several layers) is debounced into a single
+scan. Images without a name attribute are ignored — the watcher triggers a scan targeted at the rebuilt
+image, and a nameless event would degenerate to a full scan, defeating the purpose.
+
+Opt-in: disabled by default. Emits `watchtower_events_received_total`, `watchtower_events_triggered_scans_total`,
+and `watchtower_events_reconnects_total` — see [metrics](metrics.md) for how to monitor the stream.
+
+```text
+            Argument: --watch-docker-events
+Environment Variable: WATCHTOWER_WATCH_DOCKER_EVENTS
+                Type: Boolean
+             Default: false
+```
+
 ## Audit unmanaged containers
 Warn when a container has no `com.centurylinklabs.watchtower.enable` label at all. Under `--label-enable`, such
 containers are silently skipped, which is indistinguishable from an intentional opt-out. Enabling this flag

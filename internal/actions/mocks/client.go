@@ -1,6 +1,7 @@
 package mocks
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -123,4 +124,20 @@ func (client MockClient) IsContainerStale(cont t.Container, _ t.UpdateParams) (b
 // WarnOnHeadPullFailed is always true for the mock client
 func (client MockClient) WarnOnHeadPullFailed(_ t.Container) bool {
 	return true
+}
+
+// WatchImageEvents is a mock method. Returns a closed message channel and an
+// error channel that emits ctx.Err() on cancel, satisfying the Client interface
+// without doing real work — tests that actually exercise event handling build
+// their own stream against internal/events directly.
+func (client MockClient) WatchImageEvents(ctx context.Context) (<-chan t.ImageEvent, <-chan error) {
+	msgs := make(chan t.ImageEvent)
+	errs := make(chan error, 1)
+	go func() {
+		defer close(msgs)
+		defer close(errs)
+		<-ctx.Done()
+		errs <- ctx.Err()
+	}()
+	return msgs, errs
 }

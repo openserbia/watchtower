@@ -2,6 +2,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"math"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/openserbia/watchtower/internal/actions"
+	"github.com/openserbia/watchtower/internal/events"
 	"github.com/openserbia/watchtower/internal/flags"
 	"github.com/openserbia/watchtower/internal/meta"
 	"github.com/openserbia/watchtower/pkg/api"
@@ -247,11 +249,44 @@ func Run(c *cobra.Command, names []string) {
 		log.Error("failed to start API", err)
 	}
 
+	eventCtx, cancelEvents := context.WithCancel(context.Background())
+	if watchEvents, _ := c.PersistentFlags().GetBool("watch-docker-events"); watchEvents {
+		startEventWatcher(eventCtx, filter, updateLock)
+	}
+
 	if err := runUpgradesOnSchedule(c, filter, filterDesc, updateLock); err != nil {
 		log.Error(err)
 	}
 
+	// os.Exit skips deferred calls, so tear the event watcher down explicitly
+	// after the scheduler returns (either from signal or error).
+	cancelEvents()
 	os.Exit(1)
+}
+
+// startEventWatcher launches a goroutine that streams image tag/load events
+// from the Docker engine and triggers a targeted scan for local-image rebuilds.
+// The watcher shares updateLock with the scheduler so event-driven and
+// scheduled scans never run concurrently. Event-driven scans are best-effort:
+// if the lock is held (an update is already running), we drop the trigger on
+// the floor — the poll loop is the safety net.
+func startEventWatcher(ctx context.Context, filter t.Filter, lock chan bool) {
+	watcher := events.NewWatcher(client, events.Config{
+		Trigger: func(imageNames []string) {
+			select {
+			case v := <-lock:
+				defer func() { lock <- v }()
+				targeted := filters.FilterByImage(imageNames, filter)
+				metric := runUpdatesWithNotifications(targeted)
+				metrics.RegisterScan(metric)
+			default:
+				log.WithField("images", imageNames).
+					Debug("Event-triggered scan skipped: another update is in progress")
+			}
+		},
+	})
+	go watcher.Run(ctx)
+	log.Info("Watching Docker engine for image tag/load events")
 }
 
 func logNotifyExit(err error) {

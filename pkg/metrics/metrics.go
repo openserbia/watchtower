@@ -46,6 +46,9 @@ type Metrics struct {
 	pollInterval     prometheus.Gauge
 	pollDuration     prometheus.Histogram
 	inCooldown       prometheus.Gauge
+	eventsReceived   *prometheus.CounterVec
+	eventsTriggered  prometheus.Counter
+	eventsReconnects prometheus.Counter
 }
 
 // NewMetric returns a Metric with the counts taken from the appropriate types.Report fields
@@ -160,6 +163,18 @@ func Default() *Metrics {
 			Name: "watchtower_containers_in_cooldown",
 			Help: "Containers with a pending --image-cooldown: a new digest has been detected but the supply-chain cooldown window hasn't elapsed yet. Non-zero is expected right after an image author pushes a new tag; a stuck non-zero value usually means the author keeps re-pushing.",
 		}),
+		eventsReceived: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "watchtower_events_received_total",
+			Help: "Docker engine events received by --watch-docker-events, labeled by action (tag, load). A flat-zero counter under load usually means the event stream reconnected silently — cross-check watchtower_events_reconnects_total.",
+		}, []string{"action"}),
+		eventsTriggered: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "watchtower_events_triggered_scans_total",
+			Help: "Targeted scans triggered by --watch-docker-events after the debounce window. Expected to be strictly lower than watchtower_events_received_total (bursty rebuilds collapse into a single scan).",
+		}),
+		eventsReconnects: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "watchtower_events_reconnects_total",
+			Help: "Times the Docker event stream was re-established after an error. Non-zero is normal (daemon restarts, network blips); a rapidly climbing counter means the stream is flapping.",
+		}),
 		channel: make(chan *Metric, metricChannelBuffer),
 	}
 
@@ -252,6 +267,20 @@ func ObservePollDuration(d time.Duration) {
 func SetContainersInCooldown(count int) {
 	Default().inCooldown.Set(float64(count))
 }
+
+// RegisterEventReceived increments watchtower_events_received_total for one
+// image event observed on the Docker engine event stream.
+func RegisterEventReceived(action string) {
+	Default().eventsReceived.WithLabelValues(action).Inc()
+}
+
+// RegisterEventTriggeredScan increments watchtower_events_triggered_scans_total
+// each time a debounced burst of events fires a targeted scan.
+func RegisterEventTriggeredScan() { Default().eventsTriggered.Inc() }
+
+// RegisterEventReconnect increments watchtower_events_reconnects_total after
+// the event stream has been re-established following a transient failure.
+func RegisterEventReconnect() { Default().eventsReconnects.Inc() }
 
 // HandleUpdate dequeue the metric channel and processes it
 func (metrics *Metrics) HandleUpdate(channel <-chan *Metric) {

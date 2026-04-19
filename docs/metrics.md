@@ -84,7 +84,17 @@ Published every scan regardless of whether any audit flag is set.
 
 | Metric | Labels | What it tells you |
 | --- | --- | --- |
-| `watchtower_docker_api_errors_total` | `operation` | Errors from the Docker engine API, broken down by operation. Operations: `list`, `inspect`, `kill`, `start`, `create`, `remove`, `image_inspect`, `image_remove`, `image_pull`, `rename`, `network_connect`, `network_disconnect`. Sustained non-zero rates usually mean socket permission issues or a daemon under load. |
+| `watchtower_docker_api_errors_total` | `operation` | Errors from the Docker engine API, broken down by operation. Operations: `list`, `inspect`, `kill`, `start`, `create`, `remove`, `image_inspect`, `image_remove`, `image_pull`, `rename`, `network_connect`, `network_disconnect`, `events`. Sustained non-zero rates usually mean socket permission issues or a daemon under load. |
+
+### Docker event stream ([`--watch-docker-events`](arguments.md#watch_docker_engine_for_local_rebuilds))
+
+Emitted only when the event watcher is enabled. Flat zeros on all three are expected if the flag is off.
+
+| Metric | Labels | What it tells you |
+| --- | --- | --- |
+| `watchtower_events_received_total` | `action` | Docker engine events consumed from the stream, split by action (`tag`, `load`). Correlates with local `docker build` / `docker load` activity. |
+| `watchtower_events_triggered_scans_total` | — | Debounced scans actually fired. Always ≤ `watchtower_events_received_total` — a multi-layer build collapses into a single scan. |
+| `watchtower_events_reconnects_total` | — | Times the event stream was re-established after a transport error. Occasional ticks are normal (daemon restart, network blip); a rapidly climbing counter means the stream is flapping — pair with `watchtower_docker_api_errors_total{operation="events"}` to see the cause. |
 
 ## Useful queries
 

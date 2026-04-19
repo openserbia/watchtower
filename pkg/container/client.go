@@ -36,6 +36,11 @@ type Client interface {
 	ExecuteCommand(containerID t.ContainerID, command string, timeout int) (skipUpdate bool, err error)
 	RemoveImageByID(t.ImageID) error
 	WarnOnHeadPullFailed(container t.Container) bool
+	// WatchImageEvents opens a stream of image-lifecycle events (tag, load)
+	// from the Docker daemon. The caller cancels the ctx to close the stream;
+	// the error channel emits once and is closed when the stream terminates.
+	// Reconnection is the caller's responsibility.
+	WatchImageEvents(ctx context.Context) (<-chan t.ImageEvent, <-chan error)
 }
 
 // NewClient returns a new Client instance which can be used to interact with

@@ -166,6 +166,12 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"Run an update scan immediately at startup in addition to the scheduled cadence. Useful for verifying a fresh deployment works without waiting for the first poll interval.")
 
 	flags.BoolP(
+		"watch-docker-events",
+		"",
+		envBool("WATCHTOWER_WATCH_DOCKER_EVENTS"),
+		"Subscribe to the Docker engine event stream and trigger a targeted scan when a local image is rebuilt (tag/load events). Complements the poll loop for operators running `docker build -t foo:latest .` against already-deployed locally-built containers — the scheduler still handles registry-backed images and serves as the safety net for missed events during reconnects.")
+
+	flags.BoolP(
 		"include-restarting",
 		"",
 		envBool("WATCHTOWER_INCLUDE_RESTARTING"),

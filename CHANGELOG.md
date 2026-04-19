@@ -12,6 +12,31 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [1.12.1] - 2026-04-19
 
+### Added
+- **`--watch-docker-events` — subscribe to the Docker engine event stream
+  for instant local-rebuild detection.** Watchtower now optionally opens
+  `GET /events?filters=type=image,event=tag|load` on the Docker socket and
+  fires a debounced, targeted scan as soon as a locally-built image is
+  tagged or loaded. Closes the "I just ran `docker build -t app:latest .`
+  and I'm still waiting for the next poll" gap by reacting in a couple of
+  seconds instead of the full `--interval`. Complements the scheduler
+  rather than replacing it: registry-backed images still flow through the
+  poll loop, which also serves as the safety net for events missed during
+  daemon restarts or network blips. Event-triggered scans share the same
+  update lock as the scheduler and the HTTP API, so there's no
+  possibility of concurrent updates. Bursty builds (multi-stage images
+  that tag several layers) are debounced into a single scan. Opt-in,
+  disabled by default. New package `internal/events`. New client method
+  `Container.WatchImageEvents(ctx)` on the `container.Client` interface,
+  and a new `types.ImageEvent` value type so the interface stays
+  decoupled from the Docker SDK. New metrics:
+  `watchtower_events_received_total{action}`,
+  `watchtower_events_triggered_scans_total`,
+  `watchtower_events_reconnects_total`. Natural follow-up to the
+  local-build pull-skip fix below — that one made local builds work
+  without `--no-pull`; this one makes them react without waiting for
+  the next poll.
+
 ### Fixed
 - **Locally-built images no longer trip the pull path.** Containers
   whose image was created via `docker build` or `docker load` (and
