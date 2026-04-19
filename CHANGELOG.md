@@ -10,6 +10,27 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-04-19
+
+### Fixed
+- **Self-update is now skipped when Watchtower has published host
+  ports.** The rename-and-respawn self-update pattern briefly overlaps
+  the old and new containers; if the current Watchtower publishes a
+  host port (e.g. `--http-api-*` on `:8080`), the new container's
+  create call would fail with "address already in use". Watchtower now
+  detects non-empty `HostConfig.PortBindings` on itself before the
+  rename and logs a loud warning instead of wedging the update path.
+  Operators with published ports must `stop + pull + recreate`
+  manually. New `Container.HasPublishedPorts()` method on the
+  `types.Container` interface. Inspired by
+  [nicholas-fedor/watchtower#1481](https://github.com/nicholas-fedor/watchtower/pull/1481).
+
+### Changed
+- **`/v1/metrics` no-auth startup log demoted from `warn` to `info`.**
+  The message is informational (operator opted in to public scraping) —
+  not a warning about anything going wrong. Stops muddying
+  `NOTIFICATIONS_LEVEL=warn` feeds.
+
 ## [1.12.0] - 2026-04-18
 
 ### Added
@@ -87,17 +108,6 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   `watchtower_last_scan_timestamp_seconds > 0` so the alert only fires
   once a scan has completed at least once and subsequent scans are
   overdue.
-- **Self-update is now skipped when Watchtower has published host
-  ports.** The rename-and-respawn self-update pattern briefly overlaps
-  the old and new containers; if the current Watchtower publishes a
-  host port (e.g. `--http-api-*` on `:8080`), the new container's
-  create call would fail with "address already in use". Watchtower now
-  detects non-empty `HostConfig.PortBindings` on itself before the
-  rename and logs a loud warning instead of wedging the update path.
-  Operators with published ports must `stop + pull + recreate`
-  manually. New `Container.HasPublishedPorts()` method on the
-  `types.Container` interface. Inspired by
-  [nicholas-fedor/watchtower#1481](https://github.com/nicholas-fedor/watchtower/pull/1481).
 
 ## [1.11.2] - 2026-04-18
 
@@ -346,7 +356,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged.
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.12.0...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.12.1...HEAD
+[1.12.1]: https://github.com/openserbia/watchtower/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/openserbia/watchtower/compare/v1.11.2...v1.12.0
 [1.11.2]: https://github.com/openserbia/watchtower/compare/v1.11.1...v1.11.2
 [1.11.1]: https://github.com/openserbia/watchtower/compare/v1.11.0...v1.11.1
