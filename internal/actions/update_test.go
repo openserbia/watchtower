@@ -701,3 +701,36 @@ var _ = Describe("image cooldown under --run-once", func() {
 		Expect(len(client.TestData.StartedContainers)).To(BeNumerically(">", 0))
 	})
 })
+
+var _ = Describe("watchtower self-update port conflict", func() {
+	It("skips self-update when the watchtower container has published host ports", func() {
+		// Build a container that looks like a published-port watchtower.
+		watchtowerWithPort := CreateMockContainerWithConfig(
+			"watchtower",
+			"/watchtower",
+			"openserbia/watchtower:latest",
+			true, false, time.Now(),
+			&dockerContainer.Config{
+				Image: "openserbia/watchtower:latest",
+				Labels: map[string]string{
+					"com.centurylinklabs.watchtower": "true",
+				},
+				ExposedPorts: map[nat.Port]struct{}{},
+			},
+		)
+		// Simulate `-p 8080:8080` on the container.
+		watchtowerWithPort.ContainerInfo().HostConfig.PortBindings = nat.PortMap{
+			"8080/tcp": []nat.PortBinding{{HostIP: "", HostPort: "8080"}},
+		}
+
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{watchtowerWithPort},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+		// Skip means StartContainer is never called → rename-and-respawn
+		// path didn't run.
+		Expect(client.TestData.StartedContainers).To(BeEmpty())
+	})
+})

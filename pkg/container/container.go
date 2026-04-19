@@ -228,6 +228,29 @@ func (c Container) IsWatchtower() bool {
 	return ContainsWatchtowerLabel(c.containerInfo.Config.Labels)
 }
 
+// HasPublishedPorts reports whether any of the container's ports are bound
+// to a host port. Used to detect the "watchtower publishes its /v1/* API on
+// the host and wants to self-update" case — Watchtower's rename-and-respawn
+// self-update pattern can't work when the old and new containers would both
+// try to bind the same host port during the brief overlap window.
+//
+// A binding "counts" as published when at least one entry in HostConfig
+// specifies a non-empty HostPort. Ports that are only EXPOSE'd (no host
+// binding) don't collide with anything, so they don't count.
+func (c Container) HasPublishedPorts() bool {
+	if c.containerInfo == nil || c.containerInfo.HostConfig == nil {
+		return false
+	}
+	for _, bindings := range c.containerInfo.HostConfig.PortBindings {
+		for _, b := range bindings {
+			if b.HostPort != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // PreUpdateTimeout checks whether a container has a specific timeout set
 // for how long the pre-update command is allowed to run. This value is expressed
 // either as an integer, in minutes, or as 0 which will allow the command/script

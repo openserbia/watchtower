@@ -397,6 +397,19 @@ func restartStaleContainer(container types.Container, client container.Client, p
 	// from re-using the same container name so we first rename the current
 	// instance so that the new one can adopt the old name.
 	if container.IsWatchtower() {
+		// The rename-and-respawn pattern briefly overlaps the old and new
+		// containers. That works fine for most setups, but if the current
+		// watchtower is publishing host ports (e.g. --http-api-* mapped to
+		// :8080 on the host), the new container's create call would fail
+		// with "address already in use". Skip the self-update with a loud
+		// warning so the operator knows to stop/pull/recreate manually
+		// instead of silently wedging the update path. See upstream#1481.
+		if container.HasPublishedPorts() {
+			log.WithField("container", container.Name()).Warn(
+				"Skipping self-update: watchtower has published host port bindings that would conflict with the rename-and-respawn pattern during the old/new overlap window. Update manually by stopping and recreating this container with the new image.",
+			)
+			return nil
+		}
 		if err := client.RenameContainer(container, util.RandName()); err != nil {
 			log.Error(err)
 			return nil

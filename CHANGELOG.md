@@ -87,6 +87,17 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   `watchtower_last_scan_timestamp_seconds > 0` so the alert only fires
   once a scan has completed at least once and subsequent scans are
   overdue.
+- **Self-update is now skipped when Watchtower has published host
+  ports.** The rename-and-respawn self-update pattern briefly overlaps
+  the old and new containers; if the current Watchtower publishes a
+  host port (e.g. `--http-api-*` on `:8080`), the new container's
+  create call would fail with "address already in use". Watchtower now
+  detects non-empty `HostConfig.PortBindings` on itself before the
+  rename and logs a loud warning instead of wedging the update path.
+  Operators with published ports must `stop + pull + recreate`
+  manually. New `Container.HasPublishedPorts()` method on the
+  `types.Container` interface. Inspired by
+  [nicholas-fedor/watchtower#1481](https://github.com/nicholas-fedor/watchtower/pull/1481).
 
 ## [1.11.2] - 2026-04-18
 

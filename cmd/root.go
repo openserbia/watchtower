@@ -230,7 +230,7 @@ func Run(c *cobra.Command, names []string) {
 		metricsHandler := apiMetrics.New()
 		metricsNoAuth, _ := c.PersistentFlags().GetBool("http-api-metrics-no-auth")
 		if metricsNoAuth {
-			log.Warn("Serving /v1/metrics without token auth — ensure :8080 is on a trusted network, bound to localhost, or fronted by a reverse proxy.")
+			log.Info("Serving /v1/metrics without token auth — ensure :8080 is on a trusted network, bound to localhost, or fronted by a reverse proxy.")
 			httpAPI.RegisterPublicHandler(metricsHandler.Path, metricsHandler.Handle)
 		} else {
 			httpAPI.RegisterHandler(metricsHandler.Path, metricsHandler.Handle)

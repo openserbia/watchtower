@@ -60,6 +60,7 @@ type Container interface {
 	Links() []string
 	ToRestart() bool
 	IsWatchtower() bool
+	HasPublishedPorts() bool
 	StopSignal() string
 	StopTimeout() time.Duration
 	HasImageInfo() bool
