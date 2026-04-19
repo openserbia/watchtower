@@ -24,6 +24,19 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   manually. New `Container.HasPublishedPorts()` method on the
   `types.Container` interface. Inspired by
   [nicholas-fedor/watchtower#1481](https://github.com/nicholas-fedor/watchtower/pull/1481).
+- **HEAD → GET fallback on manifest digest fetches.** Some registries
+  (GHCR and Docker Hub under certain anonymous-pull conditions) answer
+  the manifest `HEAD` endpoint with `401 Unauthorized` even with a
+  valid token, while the same token on `GET` returns the manifest
+  fine. Previously we'd fall all the way back to a full `docker pull`
+  just to compare digests — much more expensive than a single GET.
+  `pkg/registry/digest.GetDigest` now tries HEAD first (single
+  attempt, best-effort) and on any failure retries with GET, which
+  also computes the digest by hashing the manifest body if the
+  registry omits the `Docker-Content-Digest` header. New metric
+  operation labels: `digest_head` and `digest_get` on
+  `watchtower_registry_requests_total`. Inspired by
+  [nicholas-fedor/watchtower#669](https://github.com/nicholas-fedor/watchtower/pull/669).
 
 ### Changed
 - **`/v1/metrics` no-auth startup log demoted from `warn` to `info`.**

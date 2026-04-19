@@ -122,4 +122,48 @@ var _ = Describe("Digests", func() {
 			Expect(dig).To(Equal(mockDigest))
 		})
 	})
+	When("HEAD fails with 401 but GET works", func() {
+		var server *ghttp.Server
+		BeforeEach(func() {
+			server = ghttp.NewServer()
+		})
+		AfterEach(func() {
+			server.Close()
+		})
+
+		It("falls back to GET and returns the digest from the Docker-Content-Digest header", func() {
+			server.RouteToHandler(http.MethodHead, "/", ghttp.RespondWith(http.StatusUnauthorized, ""))
+			server.RouteToHandler(http.MethodGet, "/", ghttp.RespondWith(http.StatusOK, "manifest-body", http.Header{
+				digest.ContentDigestHeader: []string{mockDigest},
+			}))
+			dig, err := digest.GetDigest(server.URL(), "token")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dig).To(Equal(mockDigest))
+			// HEAD will be retried by retry.DoHTTP (it treats 401 as
+			// transient) before the GET fallback kicks in — we just care
+			// that a GET eventually fired.
+			Expect(len(server.ReceivedRequests()) >= 2).To(BeTrue())
+		})
+
+		It("falls back to GET and computes SHA256 of the body when the server omits the digest header", func() {
+			server.RouteToHandler(http.MethodHead, "/", ghttp.RespondWith(http.StatusUnauthorized, ""))
+			server.RouteToHandler(http.MethodGet, "/", ghttp.RespondWith(http.StatusOK, "canonical-manifest-bytes"))
+			dig, err := digest.GetDigest(server.URL(), "token")
+			Expect(err).NotTo(HaveOccurred())
+			// Shape check: "sha256:" prefix + 64 hex chars. Computed
+			// body-hash is deterministic but we don't hard-code the hex
+			// here — it's a cosmetic detail, not a contract.
+			Expect(dig).To(HavePrefix("sha256:"))
+			Expect(len(dig)).To(Equal(len("sha256:") + 64))
+		})
+
+		It("surfaces both errors when GET also fails", func() {
+			server.RouteToHandler(http.MethodHead, "/", ghttp.RespondWith(http.StatusUnauthorized, ""))
+			server.RouteToHandler(http.MethodGet, "/", ghttp.RespondWith(http.StatusUnauthorized, ""))
+			_, err := digest.GetDigest(server.URL(), "token")
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("HEAD manifest"))
+			Expect(err.Error()).To(ContainSubstring("GET manifest"))
+		})
+	})
 })

@@ -75,7 +75,7 @@ Published every scan regardless of whether any audit flag is set.
 
 | Metric | Labels | What it tells you |
 | --- | --- | --- |
-| `watchtower_registry_requests_total` | `host`, `operation`, `outcome` | Outbound requests to registries. Operations are `challenge`, `token`, `digest`; outcomes are `success`, `error`, `retried`. |
+| `watchtower_registry_requests_total` | `host`, `operation`, `outcome` | Outbound requests to registries. Operations are `challenge`, `token`, `digest_head`, `digest_get`; outcomes are `success`, `error`, `retried`. `digest_head` failures followed by `digest_get` successes are expected for registries that reject HEAD on manifests. |
 | `watchtower_registry_retries_total` | `host` | Bounded-backoff retry attempts. Zero is healthy; sustained non-zero means a flaky registry. |
 | `watchtower_auth_cache_hits_total` | — | Bearer-token cache hits. High rate means the in-memory cache is sparing the oauth endpoint. |
 | `watchtower_auth_cache_misses_total` | — | Cache misses — each miss triggers an oauth exchange. |
