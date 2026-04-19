@@ -13,6 +13,19 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 ## [1.12.1] - 2026-04-19
 
 ### Fixed
+- **Locally-built images no longer trip the pull path.** Containers
+  whose image was created via `docker build` or `docker load` (and
+  never pushed to a registry) have an empty `RepoDigests` — Watchtower
+  used to still try to pull them, hit a `No such image` error from the
+  daemon, and log `Unable to update container ... Proceeding to next.`
+  every poll. Now detected via a new `Container.ImageIsLocal()` check
+  and handled like `--no-pull`: the pull step is skipped, but
+  `HasNewImage` still picks up a rebuild (the tag's image ID changes),
+  so `docker build -t app:latest .` followed by a poll still triggers
+  the recreate. Makes the local-build workflow work out of the box
+  without setting `--no-pull` or the per-container
+  `com.centurylinklabs.watchtower.no-pull=true` label. Inspired by
+  [nicholas-fedor/watchtower#1514](https://github.com/nicholas-fedor/watchtower/pull/1514).
 - **Self-update is now skipped when Watchtower has published host
   ports.** The rename-and-respawn self-update pattern briefly overlaps
   the old and new containers; if the current Watchtower publishes a

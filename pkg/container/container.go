@@ -153,6 +153,26 @@ func (c Container) IsNoPull(params wt.UpdateParams) bool {
 	return c.getContainerOrGlobalBool(params.NoPull, noPullLabel, params.LabelPrecedence)
 }
 
+// ImageIsLocal reports whether the container's image lacks any registry
+// digest — i.e., it was built locally (`docker build`) or loaded from a
+// tarball (`docker load`) and never pulled from or pushed to a registry.
+//
+// Watchtower uses this as a signal to skip the registry roundtrip: there's
+// nothing to pull for a locally-built image, and attempting one only
+// produces a noisy "No such image: ..." error from the daemon every poll.
+// The locally-tagged image will still be picked up by HasNewImage when a
+// rebuild changes the tag's image ID, so `docker build -t app:latest .`
+// followed by a poll triggers the expected recreate.
+//
+// Returns false when image info isn't available — be conservative, let the
+// existing pull path handle it.
+func (c Container) ImageIsLocal() bool {
+	if c.imageInfo == nil {
+		return false
+	}
+	return len(c.imageInfo.RepoDigests) == 0
+}
+
 func (c Container) getContainerOrGlobalBool(globalVal bool, label string, contPrecedence bool) bool {
 	contVal, err := c.getBoolLabelValue(label)
 	if err != nil {

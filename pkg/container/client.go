@@ -367,10 +367,22 @@ func (client dockerClient) RenameContainer(c t.Container, newName string) error 
 func (client dockerClient) IsContainerStale(container t.Container, params t.UpdateParams) (stale bool, latestImage t.ImageID, err error) {
 	ctx := context.Background()
 
-	if container.IsNoPull(params) {
+	switch {
+	case container.IsNoPull(params):
 		log.Debugf("Skipping image pull.")
-	} else if err := client.PullImage(ctx, container); err != nil {
-		return false, container.SafeImageID(), err
+	case container.ImageIsLocal():
+		// Image has no RepoDigests — locally built via `docker build` or
+		// loaded via `docker load`, never came from a registry. Pulling is
+		// guaranteed to fail ("No such image") and only produces log
+		// noise. HasNewImage still works: rebuilds retag the image, the
+		// ID behind the tag changes, and the next poll picks up the
+		// difference. Out-of-the-box replacement for the older workaround
+		// of setting --no-pull or the per-container no-pull label.
+		log.Debugf("Skipping image pull for %s: no registry digest (locally built or loaded).", container.Name())
+	default:
+		if err := client.PullImage(ctx, container); err != nil {
+			return false, container.SafeImageID(), err
+		}
 	}
 
 	return client.HasNewImage(ctx, container)

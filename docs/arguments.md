@@ -409,6 +409,13 @@ Note that no-pull can also be specified on a per-container basis with the
 
 See [With label taking precedence over arguments](#with_label_taking_precedence_over_arguments) for behavior when both argument and label are set
 
+!!! tip "Locally-built images work without `--no-pull`"
+    If a container's image has no `RepoDigests` entry — typically because it was built with
+    `docker build` or loaded with `docker load` and never pushed to a registry — Watchtower auto-detects
+    the local-only state and skips the pull step for that container. Updates still trigger on rebuild
+    (the tag's image ID changes, which `HasNewImage` picks up). You only need `--no-pull` for images
+    that _do_ have a registry digest but you want Watchtower to ignore the registry anyway.
+
 ## Without sending a startup message
 Do not send a message after watchtower started. Otherwise there will be an info-level notification.
 

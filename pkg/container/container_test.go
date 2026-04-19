@@ -391,6 +391,32 @@ var _ = Describe("the container", func() {
 		})
 	})
 
+	Describe("ImageIsLocal", func() {
+		When("the image has no RepoDigests", func() {
+			It("reports true so Watchtower skips the pull", func() {
+				c := MockContainer(WithPortBindings())
+				c.ImageInfo().RepoDigests = nil
+				Expect(c.ImageIsLocal()).To(BeTrue())
+			})
+		})
+		When("the image has an empty RepoDigests slice", func() {
+			It("also reports true — matches Docker's representation of `docker load`-ed tars", func() {
+				c := MockContainer(WithPortBindings())
+				c.ImageInfo().RepoDigests = []string{}
+				Expect(c.ImageIsLocal()).To(BeTrue())
+			})
+		})
+		When("the image has a RepoDigests entry", func() {
+			It("reports false so the normal pull path runs", func() {
+				c := MockContainer(WithPortBindings())
+				c.ImageInfo().RepoDigests = []string{
+					"nginx@sha256:aa0afebbb3cfa473099a62c4b32e9b3fb73ed23f2a75a65ce1d4b4f55a5c2ef2",
+				}
+				Expect(c.ImageIsLocal()).To(BeFalse())
+			})
+		})
+	})
+
 	Describe("StopTimeout", func() {
 		When("the container has no explicit StopTimeout", func() {
 			It("returns zero so the caller can fall back to the global flag", func() {

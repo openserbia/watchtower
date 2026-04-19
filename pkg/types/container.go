@@ -64,6 +64,7 @@ type Container interface {
 	StopSignal() string
 	StopTimeout() time.Duration
 	HasImageInfo() bool
+	ImageIsLocal() bool
 	ImageInfo() *image.InspectResponse
 	HealthCheckTimeout() (time.Duration, bool)
 	ImageCooldown() (time.Duration, bool)
