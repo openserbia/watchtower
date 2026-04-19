@@ -1330,6 +1330,11 @@
 <td><strong>In-memory cache</strong> keyed on auth URL + credential, respects <code>expires_in</code></td>
 </tr>
 <tr>
+<td>Local rebuild detection</td>
+<td>Wait for next poll (up to <code>--interval</code>)</td>
+<td><strong><code>--watch-docker-events</code></strong> subscribes to the Docker event stream and fires a targeted scan within seconds of <code>docker build -t app:latest .</code></td>
+</tr>
+<tr>
 <td>Stuck on GC'd source image</td>
 <td>Container becomes un-updatable (upstream#1217)</td>
 <td><strong>Fallback to image-reference inspection</strong> — update proceeds cleanly</td>

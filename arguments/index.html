@@ -675,6 +675,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#watch_docker_engine_for_local_rebuilds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watch Docker engine for local rebuilds
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#audit_unmanaged_containers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1593,6 +1604,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#watch_docker_engine_for_local_rebuilds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watch Docker engine for local rebuilds
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#audit_unmanaged_containers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2136,6 +2158,26 @@ Environment Variable: WATCHTOWER_UPDATE_ON_START
                 Type: Boolean
              Default: false
 </code></pre></div>
+<h2 id="watch_docker_engine_for_local_rebuilds">Watch Docker engine for local rebuilds<a class="headerlink" href="#watch_docker_engine_for_local_rebuilds" title="Permanent link">&para;</a></h2>
+<p>Subscribe to the Docker engine event stream (<code>/events</code>, filtered to <code>type=image</code> with <code>action=tag|load</code>)
+and fire a targeted scan when a locally-built image is tagged or loaded. Bridges the gap between running
+<code>docker build -t foo:latest .</code> and the next scheduled poll — the rebuilt container restarts within a
+couple of seconds instead of waiting the full poll interval.</p>
+<p>The watcher complements the poll loop; it does not replace it. Registry-backed images are still caught
+by the normal scheduled scan, and the poll loop remains the safety net for events lost during a daemon
+restart or a network blip. Event-triggered scans share the same update lock as the scheduler and the
+HTTP API, so they can never run concurrently with another update; a trigger arriving while an update is
+in progress is dropped and picked up by the next scheduled scan.</p>
+<p>A burst of tag events (e.g. a multi-stage build that tags several layers) is debounced into a single
+scan. Images without a name attribute are ignored — the watcher triggers a scan targeted at the rebuilt
+image, and a nameless event would degenerate to a full scan, defeating the purpose.</p>
+<p>Opt-in: disabled by default. Emits <code>watchtower_events_received_total</code>, <code>watchtower_events_triggered_scans_total</code>,
+and <code>watchtower_events_reconnects_total</code> — see <a href="../metrics/">metrics</a> for how to monitor the stream.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --watch-docker-events
+Environment Variable: WATCHTOWER_WATCH_DOCKER_EVENTS
+                Type: Boolean
+             Default: false
+</code></pre></div>
 <h2 id="audit_unmanaged_containers">Audit unmanaged containers<a class="headerlink" href="#audit_unmanaged_containers" title="Permanent link">&para;</a></h2>
 <p>Warn when a container has no <code>com.centurylinklabs.watchtower.enable</code> label at all. Under <code>--label-enable</code>, such
 containers are silently skipped, which is indistinguishable from an intentional opt-out. Enabling this flag
@@ -2256,6 +2298,14 @@ Environment Variable: WATCHTOWER_NO_PULL
 <p>Note that no-pull can also be specified on a per-container basis with the
 <code>com.centurylinklabs.watchtower.no-pull</code> label set on those containers.</p>
 <p>See <a href="#with_label_taking_precedence_over_arguments">With label taking precedence over arguments</a> for behavior when both argument and label are set</p>
+<div class="admonition tip">
+<p class="admonition-title">Locally-built images work without <code>--no-pull</code></p>
+<p>If a container's image has no <code>RepoDigests</code> entry — typically because it was built with
+<code>docker build</code> or loaded with <code>docker load</code> and never pushed to a registry — Watchtower auto-detects
+the local-only state and skips the pull step for that container. Updates still trigger on rebuild
+(the tag's image ID changes, which <code>HasNewImage</code> picks up). You only need <code>--no-pull</code> for images
+that <em>do</em> have a registry digest but you want Watchtower to ignore the registry anyway.</p>
+</div>
 <h2 id="without_sending_a_startup_message">Without sending a startup message<a class="headerlink" href="#without_sending_a_startup_message" title="Permanent link">&para;</a></h2>
 <p>Do not send a message after watchtower started. Otherwise there will be an info-level notification.</p>
 <div class="highlight"><pre><span></span><code>            Argument: --no-startup-message

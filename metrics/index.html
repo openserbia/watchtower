@@ -859,6 +859,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#docker_event_stream_--watch-docker-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker event stream (--watch-docker-events)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1012,6 +1023,17 @@
     <span class="md-ellipsis">
       
         Docker daemon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker_event_stream_--watch-docker-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker event stream (--watch-docker-events)
       
     </span>
   </a>
@@ -1245,7 +1267,7 @@ change once per scan.</p>
 <tr>
 <td><code>watchtower_registry_requests_total</code></td>
 <td><code>host</code>, <code>operation</code>, <code>outcome</code></td>
-<td>Outbound requests to registries. Operations are <code>challenge</code>, <code>token</code>, <code>digest</code>; outcomes are <code>success</code>, <code>error</code>, <code>retried</code>.</td>
+<td>Outbound requests to registries. Operations are <code>challenge</code>, <code>token</code>, <code>digest_head</code>, <code>digest_get</code>; outcomes are <code>success</code>, <code>error</code>, <code>retried</code>. <code>digest_head</code> failures followed by <code>digest_get</code> successes are expected for registries that reject HEAD on manifests.</td>
 </tr>
 <tr>
 <td><code>watchtower_registry_retries_total</code></td>
@@ -1277,7 +1299,35 @@ change once per scan.</p>
 <tr>
 <td><code>watchtower_docker_api_errors_total</code></td>
 <td><code>operation</code></td>
-<td>Errors from the Docker engine API, broken down by operation. Operations: <code>list</code>, <code>inspect</code>, <code>kill</code>, <code>start</code>, <code>create</code>, <code>remove</code>, <code>image_inspect</code>, <code>image_remove</code>, <code>image_pull</code>, <code>rename</code>, <code>network_connect</code>, <code>network_disconnect</code>. Sustained non-zero rates usually mean socket permission issues or a daemon under load.</td>
+<td>Errors from the Docker engine API, broken down by operation. Operations: <code>list</code>, <code>inspect</code>, <code>kill</code>, <code>start</code>, <code>create</code>, <code>remove</code>, <code>image_inspect</code>, <code>image_remove</code>, <code>image_pull</code>, <code>rename</code>, <code>network_connect</code>, <code>network_disconnect</code>, <code>events</code>. Sustained non-zero rates usually mean socket permission issues or a daemon under load.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="docker_event_stream_--watch-docker-events">Docker event stream (<a href="../arguments/#watch_docker_engine_for_local_rebuilds"><code>--watch-docker-events</code></a>)<a class="headerlink" href="#docker_event_stream_--watch-docker-events" title="Permanent link">&para;</a></h3>
+<p>Emitted only when the event watcher is enabled. Flat zeros on all three are expected if the flag is off.</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Labels</th>
+<th>What it tells you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>watchtower_events_received_total</code></td>
+<td><code>action</code></td>
+<td>Docker engine events consumed from the stream, split by action (<code>tag</code>, <code>load</code>). Correlates with local <code>docker build</code> / <code>docker load</code> activity.</td>
+</tr>
+<tr>
+<td><code>watchtower_events_triggered_scans_total</code></td>
+<td>—</td>
+<td>Debounced scans actually fired. Always ≤ <code>watchtower_events_received_total</code> — a multi-layer build collapses into a single scan.</td>
+</tr>
+<tr>
+<td><code>watchtower_events_reconnects_total</code></td>
+<td>—</td>
+<td>Times the event stream was re-established after a transport error. Occasional ticks are normal (daemon restart, network blip); a rapidly climbing counter means the stream is flapping — pair with <code>watchtower_docker_api_errors_total{operation="events"}</code> to see the cause.</td>
 </tr>
 </tbody>
 </table>
