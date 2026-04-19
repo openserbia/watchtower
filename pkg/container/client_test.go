@@ -404,6 +404,120 @@ var _ = Describe("the client", func() {
 				Expect(result.ImageInfo()).To(BeNil())
 			})
 		})
+
+		When(`the daemon exposes an Identity field in the raw inspect response`, func() {
+			containerID := "identity-cont"
+			imageID := "sha256:1819191d2b49b6b6f21d3179cfcae0228390728031eccee76b9e21e7e65490c5"
+			newContainerInfo := func(id string) *container.InspectResponse {
+				return &container.InspectResponse{
+					ContainerJSONBase: &container.ContainerJSONBase{
+						ID:         id,
+						Image:      imageID,
+						Name:       "/" + id,
+						HostConfig: &container.HostConfig{},
+					},
+					Config: &container.Config{Image: "tg-antispam:latest"},
+				}
+			}
+
+			It(`decodes Build provenance so ImageIsLocal reports true`, func() {
+				rawBody := []byte(`{
+					"Id": "` + imageID + `",
+					"RepoTags": ["tg-antispam:latest"],
+					"RepoDigests": ["tg-antispam@sha256:1819191d2b49b6b6f21d3179cfcae0228390728031eccee76b9e21e7e65490c5"],
+					"Identity": {"Build": [{"Ref": "xtjrtadzig3i", "CreatedAt": "2026-04-19T20:28:03+02:00"}]}
+				}`)
+
+				mockServer.AppendHandlers(
+					mocks.GetContainerHandler(containerID, newContainerInfo(containerID)),
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", HaveSuffix("/images/%s/json", imageID)),
+						ghttp.RespondWith(http.StatusOK, rawBody, http.Header{"Content-Type": []string{"application/json"}}),
+					),
+				)
+
+				result, err := dockerClient{api: docker}.GetContainer(t.ContainerID(containerID))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.ImageInfo()).NotTo(BeNil())
+				Expect(result.(*Container).ImageIdentity()).NotTo(BeNil())
+				Expect(result.(*Container).ImageIdentity().Build).To(HaveLen(1))
+				Expect(result.(*Container).ImageIsLocal()).To(BeTrue())
+			})
+
+			It(`decodes Pull provenance so ImageIsLocal reports false even with a bare-name RepoDigest`, func() {
+				rawBody := []byte(`{
+					"Id": "` + imageID + `",
+					"RepoTags": ["postgres:18"],
+					"RepoDigests": ["postgres@sha256:52e6ffd11fddd081ae63880b635b2a61c14008c17fc98cdc7ce5472265516dd0"],
+					"Identity": {"Pull": [{"Repository": "docker.io/library/postgres"}]}
+				}`)
+
+				mockServer.AppendHandlers(
+					mocks.GetContainerHandler(containerID, newContainerInfo(containerID)),
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", HaveSuffix("/images/%s/json", imageID)),
+						ghttp.RespondWith(http.StatusOK, rawBody, http.Header{"Content-Type": []string{"application/json"}}),
+					),
+				)
+
+				result, err := dockerClient{api: docker}.GetContainer(t.ContainerID(containerID))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.(*Container).ImageIdentity()).NotTo(BeNil())
+				Expect(result.(*Container).ImageIdentity().Pull).To(HaveLen(1))
+				Expect(result.(*Container).ImageIsLocal()).To(BeFalse())
+			})
+
+			It(`leaves ImageIdentity nil when the daemon omits the field (classic image store)`, func() {
+				rawBody := []byte(`{
+					"Id": "` + imageID + `",
+					"RepoTags": ["legacy:latest"],
+					"RepoDigests": []
+				}`)
+
+				mockServer.AppendHandlers(
+					mocks.GetContainerHandler(containerID, newContainerInfo(containerID)),
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", HaveSuffix("/images/%s/json", imageID)),
+						ghttp.RespondWith(http.StatusOK, rawBody, http.Header{"Content-Type": []string{"application/json"}}),
+					),
+				)
+
+				result, err := dockerClient{api: docker}.GetContainer(t.ContainerID(containerID))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.(*Container).ImageIdentity()).To(BeNil())
+				// Falls through to the legacy empty-RepoDigests heuristic.
+				Expect(result.(*Container).ImageIsLocal()).To(BeTrue())
+			})
+		})
+	})
+
+	Describe(`decodeImageIdentity`, func() {
+		It(`returns nil on an empty payload`, func() {
+			Expect(decodeImageIdentity(nil)).To(BeNil())
+			Expect(decodeImageIdentity([]byte{})).To(BeNil())
+		})
+		It(`returns nil when the Identity field is absent`, func() {
+			Expect(decodeImageIdentity([]byte(`{"Id":"sha256:abc"}`))).To(BeNil())
+		})
+		It(`returns nil when the Identity field is present but empty`, func() {
+			Expect(decodeImageIdentity([]byte(`{"Identity":{}}`))).To(BeNil())
+			Expect(decodeImageIdentity([]byte(`{"Identity":{"Build":[],"Pull":[]}}`))).To(BeNil())
+		})
+		It(`returns nil on malformed JSON without panicking`, func() {
+			Expect(decodeImageIdentity([]byte(`{not json`))).To(BeNil())
+		})
+		It(`decodes a Build entry`, func() {
+			id := decodeImageIdentity([]byte(`{"Identity":{"Build":[{"Ref":"r","CreatedAt":"t"}]}}`))
+			Expect(id).NotTo(BeNil())
+			Expect(id.Build).To(HaveLen(1))
+			Expect(id.Build[0].Ref).To(Equal("r"))
+		})
+		It(`decodes a Pull entry`, func() {
+			id := decodeImageIdentity([]byte(`{"Identity":{"Pull":[{"Repository":"ghcr.io/example/app"}]}}`))
+			Expect(id).NotTo(BeNil())
+			Expect(id.Pull).To(HaveLen(1))
+			Expect(id.Pull[0].Repository).To(Equal("ghcr.io/example/app"))
+		})
 	})
 })
 

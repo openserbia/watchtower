@@ -392,26 +392,60 @@ var _ = Describe("the container", func() {
 	})
 
 	Describe("ImageIsLocal", func() {
-		When("the image has no RepoDigests", func() {
-			It("reports true so Watchtower skips the pull", func() {
+		When("the image has no RepoDigests and no Identity", func() {
+			It("reports true so Watchtower skips the pull (legacy docker-image-store path)", func() {
 				c := MockContainer(WithPortBindings())
 				c.ImageInfo().RepoDigests = nil
 				Expect(c.ImageIsLocal()).To(BeTrue())
 			})
 		})
-		When("the image has an empty RepoDigests slice", func() {
+		When("the image has an empty RepoDigests slice and no Identity", func() {
 			It("also reports true — matches Docker's representation of `docker load`-ed tars", func() {
 				c := MockContainer(WithPortBindings())
 				c.ImageInfo().RepoDigests = []string{}
 				Expect(c.ImageIsLocal()).To(BeTrue())
 			})
 		})
-		When("the image has a RepoDigests entry", func() {
+		When("the image has a RepoDigests entry and no Identity", func() {
 			It("reports false so the normal pull path runs", func() {
 				c := MockContainer(WithPortBindings())
 				c.ImageInfo().RepoDigests = []string{
 					"nginx@sha256:aa0afebbb3cfa473099a62c4b32e9b3fb73ed23f2a75a65ce1d4b4f55a5c2ef2",
 				}
+				Expect(c.ImageIsLocal()).To(BeFalse())
+			})
+		})
+		When("the containerd image store records a Build identity", func() {
+			It("reports true even with a bare-name RepoDigest synthesized by buildx", func() {
+				c := MockContainer(WithPortBindings())
+				c.ImageInfo().RepoDigests = []string{
+					"tg-antispam@sha256:1819191d2b49b6b6f21d3179cfcae0228390728031eccee76b9e21e7e65490c5",
+				}
+				c.SetImageIdentity(&ImageIdentity{
+					Build: []ImageBuildIdentity{{Ref: "xtjrtadzig3i4t3mcezuwude8", CreatedAt: "2026-04-19T20:28:03+02:00"}},
+				})
+				Expect(c.ImageIsLocal()).To(BeTrue())
+			})
+		})
+		When("the containerd image store records a Pull identity", func() {
+			It("reports false even though the bare-name RepoDigest looks like a local build", func() {
+				c := MockContainer(WithPortBindings())
+				c.ImageInfo().RepoDigests = []string{
+					"postgres@sha256:52e6ffd11fddd081ae63880b635b2a61c14008c17fc98cdc7ce5472265516dd0",
+				}
+				c.SetImageIdentity(&ImageIdentity{
+					Pull: []ImagePullIdentity{{Repository: "docker.io/library/postgres"}},
+				})
+				Expect(c.ImageIsLocal()).To(BeFalse())
+			})
+		})
+		When("an image records both Build and Pull identities (build-then-push)", func() {
+			It("reports false — the image exists in a registry so a pull is meaningful", func() {
+				c := MockContainer(WithPortBindings())
+				c.SetImageIdentity(&ImageIdentity{
+					Build: []ImageBuildIdentity{{Ref: "local-ref"}},
+					Pull:  []ImagePullIdentity{{Repository: "ghcr.io/example/app"}},
+				})
 				Expect(c.ImageIsLocal()).To(BeFalse())
 			})
 		})

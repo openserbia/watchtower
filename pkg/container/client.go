@@ -3,6 +3,7 @@ package container
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -191,7 +192,7 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 		}
 	}
 
-	imageInfo, err := client.api.ImageInspect(bg, containerInfo.Image)
+	imageInfo, identity, err := client.inspectImageWithIdentity(bg, containerInfo.Image)
 	if err != nil {
 		metrics.RegisterDockerAPIError("image_inspect")
 		// The image the container was created from may have been garbage-collected
@@ -200,10 +201,12 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 		// container was created with — usually a name:tag that now points at the
 		// freshly-pulled digest — so updates can still proceed.
 		if ref := containerInfo.Config.Image; ref != "" && ref != containerInfo.Image && !strings.HasPrefix(ref, "sha256:") {
-			if fallbackInfo, fallbackErr := client.api.ImageInspect(bg, ref); fallbackErr == nil {
+			if fallbackInfo, fallbackIdentity, fallbackErr := client.inspectImageWithIdentity(bg, ref); fallbackErr == nil {
 				metrics.RegisterImageFallback()
 				log.Warnf("Image %s for container %s is missing locally; falling back to %q for config", containerInfo.Image, containerInfo.Name, ref)
-				return &Container{containerInfo: &containerInfo, imageInfo: &fallbackInfo}, nil
+				c := &Container{containerInfo: &containerInfo, imageInfo: &fallbackInfo}
+				c.SetImageIdentity(fallbackIdentity)
+				return c, nil
 			}
 			metrics.RegisterDockerAPIError("image_inspect")
 		}
@@ -211,7 +214,47 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 		return &Container{containerInfo: &containerInfo, imageInfo: nil}, nil
 	}
 
-	return &Container{containerInfo: &containerInfo, imageInfo: &imageInfo}, nil
+	c := &Container{containerInfo: &containerInfo, imageInfo: &imageInfo}
+	c.SetImageIdentity(identity)
+	return c, nil
+}
+
+// inspectImageWithIdentity wraps ImageInspect with the raw-response option so
+// the Identity field (populated only by the containerd image store) can be
+// decoded separately. The vendored Docker SDK's typed InspectResponse omits
+// it, so we parse a narrow shim struct from the raw JSON. Returns a nil
+// *ImageIdentity when the field is absent or blank — callers treat that as
+// "signal unavailable" and fall back to the RepoDigests heuristic.
+func (client dockerClient) inspectImageWithIdentity(ctx context.Context, imageRef string) (image.InspectResponse, *ImageIdentity, error) {
+	var raw bytes.Buffer
+	info, err := client.api.ImageInspect(ctx, imageRef, sdkClient.ImageInspectWithRawResponse(&raw))
+	if err != nil {
+		return info, nil, err
+	}
+	return info, decodeImageIdentity(raw.Bytes()), nil
+}
+
+// decodeImageIdentity pulls the "Identity" object out of an /images/{id}/json
+// response body. Returns nil when the field is missing (older daemons), when
+// it is present but structurally empty, or when the body is not decodable —
+// the caller should then rely on the RepoDigests fallback.
+func decodeImageIdentity(raw []byte) *ImageIdentity {
+	if len(raw) == 0 {
+		return nil
+	}
+	var envelope struct {
+		Identity *ImageIdentity `json:"Identity,omitempty"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil
+	}
+	if envelope.Identity == nil {
+		return nil
+	}
+	if len(envelope.Identity.Build) == 0 && len(envelope.Identity.Pull) == 0 {
+		return nil
+	}
+	return envelope.Identity
 }
 
 func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) error {
@@ -376,14 +419,16 @@ func (client dockerClient) IsContainerStale(container t.Container, params t.Upda
 	case container.IsNoPull(params):
 		log.Debugf("Skipping image pull.")
 	case container.ImageIsLocal():
-		// Image has no RepoDigests — locally built via `docker build` or
-		// loaded via `docker load`, never came from a registry. Pulling is
-		// guaranteed to fail ("No such image") and only produces log
-		// noise. HasNewImage still works: rebuilds retag the image, the
+		// Image was produced by this daemon (`docker build` / `docker load`)
+		// and never came from a registry. Pulling is guaranteed to fail
+		// ("No such image" on the classic docker-image-store; "pull access
+		// denied" on the containerd image store, where local builds resolve
+		// to a bare-name reference that Docker Hub rejects) and only produces
+		// log noise. HasNewImage still works: rebuilds retag the image, the
 		// ID behind the tag changes, and the next poll picks up the
-		// difference. Out-of-the-box replacement for the older workaround
-		// of setting --no-pull or the per-container no-pull label.
-		log.Debugf("Skipping image pull for %s: no registry digest (locally built or loaded).", container.Name())
+		// difference. Out-of-the-box replacement for the older workaround of
+		// setting --no-pull or the per-container no-pull label.
+		log.Debugf("Skipping image pull for %s: locally built or loaded.", container.Name())
 	default:
 		if err := client.PullImage(ctx, container); err != nil {
 			return false, container.SafeImageID(), err

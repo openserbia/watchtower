@@ -10,6 +10,33 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+### Added
+- **`--version` flag on the root command.** `watchtower --version` now
+  prints the compile-time version (the same `internal/meta.Version`
+  value used in the HTTP `User-Agent`) without having to start the
+  daemon or `docker inspect` the image. Makes support triage and image
+  tag verification a one-liner.
+
+### Fixed
+- **Locally-built images on the containerd image store (Docker 25+).**
+  The v1.12.1 local-build detection relied on `RepoDigests` being
+  empty, which is only true on the classic docker-image-store path.
+  With the containerd-snapshotter image store (default on recent Docker
+  versions), `docker build -t app:latest .` synthesizes a
+  content-addressed repo digest — e.g. `app@sha256:...` — that is
+  structurally indistinguishable from a real Docker Hub pull like
+  `postgres@sha256:...`. The old heuristic couldn't fire, so Watchtower
+  attempted a registry pull for every local build and logged
+  `pull access denied for app, repository does not exist` once per poll.
+  Now `ImageIsLocal` prefers the daemon's per-image `Identity`
+  provenance record (populated by the containerd image store): a
+  `Build` entry with no `Pull` entry means skip the pull; a `Pull`
+  entry with any repository means try the pull even if a `Build` entry
+  also exists (build-then-push stays on the normal path). The old
+  empty-`RepoDigests` fallback still carries the classic image store,
+  so this is purely additive. Decoded from the raw inspect JSON via
+  the SDK's `ImageInspectWithRawResponse` option — no SDK bump needed.
+
 ## [1.12.1] - 2026-04-19
 
 ### Added

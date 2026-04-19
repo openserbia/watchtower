@@ -67,9 +67,10 @@ func NewRootCommand() *cobra.Command {
 	Watchtower automatically updates running Docker containers whenever a new image is released.
 	More information available at https://github.com/openserbia/watchtower/.
 	`,
-		Run:    Run,
-		PreRun: PreRun,
-		Args:   cobra.ArbitraryArgs,
+		Version: meta.Version,
+		Run:     Run,
+		PreRun:  PreRun,
+		Args:    cobra.ArbitraryArgs,
 	}
 }
 
