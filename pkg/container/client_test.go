@@ -159,6 +159,21 @@ var _ = Describe("the client", func() {
 				Expect(c.RemoveImageByID(t.ImageID(image))).To(Succeed())
 			})
 		})
+		When("the daemon reports the image is still in use by another container", func() {
+			It("defers silently instead of erroring so the alert doesn't churn on self-update or shared-base-image overlap", func() {
+				image := util.GenerateRandomSHA256()
+				mockServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("DELETE", HaveSuffix("/images/"+image)),
+						ghttp.RespondWithJSONEncoded(http.StatusConflict, struct{ Message string }{
+							Message: "conflict: unable to delete " + image[:12] + " (cannot be forced) - image is being used by running container abc123",
+						}),
+					),
+				)
+				c := dockerClient{api: docker}
+				Expect(c.RemoveImageByID(t.ImageID(image))).To(Succeed())
+			})
+		})
 	})
 	When("listing containers", func() {
 		When("no filter is provided", func() {

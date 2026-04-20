@@ -308,7 +308,7 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 
 	containerInfo, err := client.api.ContainerInspect(bg, string(containerID))
 	if err != nil {
-		metrics.RegisterDockerAPIError("inspect")
+		recordDaemonError("inspect", err, cerrdefs.IsNotFound)
 		return &Container{}, err
 	}
 
@@ -316,7 +316,7 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 	if found && netType == "container" {
 		parentContainer, err := client.api.ContainerInspect(bg, netContainerID)
 		if err != nil {
-			metrics.RegisterDockerAPIError("inspect")
+			recordDaemonError("inspect", err, cerrdefs.IsNotFound)
 			log.WithFields(map[string]interface{}{
 				"container":         containerInfo.Name,
 				"error":             err,
@@ -330,12 +330,14 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 
 	imageInfo, identity, err := client.inspectImageWithIdentity(bg, containerInfo.Image)
 	if err != nil {
-		metrics.RegisterDockerAPIError("image_inspect")
 		// The image the container was created from may have been garbage-collected
 		// off disk (e.g. a previous --cleanup run after the tag was moved to a
 		// newer digest). Fall back to inspecting by the image reference the
 		// container was created with — usually a name:tag that now points at the
-		// freshly-pulled digest — so updates can still proceed.
+		// freshly-pulled digest — so updates can still proceed. Only count the
+		// docker_api_errors metric on the final outcome so a recoverable GC
+		// doesn't churn the WatchtowerDockerAPIErrorsSustained alert, and
+		// NotFound responses never count (see recordDaemonInspectError).
 		if ref := containerInfo.Config.Image; ref != "" && ref != containerInfo.Image && !strings.HasPrefix(ref, "sha256:") {
 			if fallbackInfo, fallbackIdentity, fallbackErr := client.inspectImageWithIdentity(bg, ref); fallbackErr == nil {
 				metrics.RegisterImageFallback()
@@ -344,8 +346,8 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 				c.SetImageIdentity(fallbackIdentity)
 				return c, nil
 			}
-			metrics.RegisterDockerAPIError("image_inspect")
 		}
+		recordDaemonError("image_inspect", err, cerrdefs.IsNotFound)
 		log.Warnf("Failed to retrieve container image info: %v", err)
 		return &Container{containerInfo: &containerInfo, imageInfo: nil}, nil
 	}
@@ -353,6 +355,32 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 	c := &Container{containerInfo: &containerInfo, imageInfo: &imageInfo}
 	c.SetImageIdentity(identity)
 	return c, nil
+}
+
+// recordDaemonError increments docker_api_errors_total only when the error
+// signals a daemon-health problem. Expected-error classes passed via the
+// variadic predicates represent logical answers from the daemon — not
+// infrastructure failures — and counting them would churn
+// WatchtowerDockerAPIErrorsSustained with routine Compose recreations,
+// --cleanup retags, self-update overlaps, and shared-base-image races.
+// The alert's threat model is daemon *health* (socket permission drift,
+// overload, partial upgrade), not logical misses.
+//
+// Typical usage:
+//
+//	recordDaemonError("inspect", err, cerrdefs.IsNotFound)       // container vanished
+//	recordDaemonError("image_inspect", err, cerrdefs.IsNotFound) // image GC'd
+//	recordDaemonError("image_remove", err, cerrdefs.IsConflict)  // image still in use
+func recordDaemonError(operation string, err error, expected ...func(error) bool) {
+	if err == nil {
+		return
+	}
+	for _, isExpected := range expected {
+		if isExpected(err) {
+			return
+		}
+	}
+	metrics.RegisterDockerAPIError(operation)
 }
 
 // inspectImageWithIdentity wraps ImageInspect with the raw-response option so
@@ -755,9 +783,22 @@ func (client dockerClient) RemoveImageByID(id t.ImageID) error {
 		log.Debugf("Image %s already removed, skipping.", id.ShortID())
 		return nil
 	}
-	if err != nil {
-		metrics.RegisterDockerAPIError("image_remove")
+	if err != nil && cerrdefs.IsConflict(err) {
+		// Another container still references this image. Common causes:
+		// a shared base image in a Compose stack where the last referrer
+		// hasn't been recreated yet; a self-update where the old and new
+		// watchtower containers overlap for a window. The cleanupImages
+		// deferral logic (internal/actions/update.go) guards the typical
+		// cases against the scan view, but races with containers outside
+		// the scan view still land here. Next poll will retry naturally
+		// once the last referrer is gone or recreated — surface as debug
+		// rather than an error so strict NOTIFICATIONS_LEVEL=error feeds
+		// don't page on routine overlap, and don't count it as a daemon
+		// API failure.
+		log.WithField("image", id.ShortID()).Debugf("Image still in use, deferring removal: %v", err)
+		return nil
 	}
+	recordDaemonError("image_remove", err, cerrdefs.IsNotFound, cerrdefs.IsConflict)
 
 	if log.IsLevelEnabled(log.DebugLevel) {
 		deleted := strings.Builder{}

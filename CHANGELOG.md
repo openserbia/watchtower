@@ -47,6 +47,27 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   one was keeping `WatchtowerDockerAPIErrorsSustained` lit on hosts
   full of compose-managed local builds. Real pull failures (hostname-
   qualified refs, auth errors, 5xx) still increment as before.
+- **`docker_api_errors_total` no longer increments on clean logical
+  answers from the daemon.** Three more call sites were emitting the
+  metric for situations the scan deliberately recovers from:
+  `operation="inspect"` when a container vanishes mid-scan (the
+  `ListContainers` skip-on-NotFound path handles this, routine on
+  Compose recreations); `operation="image_inspect"` when the source
+  image was GC'd (the image-reference fallback handles it and has
+  its own `watchtower_image_fallback_total` counter — also fixed a
+  double-count where primary+fallback failure both incremented);
+  `operation="image_remove"` when the daemon reports the image is
+  still in use by another container (common on self-update old/new
+  overlap and shared-base-image races outside the scan view the
+  cleanupImages deferral can see — now debug-logged and returns nil
+  so the caller's error-log doesn't fire either, letting the next
+  poll retry naturally). Same threat-model argument as the
+  `image_pull` fix above: the alert tracks daemon *health* — socket
+  permission drift, overload, partial upgrade — not logical misses.
+  Introduced a `recordDaemonError` helper that accepts the
+  expected-error predicates per call site (`cerrdefs.IsNotFound` for
+  inspects; `cerrdefs.IsNotFound` + `cerrdefs.IsConflict` for image
+  removal). Real daemon errors (connection, 5xx, auth) still count.
 
 ### Docs
 - **`docs/arguments.md` corrected to reflect actual `--api-version`
