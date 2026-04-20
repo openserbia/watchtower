@@ -32,7 +32,13 @@ var _ = Describe("the client", func() {
 		mockServer = ghttp.NewServer()
 		docker, _ = cli.NewClientWithOpts(
 			cli.WithHost(mockServer.URL()),
-			cli.WithHTTPClient(mockServer.HTTPTestServer.Client()))
+			cli.WithHTTPClient(mockServer.HTTPTestServer.Client()),
+			// Pin to the API version NewClient opportunistically upgrades
+			// to in production so the Identity-decoding path exercised by
+			// the GetContainer tests below matches real daemon behavior.
+			// Tests that want to cover the pre-v1.53 short-circuit set
+			// their own version.
+			cli.WithVersion("1.54"))
 	})
 	AfterEach(func() {
 		mockServer.Close()
@@ -547,6 +553,39 @@ var _ = Describe("the client", func() {
 				Expect(result.(*Container).ImageIdentity()).To(BeNil())
 				// Falls through to the legacy empty-RepoDigests heuristic.
 				Expect(result.(*Container).ImageIsLocal()).To(BeTrue())
+			})
+
+			It(`short-circuits the Identity decode when the negotiated API is below v1.53`, func() {
+				// Older client: even if the daemon response happened to
+				// include Identity, we shouldn't waste an unmarshal on it.
+				legacyClient, _ := cli.NewClientWithOpts(
+					cli.WithHost(mockServer.URL()),
+					cli.WithHTTPClient(mockServer.HTTPTestServer.Client()),
+					cli.WithVersion("1.50"))
+
+				rawBody := []byte(`{
+					"Id": "` + imageID + `",
+					"RepoTags": ["tg-antispam:latest"],
+					"RepoDigests": ["tg-antispam@sha256:1819191d2b49b6b6f21d3179cfcae0228390728031eccee76b9e21e7e65490c5"],
+					"Identity": {"Build": [{"Ref": "ignored-on-old-api"}]}
+				}`)
+
+				mockServer.AppendHandlers(
+					mocks.GetContainerHandler(containerID, newContainerInfo(containerID)),
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", HaveSuffix("/images/%s/json", imageID)),
+						ghttp.RespondWith(http.StatusOK, rawBody, http.Header{"Content-Type": []string{"application/json"}}),
+					),
+				)
+
+				result, err := dockerClient{api: legacyClient}.GetContainer(t.ContainerID(containerID))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.(*Container).ImageIdentity()).To(BeNil())
+				// ImageIsLocal's Identity branch doesn't fire; the
+				// RepoDigests-based fallback says "has digest → not local",
+				// so the safeguard in IsContainerStale has to carry older
+				// daemons.
+				Expect(result.(*Container).ImageIsLocal()).To(BeFalse())
 			})
 		})
 	})

@@ -361,7 +361,17 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 // it, so we parse a narrow shim struct from the raw JSON. Returns a nil
 // *ImageIdentity when the field is absent or blank — callers treat that as
 // "signal unavailable" and fall back to the RepoDigests heuristic.
+//
+// Short-circuits when the negotiated API version is below the minimum that
+// exposes the field (v1.53). No point capturing the raw body or running a
+// second JSON unmarshal to look for something the daemon can't return at
+// that version — the RepoDigests fallback in ImageIsLocal and the
+// pull-error safeguard in IsContainerStale both fire without it.
 func (client dockerClient) inspectImageWithIdentity(ctx context.Context, imageRef string) (image.InspectResponse, *ImageIdentity, error) {
+	if versions.LessThan(client.api.ClientVersion(), minFeatureAPIVersion) {
+		info, err := client.api.ImageInspect(ctx, imageRef)
+		return info, nil, err
+	}
 	var raw bytes.Buffer
 	info, err := client.api.ImageInspect(ctx, imageRef, sdkClient.ImageInspectWithRawResponse(&raw))
 	if err != nil {
@@ -578,9 +588,13 @@ func (client dockerClient) IsContainerStale(container t.Container, params t.Upda
 				// and if Hub says no such repo, it's locally built.
 				// Hostname-qualified references never hit this path, so
 				// typos and broken private-registry creds still surface
-				// loudly instead of being silently masked.
+				// loudly instead of being silently masked. We deliberately
+				// skip the docker_api_errors counter here: a local build
+				// the daemon can't pull isn't an API failure, it's the
+				// daemon correctly reporting the state.
 				log.Debugf("Pull rejected for %s (%v); treating as locally built and falling back to HasNewImage", container.Name(), pullErr)
 			} else {
+				metrics.RegisterDockerAPIError("image_pull")
 				return false, container.SafeImageID(), pullErr
 			}
 		}
@@ -708,7 +722,10 @@ func (client dockerClient) PullImage(ctx context.Context, container t.Container)
 
 	response, err := client.api.ImagePull(ctx, imageName, opts)
 	if err != nil {
-		metrics.RegisterDockerAPIError("image_pull")
+		// Metric increment deferred to the caller: a bare-name-not-found
+		// that we recover from via the local-build safeguard shouldn't
+		// count as a Docker API error, because it isn't one — the daemon
+		// correctly reported a registry miss for an image it never had.
 		log.Debugf("Error pulling image %s, %s", imageName, err)
 		return err
 	}

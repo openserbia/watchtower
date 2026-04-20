@@ -36,6 +36,17 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   references (`ghcr.io/foo/bar`, `registry.local:5000/app`) never hit
   this path, so typos and broken private-registry credentials still
   surface loudly instead of being silently masked.
+- **`docker_api_errors_total{operation="image_pull"}` no longer
+  increments for safeguard-recovered local builds.** The metric was
+  being bumped inside `PullImage` before the caller had a chance to
+  decide whether the error was a real daemon problem or an expected
+  registry miss for a locally-built image. Moved the increment to the
+  callsite in `IsContainerStale`, gated on "not recovered by the
+  bare-name safeguard". A local build the daemon correctly reports as
+  absent from the registry isn't a Docker API failure — counting it as
+  one was keeping `WatchtowerDockerAPIErrorsSustained` lit on hosts
+  full of compose-managed local builds. Real pull failures (hostname-
+  qualified refs, auth errors, 5xx) still increment as before.
 
 ### Docs
 - **`docs/arguments.md` corrected to reflect actual `--api-version`
