@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/openserbia/watchtower/pkg/container"
 	t "github.com/openserbia/watchtower/pkg/types"
 )
 
@@ -32,6 +33,14 @@ type TestData struct {
 	// rollback tests distinguish the "new" container from the "rolled-back"
 	// one even though both come from the same underlying Container struct.
 	NextStartContainerIDs []t.ContainerID
+	// VanishedContainers names containers whose StopContainer call should
+	// return container.ErrContainerNotFound, simulating a Compose recreate
+	// that beat watchtower to the punch between the scan list and stop.
+	VanishedContainers map[string]bool
+	// StalenessErrors lets tests force IsContainerStale to return a specific
+	// error (e.g. container.ErrPinnedImage) for a named container, exercising
+	// the typed-error skip paths in actions.Update.
+	StalenessErrors map[string]error
 }
 
 // TriedToRemoveImage is a test helper function to check whether RemoveImageByID has been called
@@ -55,6 +64,9 @@ func (client MockClient) ListContainers(_ t.Filter) ([]t.Container, error) {
 
 // StopContainer is a mock method
 func (client MockClient) StopContainer(c t.Container, _ time.Duration) error {
+	if client.TestData.VanishedContainers[c.Name()] {
+		return container.ErrContainerNotFound
+	}
 	if c.Name() == client.TestData.NameOfContainerToKeep {
 		return errors.New("tried to stop the instance we want to keep")
 	}
@@ -114,6 +126,9 @@ func (client MockClient) ExecuteCommand(_ t.ContainerID, command string, _ int) 
 
 // IsContainerStale is true if not explicitly stated in TestData for the mock client
 func (client MockClient) IsContainerStale(cont t.Container, _ t.UpdateParams) (bool, t.ImageID, error) {
+	if err, ok := client.TestData.StalenessErrors[cont.Name()]; ok {
+		return false, cont.SafeImageID(), err
+	}
 	stale, found := client.TestData.Staleness[cont.Name()]
 	if !found {
 		stale = true

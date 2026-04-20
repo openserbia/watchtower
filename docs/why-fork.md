@@ -40,12 +40,15 @@ No config migration. No flag rename. No label rewrite.
 | --------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------- |
 | Health-check gating               | —                                    | **`--health-check-gated`** with auto-rollback; per-container label override; cooldown        |
 | Registry retry                    | None — single request, then bail     | **Bounded exp backoff** (3 tries, 500 ms → 4 s + jitter) on network / 5xx / 429 / oauth flake |
+| Docker daemon retry               | None — single request, then abort the scan | **Bounded exp backoff** on `ListContainers` for transient daemon errors (restart, socket blip, engine 5xx) |
 | Bearer-token auth                 | One exchange per image               | **In-memory cache** keyed on auth URL + credential, respects `expires_in`                   |
 | Local rebuild detection           | Wait for next poll (up to `--interval`) | **`--watch-docker-events`** subscribes to the Docker event stream and fires a targeted scan within seconds of `docker build -t app:latest .` |
 | Local builds on containerd image store | Noisy `pull access denied for app` on every poll (heuristic ignores containerd-snapshotter RepoDigest synthesis) | **Reads the daemon's per-image `Identity` provenance record** — `Build`-only means skip the pull; `Pull` entry means try it |
 | Stuck on GC'd source image        | Container becomes un-updatable (upstream#1217) | **Fallback to image-reference inspection** — update proceeds cleanly                     |
 | `--cleanup` after retag           | Deletes replacement image (upstream#966) | Targets the original image via `SourceImageID()`; `NotFound` treated as success          |
+| `--cleanup` vs. shared base image | Force-removes image even when another active container references it (next restart fails with `No such image`) | **Defers removal** when any non-recreated container in the scan still references the image |
 | Compose-deploy race               | Aborts the scan on container NotFound | Skipped container, scan continues                                                          |
+| Mid-scan container vanish (stop)  | Untyped error aborts the iteration; restart then collides with the Compose-created replacement | **Typed `ErrContainerNotFound`** — marked Skipped in the report, no restart attempt, scan continues |
 
 ### Security
 

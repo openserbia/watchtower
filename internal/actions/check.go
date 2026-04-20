@@ -4,6 +4,7 @@
 package actions
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -164,9 +165,14 @@ func cleanupExcessWatchtowers(containers []types.Container, client container.Cli
 
 	sort.Sort(sorter.ByCreated(containers))
 	allContainersExceptLast := containers[0 : len(containers)-1]
+	keep := containers[len(containers)-1]
 
 	for _, c := range allContainersExceptLast {
 		if err := client.StopContainer(c, stopTimeout); err != nil {
+			if errors.Is(err, container.ErrContainerNotFound) {
+				log.WithField("container", c.Name()).Debug("Excess watchtower vanished before stop — skipping")
+				continue
+			}
 			// logging the original here as we're just returning a count
 			log.WithError(err).Error("Could not stop a previous watchtower instance.")
 			stopErrors++
@@ -174,6 +180,13 @@ func cleanupExcessWatchtowers(containers []types.Container, client container.Cli
 		}
 
 		if cleanup {
+			// Skip if the kept watchtower runs the same image — force-removing
+			// it now would yank the image out from under the surviving
+			// instance and break its next restart.
+			if c.SourceImageID() == keep.SourceImageID() || c.SourceImageID() == keep.SafeImageID() {
+				log.WithField("image", c.SourceImageID().ShortID()).Debug("Skipping image cleanup: still in use by the kept watchtower instance")
+				continue
+			}
 			if err := client.RemoveImageByID(c.SourceImageID()); err != nil {
 				log.WithError(err).Warning("Could not cleanup watchtower images, possibly because of other watchtowers instances in other scopes.")
 			}

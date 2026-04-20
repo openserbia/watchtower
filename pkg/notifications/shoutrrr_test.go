@@ -263,6 +263,49 @@ Turns out everything is on fire
 		})
 	})
 
+	When("NOTIFICATIONS_LEVEL gates report-mode output", func() {
+		newN := func(level logrus.Level) *shoutrrrTypeNotifier {
+			return &shoutrrrTypeNotifier{logLevel: level}
+		}
+
+		It("fires when at or below info threshold regardless of report content", func() {
+			n := newN(logrus.InfoLevel)
+			report := mocks.CreateMockProgressReport(s.FreshState)
+			Expect(n.hasNotifiableContent(nil, report)).To(BeTrue())
+		})
+
+		It("suppresses at warn threshold when only fresh/updated in report", func() {
+			n := newN(logrus.WarnLevel)
+			report := mocks.CreateMockProgressReport(s.UpdatedState, s.FreshState)
+			Expect(n.hasNotifiableContent(nil, report)).To(BeFalse())
+		})
+
+		It("fires at warn threshold when a container failed", func() {
+			n := newN(logrus.WarnLevel)
+			report := mocks.CreateMockProgressReport(s.FailedState, s.UpdatedState)
+			Expect(n.hasNotifiableContent(nil, report)).To(BeTrue())
+		})
+
+		It("fires at warn threshold when a container was skipped with an error", func() {
+			n := newN(logrus.WarnLevel)
+			// CreateMockProgressReport's SkippedState path attaches a non-empty
+			// error, which should trigger a notification at warn+.
+			report := mocks.CreateMockProgressReport(s.SkippedState)
+			Expect(n.hasNotifiableContent(nil, report)).To(BeTrue())
+		})
+
+		It("fires whenever there are level-appropriate entries", func() {
+			n := newN(logrus.WarnLevel)
+			entries := []*logrus.Entry{{Level: logrus.WarnLevel, Message: "warn!"}}
+			Expect(n.hasNotifiableContent(entries, nil)).To(BeTrue())
+		})
+
+		It("does not fire in streaming mode with no entries", func() {
+			n := newN(logrus.WarnLevel)
+			Expect(n.hasNotifiableContent(nil, nil)).To(BeFalse())
+		})
+	})
+
 	When("batching notifications", func() {
 		When("no messages are queued", func() {
 			It("should not send any notification", func() {

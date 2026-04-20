@@ -65,10 +65,13 @@ var _ = Describe("the client", func() {
 	})
 	When("pulling the latest image", func() {
 		When("the image consist of a pinned hash", func() {
-			It("should gracefully fail with a useful message", func() {
+			It("should gracefully fail with the typed ErrPinnedImage sentinel", func() {
 				c := dockerClient{}
 				pinnedContainer := MockContainer(WithImageName("sha256:fa5269854a5e615e51a72b17ad3fd1e01268f278a6684c8ed3c5f0cdce3f230b"))
 				err := c.PullImage(context.Background(), pinnedContainer)
+				Expect(err).To(MatchError(ErrPinnedImage))
+				// Message preserved verbatim from the pre-typed-error wording so
+				// existing notification templates and operator log greps keep working.
 				Expect(err).To(MatchError(`container uses a pinned image, and cannot be updated by watchtower`))
 			})
 		})
@@ -91,7 +94,7 @@ var _ = Describe("the client", func() {
 			})
 		})
 		When("the container does not exist after stopping", func() {
-			It("should not cause an error", func() {
+			It("should signal mid-scan disappearance via ErrContainerNotFound", func() {
 				ctr := MockContainer(WithContainerState(container.State{Running: true}))
 
 				cid := ctr.ContainerInfo().ID
@@ -101,7 +104,21 @@ var _ = Describe("the client", func() {
 					mocks.RemoveContainerHandler(cid, mocks.Missing),
 				)
 
-				Expect(dockerClient{api: docker}.StopContainer(ctr, time.Minute)).To(Succeed())
+				err := dockerClient{api: docker}.StopContainer(ctr, time.Minute)
+				Expect(err).To(MatchError(ErrContainerNotFound))
+			})
+		})
+		When("the container is already gone before we try to kill it", func() {
+			It("should signal mid-scan disappearance via ErrContainerNotFound", func() {
+				ctr := MockContainer(WithContainerState(container.State{Running: true}))
+
+				cid := ctr.ContainerInfo().ID
+				mockServer.AppendHandlers(
+					mocks.KillContainerHandler(cid, mocks.Missing),
+				)
+
+				err := dockerClient{api: docker}.StopContainer(ctr, time.Minute)
+				Expect(err).To(MatchError(ErrContainerNotFound))
 			})
 		})
 	})
@@ -225,6 +242,47 @@ var _ = Describe("the client", func() {
 				containers, err := client.ListContainers(filters.NoFilter)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(containers).To(HaveLen(1))
+			})
+		})
+		When(`the Docker daemon returns a transient error`, func() {
+			var origBase, origMax time.Duration
+			BeforeEach(func() {
+				// Shrink backoff so the 3-attempt test doesn't cost seconds.
+				origBase, origMax = listBackoffBase, listBackoffMax
+				listBackoffBase = time.Millisecond
+				listBackoffMax = 2 * time.Millisecond
+			})
+			AfterEach(func() {
+				listBackoffBase, listBackoffMax = origBase, origMax
+			})
+			It(`retries and succeeds when the second attempt returns cleanly`, func() {
+				mockServer.AppendHandlers(ghttp.RespondWith(http.StatusServiceUnavailable, `{"message":"daemon restarting"}`))
+				mockServer.AppendHandlers(mocks.ListContainersHandler("running"))
+				mockServer.AppendHandlers(mocks.GetContainerHandlers(&mocks.Watchtower, &mocks.Running)...)
+
+				client := dockerClient{api: docker, ClientOptions: ClientOptions{}}
+				containers, err := client.ListContainers(filters.NoFilter)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(containers).To(HaveLen(2))
+			})
+			It(`surfaces the error after exhausting all attempts`, func() {
+				mockServer.AppendHandlers(ghttp.RespondWith(http.StatusServiceUnavailable, `{"message":"daemon restarting"}`))
+				mockServer.AppendHandlers(ghttp.RespondWith(http.StatusServiceUnavailable, `{"message":"daemon restarting"}`))
+				mockServer.AppendHandlers(ghttp.RespondWith(http.StatusServiceUnavailable, `{"message":"daemon restarting"}`))
+
+				client := dockerClient{api: docker, ClientOptions: ClientOptions{}}
+				_, err := client.ListContainers(filters.NoFilter)
+				Expect(err).To(HaveOccurred())
+			})
+			It(`does not retry on 400 InvalidArgument`, func() {
+				// Single handler only — retrying would cause the test to fail
+				// because ghttp.Server panics when more handlers are consumed
+				// than registered.
+				mockServer.AppendHandlers(ghttp.RespondWith(http.StatusBadRequest, `{"message":"invalid filter"}`))
+
+				client := dockerClient{api: docker, ClientOptions: ClientOptions{}}
+				_, err := client.ListContainers(filters.NoFilter)
+				Expect(err).To(HaveOccurred())
 			})
 		})
 		When(`a container uses container network mode`, func() {

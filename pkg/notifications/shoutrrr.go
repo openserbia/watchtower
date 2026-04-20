@@ -148,6 +148,14 @@ func (n *shoutrrrTypeNotifier) buildMessage(data Data) (string, error) {
 }
 
 func (n *shoutrrrTypeNotifier) sendEntries(entries []*log.Entry, report t.Report) {
+	if !n.hasNotifiableContent(entries, report) {
+		// NOTIFICATIONS_LEVEL threshold is above the severity of anything in
+		// this batch. Suppress so strict thresholds aren't bypassed by the
+		// report template always firing a summary.
+		LocalLog.Debug("Notification suppressed — nothing at or above NOTIFICATIONS_LEVEL")
+		return
+	}
+
 	msg, err := n.buildMessage(Data{n.data, entries, report})
 
 	if msg == "" {
@@ -162,6 +170,44 @@ func (n *shoutrrrTypeNotifier) sendEntries(entries []*log.Entry, report t.Report
 		return
 	}
 	n.messages <- msg
+}
+
+// hasNotifiableContent gates report-mode notifications against the configured
+// NOTIFICATIONS_LEVEL. Without this, the report template fires a per-poll
+// summary regardless of log level — defeating the purpose of setting a strict
+// threshold. The rule:
+//
+//   - Any log entry reaching this point is already level-appropriate (the
+//     logrus hook's Levels() call filters below-threshold entries before they
+//     get appended). Non-empty entries always fire.
+//   - At info/debug/trace thresholds, fire for any report — verbose mode is
+//     verbose by definition.
+//   - At warn+ thresholds with no entries, fire only when the report carries
+//     something warn-equivalent: Failed containers or Skipped containers with
+//     an actual error attached. Fresh/Scanned/Updated are informational and
+//     should not bypass a strict threshold.
+//
+// Streaming (non-report) mode passes report == nil; the entries check above
+// handles it correctly.
+func (n *shoutrrrTypeNotifier) hasNotifiableContent(entries []*log.Entry, report t.Report) bool {
+	if len(entries) > 0 {
+		return true
+	}
+	if n.logLevel >= log.InfoLevel {
+		return true
+	}
+	if report == nil {
+		return false
+	}
+	if len(report.Failed()) > 0 {
+		return true
+	}
+	for _, c := range report.Skipped() {
+		if c.Error() != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // StartNotification begins queueing up messages to send them as a batch

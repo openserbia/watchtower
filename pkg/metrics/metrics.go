@@ -39,6 +39,7 @@ type Metrics struct {
 	registryRequests *prometheus.CounterVec
 	registryRetries  *prometheus.CounterVec
 	dockerAPIErrors  *prometheus.CounterVec
+	dockerAPIRetries *prometheus.CounterVec
 	authCacheHits    prometheus.Counter
 	authCacheMisses  prometheus.Counter
 	imageFallback    prometheus.Counter
@@ -133,6 +134,10 @@ func Default() *Metrics {
 		dockerAPIErrors: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "watchtower_docker_api_errors_total",
 			Help: "Errors returned by calls into the Docker engine API, labeled by logical operation (list|inspect|kill|start|create|remove|image_inspect|image_remove|image_pull|rename|exec).",
+		}, []string{"operation"}),
+		dockerAPIRetries: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "watchtower_docker_api_retries_total",
+			Help: "Bounded-backoff retry attempts against the Docker engine API, labeled by logical operation. Zero is healthy; sustained non-zero means the daemon is flaky or restarting during polls.",
 		}, []string{"operation"}),
 		authCacheHits: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "watchtower_auth_cache_hits_total",
@@ -230,6 +235,13 @@ func RegisterRegistryRetry(host string) {
 // a failed call into the Docker engine API.
 func RegisterDockerAPIError(operation string) {
 	Default().dockerAPIErrors.WithLabelValues(operation).Inc()
+}
+
+// RegisterDockerAPIRetry increments watchtower_docker_api_retries_total. One
+// increment per retry attempt (not per failed call), so a 3-attempt run that
+// eventually succeeds adds 2.
+func RegisterDockerAPIRetry(operation string) {
+	Default().dockerAPIRetries.WithLabelValues(operation).Inc()
 }
 
 // RegisterAuthCacheHit increments watchtower_auth_cache_hits_total. Hit rate

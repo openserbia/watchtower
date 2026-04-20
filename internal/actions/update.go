@@ -228,7 +228,16 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 		}
 
 		if err != nil {
-			log.Warnf("Unable to update container %q: %v. Proceeding to next.", targetContainer.Name(), err)
+			if errors.Is(err, container.ErrPinnedImage) {
+				// Pinned-tag containers are unupdatable by design — there's
+				// no moving target. Drop to debug so steady-state digest-pinned
+				// stacks don't spam every poll with a warn the operator can't
+				// act on. Surrounding handling stays identical: still skipped,
+				// still recorded in the progress report.
+				log.WithField("container", targetContainer.Name()).Debug("Skipping container with pinned image")
+			} else {
+				log.Warnf("Unable to update container %q: %v. Proceeding to next.", targetContainer.Name(), err)
+			}
 			stale = false
 			staleCheckFailed++
 			progress.AddSkipped(targetContainer, err)
@@ -258,11 +267,11 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 	}
 
 	if params.RollingRestart {
-		progress.UpdateFailed(performRollingRestart(containersToUpdate, client, params))
+		progress.UpdateFailed(performRollingRestart(containersToUpdate, containers, client, params, progress))
 	} else {
-		failedStop, stoppedImages := stopContainersInReversedOrder(containersToUpdate, client, params)
+		failedStop, stoppedImages := stopContainersInReversedOrder(containersToUpdate, client, params, progress)
 		progress.UpdateFailed(failedStop)
-		failedStart := restartContainersInSortedOrder(containersToUpdate, client, params, stoppedImages)
+		failedStart := restartContainersInSortedOrder(containersToUpdate, containers, client, params, stoppedImages)
 		progress.UpdateFailed(failedStart)
 	}
 
@@ -272,16 +281,24 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 	return progress.Report(), nil
 }
 
-func performRollingRestart(containers []types.Container, client container.Client, params types.UpdateParams) map[types.ContainerID]error {
+func performRollingRestart(containers, scanView []types.Container, client container.Client, params types.UpdateParams, progress *session.Progress) map[types.ContainerID]error {
 	cleanupImageIDs := make(map[types.ImageID]bool, len(containers))
 	failed := make(map[types.ContainerID]error, len(containers))
 
 	for i := len(containers) - 1; i >= 0; i-- {
 		if containers[i].ToRestart() {
 			err := stopStaleContainer(containers[i], client, params)
-			if err != nil {
+			switch {
+			case errors.Is(err, container.ErrContainerNotFound):
+				// Vanished mid-scan (typically a Compose recreate beat us to it).
+				// Don't restart, don't fail — drop from the run with a Skipped
+				// marker so the next scan can pick up whatever's there now.
+				if progress != nil {
+					progress.MarkSkipped(containers[i].ID(), err)
+				}
+			case err != nil:
 				failed[containers[i].ID()] = err
-			} else {
+			default:
 				if err := restartStaleContainer(containers[i], client, params); err != nil {
 					failed[containers[i].ID()] = err
 				} else if containers[i].IsStale() {
@@ -297,18 +314,28 @@ func performRollingRestart(containers []types.Container, client container.Client
 	}
 
 	if params.Cleanup {
-		cleanupImages(client, cleanupImageIDs)
+		cleanupImages(client, cleanupImageIDs, scanView)
 	}
 	return failed
 }
 
-func stopContainersInReversedOrder(containers []types.Container, client container.Client, params types.UpdateParams) (failed map[types.ContainerID]error, stopped map[types.ImageID]bool) {
+func stopContainersInReversedOrder(containers []types.Container, client container.Client, params types.UpdateParams, progress *session.Progress) (failed map[types.ContainerID]error, stopped map[types.ImageID]bool) {
 	failed = make(map[types.ContainerID]error, len(containers))
 	stopped = make(map[types.ImageID]bool, len(containers))
 	for i := len(containers) - 1; i >= 0; i-- {
-		if err := stopStaleContainer(containers[i], client, params); err != nil {
+		err := stopStaleContainer(containers[i], client, params)
+		switch {
+		case errors.Is(err, container.ErrContainerNotFound):
+			// Vanished mid-scan — most often a Compose recreate that beat us
+			// to the punch. Skip both the failure tally and the stopped-images
+			// set so the restart phase doesn't try to recreate a name that
+			// already belongs to whatever Compose put there.
+			if progress != nil {
+				progress.MarkSkipped(containers[i].ID(), err)
+			}
+		case err != nil:
 			failed[containers[i].ID()] = err
-		} else {
+		default:
 			// NOTE: If a container is restarted due to a dependency this might be empty
 			stopped[containers[i].SafeImageID()] = true
 		}
@@ -316,28 +343,33 @@ func stopContainersInReversedOrder(containers []types.Container, client containe
 	return failed, stopped
 }
 
-func stopStaleContainer(container types.Container, client container.Client, params types.UpdateParams) error {
-	if container.IsWatchtower() {
-		log.Debugf("This is the watchtower container %s", container.Name())
+func stopStaleContainer(cont types.Container, client container.Client, params types.UpdateParams) error {
+	if cont.IsWatchtower() {
+		log.Debugf("This is the watchtower container %s", cont.Name())
 		return nil
 	}
 
-	if !container.ToRestart() {
+	if !cont.ToRestart() {
 		return nil
 	}
 
 	// Perform an additional check here to prevent us from stopping a linked container we cannot restart
-	if container.IsLinkedToRestarting() {
-		if err := container.VerifyConfiguration(); err != nil {
+	if cont.IsLinkedToRestarting() {
+		if err := cont.VerifyConfiguration(); err != nil {
 			return err
 		}
 	}
 
 	if params.LifecycleHooks {
-		skipUpdate, err := lifecycle.ExecutePreUpdateCommand(client, container)
+		skipUpdate, err := lifecycle.ExecutePreUpdateCommand(client, cont)
 		if err != nil {
-			log.Error(err)
-			log.Info("Skipping container as the pre-update command failed")
+			// Pre-update command is a user-defined hook running inside the
+			// container; a failure reflects on the hook script, not on
+			// watchtower's orchestration. Warn is the right level — strict
+			// NOTIFICATIONS_LEVEL=error shouldn't fire for user-script flakes.
+			log.WithError(err).WithField("container", cont.Name()).Warn(
+				"Skipping container: pre-update lifecycle command failed",
+			)
 			return err
 		}
 		if skipUpdate {
@@ -346,14 +378,18 @@ func stopStaleContainer(container types.Container, client container.Client, para
 		}
 	}
 
-	if err := client.StopContainer(container, params.Timeout); err != nil {
+	if err := client.StopContainer(cont, params.Timeout); err != nil {
+		if errors.Is(err, container.ErrContainerNotFound) {
+			log.WithField("container", cont.Name()).Debug("Container vanished before stop — skipping")
+			return err
+		}
 		log.Error(err)
 		return err
 	}
 	return nil
 }
 
-func restartContainersInSortedOrder(containers []types.Container, client container.Client, params types.UpdateParams, stoppedImages map[types.ImageID]bool) map[types.ContainerID]error {
+func restartContainersInSortedOrder(containers, scanView []types.Container, client container.Client, params types.UpdateParams, stoppedImages map[types.ImageID]bool) map[types.ContainerID]error {
 	cleanupImageIDs := make(map[types.ImageID]bool, len(containers))
 	failed := make(map[types.ContainerID]error, len(containers))
 
@@ -374,21 +410,50 @@ func restartContainersInSortedOrder(containers []types.Container, client contain
 	}
 
 	if params.Cleanup {
-		cleanupImages(client, cleanupImageIDs)
+		cleanupImages(client, cleanupImageIDs, scanView)
 	}
 
 	return failed
 }
 
-func cleanupImages(client container.Client, imageIDs map[types.ImageID]bool) {
+// cleanupImages removes each image in imageIDs unless another container in
+// the scan view still references it. Force-removing an image that's pinning a
+// non-stale container would break that container's next restart, so defer
+// instead — the next scan will retry once the last referrer is gone or
+// recreated. The check only sees containers visible to the active filter
+// (label-enable/scope), so containers outside the scan are not protected
+// here; that's the cost of avoiding an extra unfiltered Docker API call.
+func cleanupImages(client container.Client, imageIDs map[types.ImageID]bool, scanView []types.Container) {
 	for imageID := range imageIDs {
 		if imageID == "" {
+			continue
+		}
+		if isImageStillReferenced(scanView, imageID) {
+			log.WithField("image", imageID.ShortID()).Debug("Image still referenced by an active container — deferring cleanup")
 			continue
 		}
 		if err := client.RemoveImageByID(imageID); err != nil {
 			log.Error(err)
 		}
 	}
+}
+
+// isImageStillReferenced reports whether any non-restart-marked container in
+// the scan view references imageID. Containers marked ToRestart() are
+// excluded because their old image reference is about to be replaced by the
+// new one — they're being recreated as we speak. Non-restart containers
+// (non-stale, monitor-only, dependency-skipped) DO count: their reference is
+// load-bearing.
+func isImageStillReferenced(scanView []types.Container, imageID types.ImageID) bool {
+	for _, c := range scanView {
+		if c.ToRestart() {
+			continue
+		}
+		if c.SourceImageID() == imageID || c.SafeImageID() == imageID {
+			return true
+		}
+	}
+	return false
 }
 
 func restartStaleContainer(container types.Container, client container.Client, params types.UpdateParams) error {

@@ -1,6 +1,8 @@
 package actions_test
 
 import (
+	"bytes"
+	"errors"
 	"time"
 
 	dockerContainer "github.com/docker/docker/api/types/container"
@@ -8,9 +10,11 @@ import (
 	"github.com/docker/go-connections/nat"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/sirupsen/logrus"
 
 	"github.com/openserbia/watchtower/internal/actions"
 	. "github.com/openserbia/watchtower/internal/actions/mocks"
+	packagecontainer "github.com/openserbia/watchtower/pkg/container"
 	"github.com/openserbia/watchtower/pkg/types"
 )
 
@@ -732,5 +736,254 @@ var _ = Describe("watchtower self-update port conflict", func() {
 		// Skip means StartContainer is never called → rename-and-respawn
 		// path didn't run.
 		Expect(client.TestData.StartedContainers).To(BeEmpty())
+	})
+})
+
+var _ = Describe("startup-failure log levels", func() {
+	var (
+		logBuf  *bytes.Buffer
+		origLev logrus.Level
+	)
+
+	BeforeEach(func() {
+		logBuf = &bytes.Buffer{}
+		logrus.SetOutput(logBuf)
+		origLev = logrus.GetLevel()
+		logrus.SetLevel(logrus.DebugLevel)
+	})
+
+	AfterEach(func() {
+		logrus.SetOutput(GinkgoWriter)
+		logrus.SetLevel(origLev)
+	})
+
+	It("logs a pre-update lifecycle command failure at warn, not error", func() {
+		// User-defined pre-update scripts are user-authored code; a failing
+		// script is the user's problem, not watchtower's orchestration. At
+		// strict NOTIFICATIONS_LEVEL=error the page should stay quiet here.
+		client := CreateMockClient(
+			&TestData{
+				Containers: []types.Container{
+					CreateMockContainerWithConfig(
+						"hook-failer", "hook-failer", "fake-image:latest",
+						true, false, time.Now(),
+						&dockerContainer.Config{
+							Labels: map[string]string{
+								"com.centurylinklabs.watchtower.lifecycle.pre-update-timeout": "190",
+								"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn1.sh",
+							},
+							ExposedPorts: map[nat.Port]struct{}{},
+						}),
+				},
+			},
+			false,
+			false,
+		)
+
+		_, err := actions.Update(client, types.UpdateParams{LifecycleHooks: true})
+		Expect(err).NotTo(HaveOccurred())
+
+		out := logBuf.String()
+		Expect(out).To(ContainSubstring(`level=warning`))
+		Expect(out).To(ContainSubstring("pre-update lifecycle command failed"))
+		Expect(out).To(ContainSubstring("hook-failer"))
+		// No error-level line for the hook failure specifically.
+		Expect(out).NotTo(MatchRegexp(`level=error[^\n]*pre-update`))
+	})
+})
+
+var _ = Describe("pinned-image containers", func() {
+	var (
+		logBuf  *bytes.Buffer
+		origLev logrus.Level
+	)
+
+	BeforeEach(func() {
+		logBuf = &bytes.Buffer{}
+		logrus.SetOutput(logBuf)
+		origLev = logrus.GetLevel()
+		logrus.SetLevel(logrus.DebugLevel)
+	})
+
+	AfterEach(func() {
+		logrus.SetOutput(GinkgoWriter)
+		logrus.SetLevel(origLev)
+	})
+
+	It("logs the skip at debug, not warn — operator can't act on pinned tags", func() {
+		pinned := CreateMockContainer(
+			"pinned-svc",
+			"pinned-svc",
+			"app:latest",
+			time.Now().AddDate(0, 0, -1),
+		)
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{pinned},
+			StalenessErrors: map[string]error{
+				pinned.Name(): packagecontainer.ErrPinnedImage,
+			},
+		}, false, false)
+
+		report, err := actions.Update(client, types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(report.Failed()).To(BeEmpty())
+
+		// The contract is the log level: debug, not warn. Steady-state
+		// digest-pinned stacks should not spam every poll with a line the
+		// operator cannot act on.
+		out := logBuf.String()
+		Expect(out).To(ContainSubstring(`level=debug`))
+		Expect(out).To(ContainSubstring("Skipping container with pinned image"))
+		Expect(out).To(ContainSubstring("pinned-svc"))
+		Expect(out).NotTo(ContainSubstring(`level=warning msg="Unable to update container`))
+	})
+
+	It("falls back to warn for non-pinned pull failures", func() {
+		broken := CreateMockContainer(
+			"broken-pull",
+			"broken-pull",
+			"app:latest",
+			time.Now().AddDate(0, 0, -1),
+		)
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{broken},
+			StalenessErrors: map[string]error{
+				broken.Name(): errors.New("registry returned 500"),
+			},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+		out := logBuf.String()
+		Expect(out).To(ContainSubstring(`level=warning`))
+		Expect(out).To(ContainSubstring(`Unable to update container`))
+		Expect(out).To(ContainSubstring("broken-pull"))
+	})
+})
+
+var _ = Describe("cleanup safety: image still in use", func() {
+	It("defers cleanup when a non-stale container still references the image", func() {
+		// Two containers share an image. Only the first is stale and updated;
+		// the second is fresh (Staleness=false) and stays. The new behaviour
+		// is to defer removing the shared image so the still-running second
+		// container survives its next restart.
+		shared := "shared-image:latest"
+		stale := CreateMockContainer("stale-svc", "stale-svc", shared, time.Now().AddDate(0, 0, -1))
+		fresh := CreateMockContainer("fresh-svc", "fresh-svc", shared, time.Now())
+
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{stale, fresh},
+			Staleness: map[string]bool{
+				stale.Name(): true,
+				fresh.Name(): false,
+			},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(stale.SafeImageID()))
+	})
+
+	It("removes the image when no surviving container references it", func() {
+		// Single container, stale, no other referrers — the standard cleanup
+		// flow must still fire.
+		only := CreateMockContainer("only-svc", "only-svc", "lonely-image:latest", time.Now().AddDate(0, 0, -1))
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{only},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client.TestData.TriedToRemoveImageIDs).To(ContainElement(only.SafeImageID()))
+	})
+
+	It("removes the image when the only other referrer is also being recreated", func() {
+		// Two stale containers sharing an image — both are being recreated, so
+		// neither's old image reference is load-bearing post-restart.
+		shared := "rotating-image:latest"
+		first := CreateMockContainer("rot-a", "rot-a", shared, time.Now().AddDate(0, 0, -1))
+		second := CreateMockContainer("rot-b", "rot-b", shared, time.Now().AddDate(0, 0, -1))
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{first, second},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client.TestData.TriedToRemoveImageIDs).To(ContainElement(first.SafeImageID()))
+	})
+})
+
+var _ = Describe("a container vanishing mid-scan", func() {
+	It("marks the container Skipped and continues the scan", func() {
+		survivor := CreateMockContainer(
+			"vanish-survivor",
+			"vanish-survivor",
+			"survivor-image:latest",
+			time.Now().AddDate(0, 0, -1),
+		)
+		vanished := CreateMockContainer(
+			"vanish-target",
+			"vanish-target",
+			"vanished-image:latest",
+			time.Now().AddDate(0, 0, -1),
+		)
+		client := CreateMockClient(&TestData{
+			Containers:         []types.Container{vanished, survivor},
+			VanishedContainers: map[string]bool{vanished.Name(): true},
+		}, false, false)
+
+		report, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+		Expect(err).NotTo(HaveOccurred())
+
+		// The vanished container is reported as Skipped, the surviving one
+		// proceeds through the normal recreate path.
+		skippedNames := []string{}
+		for _, r := range report.Skipped() {
+			skippedNames = append(skippedNames, r.Name())
+		}
+		Expect(skippedNames).To(ContainElement(vanished.Name()))
+		Expect(report.Failed()).To(BeEmpty())
+
+		// Vanished container's image must NOT be cleaned up — that container
+		// no longer exists from our perspective and we never stopped it. Only
+		// the surviving (stopped + restarted) container's image should be.
+		Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(vanished.SafeImageID()))
+		Expect(client.TestData.TriedToRemoveImageIDs).To(ContainElement(survivor.SafeImageID()))
+
+		// And StartContainer should not have been called for the vanished one.
+		startedNames := []string{}
+		for _, c := range client.TestData.StartedContainers {
+			startedNames = append(startedNames, c.Name())
+		}
+		Expect(startedNames).NotTo(ContainElement(vanished.Name()))
+		Expect(startedNames).To(ContainElement(survivor.Name()))
+	})
+
+	It("works under --rolling-restart too", func() {
+		survivor := CreateMockContainer(
+			"vanish-rr-survivor",
+			"vanish-rr-survivor",
+			"rr-survivor-image:latest",
+			time.Now().AddDate(0, 0, -1),
+		)
+		vanished := CreateMockContainer(
+			"vanish-rr-target",
+			"vanish-rr-target",
+			"rr-vanished-image:latest",
+			time.Now().AddDate(0, 0, -1),
+		)
+		client := CreateMockClient(&TestData{
+			Containers:         []types.Container{vanished, survivor},
+			VanishedContainers: map[string]bool{vanished.Name(): true},
+		}, false, false)
+
+		report, err := actions.Update(client, types.UpdateParams{RollingRestart: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(report.Failed()).To(BeEmpty())
+		skippedNames := []string{}
+		for _, r := range report.Skipped() {
+			skippedNames = append(skippedNames, r.Name())
+		}
+		Expect(skippedNames).To(ContainElement(vanished.Name()))
 	})
 })

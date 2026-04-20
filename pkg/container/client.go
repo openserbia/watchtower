@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	mrand "math/rand/v2"
 	"strings"
 	"time"
 
@@ -119,11 +121,7 @@ func (client dockerClient) ListContainers(fn t.Filter) ([]t.Container, error) {
 	}
 
 	filter := client.createListFilter()
-	containers, err := client.api.ContainerList(
-		bg,
-		container.ListOptions{
-			Filters: filter,
-		})
+	containers, err := listContainersWithRetry(bg, client.api, container.ListOptions{Filters: filter})
 	if err != nil {
 		metrics.RegisterDockerAPIError("list")
 		return nil, err
@@ -149,6 +147,82 @@ func (client dockerClient) ListContainers(fn t.Filter) ([]t.Container, error) {
 	}
 
 	return cs, nil
+}
+
+// List-retry tunables — mirror pkg/registry/retry so the retry windows feel
+// the same across the two surfaces. Kept as vars so tests can shrink them
+// without waiting out real backoff.
+var (
+	listBackoffBase   = 500 * time.Millisecond
+	listBackoffMax    = 4 * time.Second
+	listBackoffJitter = 0.25
+)
+
+const listMaxAttempts = 3
+
+// listContainersWithRetry wraps ContainerList in a bounded exponential backoff
+// so a single transient daemon flake (daemon restart during poll, socket blip,
+// 5xx from the Docker engine API) doesn't fail the whole scan cycle. Retries
+// on network errors and the Docker errdefs class of transient server/daemon
+// errors. Bails immediately on context cancellation, deadline, or caller-fault
+// errors that won't clear with a retry.
+func listContainersWithRetry(ctx context.Context, api sdkClient.APIClient, opts container.ListOptions) ([]container.Summary, error) {
+	var lastErr error
+	for attempt := 0; attempt < listMaxAttempts; attempt++ {
+		if attempt > 0 {
+			metrics.RegisterDockerAPIRetry("list")
+			delay := listBackoffFor(attempt)
+			log.Debugf("Retrying Docker ContainerList after %s (attempt %d/%d)", delay, attempt+1, listMaxAttempts)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
+		containers, err := api.ContainerList(ctx, opts)
+		if err == nil {
+			return containers, nil
+		}
+		lastErr = err
+
+		if !isTransientDockerErr(err) {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+func isTransientDockerErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Caller-fault or explicit cancellation — no point retrying.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if cerrdefs.IsInvalidArgument(err) || cerrdefs.IsNotFound(err) || cerrdefs.IsPermissionDenied(err) {
+		return false
+	}
+	// Transient classes: server-side errors, daemon unavailable, plus any
+	// non-errdefs error (typically a raw network failure from the SDK's HTTP
+	// layer before a structured error could be decoded).
+	if cerrdefs.IsInternal(err) || cerrdefs.IsUnavailable(err) {
+		return true
+	}
+	// Conservative default: network/IO errors from the SDK client are
+	// retryable. The errdefs classifiers return false for these because
+	// they're below the Docker error envelope.
+	return true
+}
+
+func listBackoffFor(attempt int) time.Duration {
+	delay := listBackoffBase * (1 << (attempt - 1))
+	if delay > listBackoffMax {
+		delay = listBackoffMax
+	}
+	jitter := time.Duration(float64(delay) * listBackoffJitter * (mrand.Float64()*2 - 1))
+	return delay + jitter
 }
 
 func (client dockerClient) createListFilter() filters.Args {
@@ -281,7 +355,7 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 		if err := client.api.ContainerKill(bg, idStr, signal); err != nil {
 			if cerrdefs.IsNotFound(err) {
 				log.Debugf("Container %s already gone before kill, nothing to stop.", shortID)
-				return nil
+				return ErrContainerNotFound
 			}
 			metrics.RegisterDockerAPIError("kill")
 			return err
@@ -299,7 +373,7 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 		if err := client.api.ContainerRemove(bg, idStr, container.RemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
 			if cerrdefs.IsNotFound(err) {
 				log.Debugf("Container %s not found, skipping removal.", shortID)
-				return nil
+				return ErrContainerNotFound
 			}
 			metrics.RegisterDockerAPIError("remove")
 			return err
@@ -470,7 +544,7 @@ func (client dockerClient) PullImage(ctx context.Context, container t.Container)
 	}
 
 	if strings.HasPrefix(imageName, "sha256:") {
-		return fmt.Errorf("container uses a pinned image, and cannot be updated by watchtower")
+		return ErrPinnedImage
 	}
 
 	log.WithFields(fields).Debugf("Trying to load authentication credentials.")

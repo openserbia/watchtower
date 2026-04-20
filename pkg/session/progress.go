@@ -50,6 +50,17 @@ func (m Progress) MarkForUpdate(containerID types.ContainerID) {
 	m[containerID].state = UpdatedState
 }
 
+// MarkSkipped overrides a previously-recorded entry's state to skipped, with
+// the supplied error as the explanatory note. Used when a container vanishes
+// mid-scan (typically a Compose recreate) — the entry was already added as
+// scanned in the first pass, so we reuse it rather than building a new one.
+func (m Progress) MarkSkipped(containerID types.ContainerID, err error) {
+	if entry, ok := m[containerID]; ok && entry != nil {
+		entry.state = SkippedState
+		entry.err = err
+	}
+}
+
 // Report creates a new Report from a Progress instance
 func (m Progress) Report() types.Report {
 	return NewReport(m)

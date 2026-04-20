@@ -10,12 +10,45 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.12.2] - 2026-04-20
+
 ### Added
 - **`--version` flag on the root command.** `watchtower --version` now
   prints the compile-time version (the same `internal/meta.Version`
   value used in the HTTP `User-Agent`) without having to start the
   daemon or `docker inspect` the image. Makes support triage and image
   tag verification a one-liner.
+- **New Prometheus counter `watchtower_docker_api_retries_total{operation}`.**
+  Pairs with the new `ListContainers` retry (see below) and follows the
+  shape of `watchtower_registry_retries_total`. One increment per retry
+  attempt, not per failed call. A sustained non-zero value points at a
+  flaky daemon — daemon restarts during polls, socket-proxy blips, or
+  engine-API 5xx under load.
+
+### Changed
+- **`WATCHTOWER_NOTIFICATIONS_LEVEL` is now honored in report mode.**
+  Before, the default report template fired a per-poll summary
+  regardless of level — a strict `NOTIFICATIONS_LEVEL=warn` still got
+  paged on routine successful updates. Now a report-mode notification
+  is suppressed when everything in the batch is below the configured
+  threshold: no level-appropriate log entries AND no failed or
+  error-marked skipped containers. At info/debug/trace thresholds
+  behavior is unchanged (verbose mode fires for any report). Inspired
+  by [nicholas-fedor/watchtower#1290](https://github.com/nicholas-fedor/watchtower/pull/1290).
+- **Pinned-image skip demoted from `warn` to `debug`.** Containers
+  whose tag is a `sha256:...` digest can never be updated (there's no
+  moving target), so the per-poll `Unable to update container ...
+  Proceeding to next.` was noise operators couldn't act on. The typed
+  `container.ErrPinnedImage` sentinel is now used at the call site in
+  `actions.Update` to demote the log line without altering the skip
+  semantics. Existing error message is preserved verbatim so
+  downstream log parsers and notification templates keep matching.
+- **Pre-update lifecycle command failures logged at `warn`, not `error`.**
+  User-defined `com.centurylinklabs.watchtower.lifecycle.pre-update`
+  scripts are user code; a failure is the script's problem, not
+  watchtower's orchestration. Strict `NOTIFICATIONS_LEVEL=error`
+  feeds no longer fire for user-script flakes. The container is still
+  skipped and still recorded in the session report.
 
 ### Fixed
 - **Locally-built images on the containerd image store (Docker 25+).**
@@ -36,6 +69,43 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   empty-`RepoDigests` fallback still carries the classic image store,
   so this is purely additive. Decoded from the raw inspect JSON via
   the SDK's `ImageInspectWithRawResponse` option — no SDK bump needed.
+- **`ListContainers` no longer fails the scan on a transient daemon
+  flake.** A daemon restart during a poll, a socket-proxy blip, or any
+  transient 5xx from the Docker engine API used to fail the whole scan
+  cycle and fire `WatchtowerScansStopped` noise if the next poll was
+  far enough away. The call is now wrapped in bounded exponential
+  backoff (3 attempts, 500 ms → 4 s + jitter) mirroring the v1.9
+  registry retry. Retries on network errors and the Docker errdefs
+  transient classes (`IsInternal` / `IsUnavailable`); bails immediately
+  on `context.Canceled`, `context.DeadlineExceeded`, and caller-fault
+  errors (`IsInvalidArgument`, `IsNotFound`, `IsPermissionDenied`) that
+  won't clear with a retry. Inspired by
+  [nicholas-fedor/watchtower#1459](https://github.com/nicholas-fedor/watchtower/pull/1459).
+- **Containers that vanish between the stale-check and the stop no
+  longer abort the scan.** Between `IsContainerStale` deciding to
+  recreate a container and `StopContainer` actually firing, a Compose
+  `up` can land and recreate the container under a new ID. Previously
+  the subsequent stop returned an untyped daemon error and the whole
+  iteration bailed. `StopContainer` now returns a typed
+  `container.ErrContainerNotFound`; `actions.Update` catches it, marks
+  the container as `Skipped` in the session report, and continues
+  scanning the rest. The scan also no longer tries to recreate the
+  vanished container, which would otherwise collide with whatever
+  Compose put in its place. Inspired by
+  [nicholas-fedor/watchtower#1522](https://github.com/nicholas-fedor/watchtower/pull/1522).
+- **Cleanup defers images still referenced by an active container.**
+  When `--cleanup` is on, watchtower would force-remove the old image
+  of a just-recreated container even if a separate, still-running
+  container used the same image — breaking that container's next
+  restart with `No such image`. Shared base images in Compose stacks
+  (N services on the same image) were the common trigger. The cleanup
+  step now walks the scan view: if any container that isn't itself
+  being recreated still references the image, the removal is deferred
+  and logged at debug. The next scan retries once the last referrer is
+  gone or recreated. Also applied to the `cleanupExcessWatchtowers`
+  path (multi-watchtower cleanup) so the kept instance's image isn't
+  yanked out when siblings share the image. Inspired by
+  [nicholas-fedor/watchtower#1428](https://github.com/nicholas-fedor/watchtower/pull/1428).
 
 ## [1.12.1] - 2026-04-19
 

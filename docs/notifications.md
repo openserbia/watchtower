@@ -16,7 +16,7 @@ system, [logrus](http://github.com/sirupsen/logrus).
 
 ## Settings
 
--   `--notifications-level` (env. `WATCHTOWER_NOTIFICATIONS_LEVEL`): Controls the log level which is used for the notifications. If omitted, the default log level is `info`. Possible values are: `panic`, `fatal`, `error`, `warn`, `info`, `debug` or `trace`.
+-   `--notifications-level` (env. `WATCHTOWER_NOTIFICATIONS_LEVEL`): Controls the log level which is used for the notifications. If omitted, the default log level is `info`. Possible values are: `panic`, `fatal`, `error`, `warn`, `info`, `debug` or `trace`. The threshold applies to report-mode output as well: at `warn` or stricter, notifications are suppressed unless the batch contains a level-appropriate log entry or a failed/errored-skipped container. Informational batches (only fresh, scanned, or cleanly-updated containers) don't trigger a notification at `warn+` thresholds.
 -   `--notifications-hostname` (env. `WATCHTOWER_NOTIFICATIONS_HOSTNAME`): Custom hostname specified in subject/title. Useful to override the operating system hostname.
 -   `--notifications-delay` (env. `WATCHTOWER_NOTIFICATIONS_DELAY`): Delay before sending notifications expressed in seconds.
 -   Watchtower will post a notification every time it is started. This behavior [can be changed](https://openserbia.github.io/watchtower/arguments/#without_sending_a_startup_message) with an argument.

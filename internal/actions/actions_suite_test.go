@@ -85,9 +85,33 @@ var _ = Describe("the actions package", func() {
 			})
 		})
 		When("deciding whether to cleanup images", func() {
-			var client MockClient
-			BeforeEach(func() {
-				client = CreateMockClient(
+			It("should delete the old image when the kept watchtower runs a different one", func() {
+				client := CreateMockClient(
+					&TestData{
+						Containers: []types.Container{
+							CreateMockContainer(
+								"test-container-01",
+								"test-container-01",
+								"watchtower:old",
+								time.Now().AddDate(0, 0, -1)),
+							CreateMockContainer(
+								"test-container-02",
+								"test-container-02",
+								"watchtower:new",
+								time.Now()),
+						},
+					},
+					false,
+					false,
+				)
+				err := actions.CheckForMultipleWatchtowerInstances(client, true, "")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(client.TestData.TriedToRemoveImage()).To(BeTrue())
+			})
+			It("should skip cleanup when the kept watchtower runs the same image", func() {
+				// Force-removing the shared image would yank it out from under
+				// the surviving instance and break its next restart.
+				client := CreateMockClient(
 					&TestData{
 						Containers: []types.Container{
 							CreateMockContainer(
@@ -102,18 +126,32 @@ var _ = Describe("the actions package", func() {
 								time.Now()),
 						},
 					},
-					// pullImages:
 					false,
-					// removeVolumes:
 					false,
 				)
-			})
-			It("should try to delete the image if the cleanup flag is true", func() {
 				err := actions.CheckForMultipleWatchtowerInstances(client, true, "")
 				Expect(err).NotTo(HaveOccurred())
-				Expect(client.TestData.TriedToRemoveImage()).To(BeTrue())
+				Expect(client.TestData.TriedToRemoveImage()).To(BeFalse())
 			})
 			It("should not try to delete the image if the cleanup flag is false", func() {
+				client := CreateMockClient(
+					&TestData{
+						Containers: []types.Container{
+							CreateMockContainer(
+								"test-container-01",
+								"test-container-01",
+								"watchtower:old",
+								time.Now().AddDate(0, 0, -1)),
+							CreateMockContainer(
+								"test-container-02",
+								"test-container-02",
+								"watchtower:new",
+								time.Now()),
+						},
+					},
+					false,
+					false,
+				)
 				err := actions.CheckForMultipleWatchtowerInstances(client, false, "")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImage()).To(BeFalse())
