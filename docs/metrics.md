@@ -85,6 +85,7 @@ Published every scan regardless of whether any audit flag is set.
 | Metric | Labels | What it tells you |
 | --- | --- | --- |
 | `watchtower_docker_api_errors_total` | `operation` | Errors from the Docker engine API, broken down by operation. Operations: `list`, `inspect`, `kill`, `start`, `create`, `remove`, `image_inspect`, `image_remove`, `image_pull`, `rename`, `network_connect`, `network_disconnect`, `events`. Sustained non-zero rates usually mean socket permission issues or a daemon under load. |
+| `watchtower_docker_api_retries_total` | `operation` | Retry attempts against the Docker engine API after a transient failure (daemon restart, socket blip, engine 5xx). One increment per retry attempt, not per failed call. Currently emitted for `operation="list"`. Zero is healthy; a rising counter points at a flaky daemon. |
 
 ### Docker event stream ([`--watch-docker-events`](arguments.md#watch_docker_engine_for_local_rebuilds))
 
