@@ -2,9 +2,11 @@ package container
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
@@ -575,6 +577,56 @@ var _ = Describe("the client", func() {
 			Expect(id).NotTo(BeNil())
 			Expect(id.Pull).To(HaveLen(1))
 			Expect(id.Pull[0].Repository).To(Equal("ghcr.io/example/app"))
+		})
+	})
+
+	Describe(`imageRefHasRegistryHost`, func() {
+		It(`returns false for a bare name`, func() {
+			Expect(imageRefHasRegistryHost("tg-antispam:latest")).To(BeFalse())
+			Expect(imageRefHasRegistryHost("nginx")).To(BeFalse())
+			Expect(imageRefHasRegistryHost("nginx@sha256:aa0afebbb3cfa473099a62c4b32e9b3fb73ed23f2a75a65ce1d4b4f55a5c2ef2")).To(BeFalse())
+		})
+		It(`returns false for a bare two-segment name (no hostname marker)`, func() {
+			// "myorg/app" has a "/" but no "." or ":" in the first segment,
+			// so Docker treats "myorg" as a user namespace on Hub, not a host.
+			Expect(imageRefHasRegistryHost("myorg/app:latest")).To(BeFalse())
+		})
+		It(`returns true when the first segment is a FQDN`, func() {
+			Expect(imageRefHasRegistryHost("ghcr.io/openserbia/watchtower:latest")).To(BeTrue())
+			Expect(imageRefHasRegistryHost("registry.example.com/foo/bar:tag")).To(BeTrue())
+		})
+		It(`returns true when the first segment has a port`, func() {
+			Expect(imageRefHasRegistryHost("registry.local:5000/app:v1")).To(BeTrue())
+		})
+		It(`returns true for localhost (reserved namespace)`, func() {
+			Expect(imageRefHasRegistryHost("localhost/app:v1")).To(BeTrue())
+			Expect(imageRefHasRegistryHost("localhost:5000/app:v1")).To(BeTrue())
+		})
+		It(`returns false for an unparseable reference (conservative — allow safeguard)`, func() {
+			// A pinned "sha256:..." isn't a parseable image name by the
+			// reference grammar; treated as no-host so the safeguard can
+			// still fall through to HasNewImage for bad inputs.
+			Expect(imageRefHasRegistryHost("sha256:abc")).To(BeFalse())
+		})
+	})
+
+	Describe(`pullFailureLooksLocal`, func() {
+		notFoundErr := cerrdefs.ErrNotFound
+		otherErr := errors.New("connection reset")
+
+		It(`returns false for a nil error`, func() {
+			Expect(pullFailureLooksLocal("tg-antispam:latest", nil)).To(BeFalse())
+		})
+		It(`returns false for a non-NotFound error`, func() {
+			Expect(pullFailureLooksLocal("tg-antispam:latest", otherErr)).To(BeFalse())
+		})
+		It(`returns false for a hostname-qualified reference (no silent masking)`, func() {
+			Expect(pullFailureLooksLocal("ghcr.io/foo/bar:latest", notFoundErr)).To(BeFalse())
+			Expect(pullFailureLooksLocal("registry.local:5000/app", notFoundErr)).To(BeFalse())
+		})
+		It(`returns true for a bare-name reference with a NotFound pull error`, func() {
+			Expect(pullFailureLooksLocal("tg-antispam:latest", notFoundErr)).To(BeTrue())
+			Expect(pullFailureLooksLocal("myorg/app:latest", notFoundErr)).To(BeTrue())
 		})
 	})
 })

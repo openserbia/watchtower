@@ -10,6 +10,43 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+### Fixed
+- **Identity-based local-build detection now actually reaches the wire.**
+  The v1.12.2 Identity decoder was correct, but two stacked ceilings kept
+  it from ever seeing a populated field on real daemons: the Docker
+  engine only returns the `Identity` record at API v1.53+, and the
+  vendored SDK's `DefaultVersion` caps API-version negotiation at 1.51.
+  `NewClient` now pings the daemon after negotiation and, when the
+  daemon advertises v1.53 or newer and the operator has not explicitly
+  pinned `DOCKER_API_VERSION`, opportunistically raises the client
+  version to v1.54 (or the daemon's reported version, whichever is
+  lower). This is safe because URL version components are plain path
+  tokens, typed unmarshal drops unknown JSON fields, and the one place
+  we consume new fields (Identity) already uses
+  `ImageInspectWithRawResponse`. Explicit pins via `DOCKER_API_VERSION`
+  are still respected.
+- **Pull-error safeguard for older daemons.** On engines below API
+  v1.53 the `Identity` signal never appears, and on the containerd
+  image store the old `len(RepoDigests) == 0` heuristic can't fire
+  either. Added a narrow belt-and-braces path in `IsContainerStale`:
+  when a pull fails with a not-found class error AND the image
+  reference has no registry hostname (e.g. `tg-antispam:latest`, which
+  the daemon can only resolve against Docker Hub), treat the image as
+  locally built and fall through to `HasNewImage`. Hostname-qualified
+  references (`ghcr.io/foo/bar`, `registry.local:5000/app`) never hit
+  this path, so typos and broken private-registry credentials still
+  surface loudly instead of being silently masked.
+
+### Docs
+- **`docs/arguments.md` corrected to reflect actual `--api-version`
+  default.** The page advertised `"1.24"`; the real default has been
+  the empty string (i.e. negotiate) for as long as `SetDefaults` has
+  existed. Expanded the section with a migration note for operators
+  who have `DOCKER_API_VERSION=1.44` left in their compose or env
+  file from an older deployment — removing it is the recommended
+  step on Docker 25+ to unlock the Identity-based local-build
+  detection.
+
 ## [1.12.2] - 2026-04-20
 
 ### Added

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	mrand "math/rand/v2"
+	"os"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/versions"
 	sdkClient "github.com/docker/docker/client"
 	log "github.com/sirupsen/logrus"
 
@@ -56,16 +58,76 @@ type Client interface {
 // When DOCKER_API_VERSION is unset, the client negotiates down to the daemon's
 // reported version on first use so the same binary works against both older and
 // newer daemons (including Docker Engine 29+, whose minimum API floor is 1.44).
+// We then opportunistically raise the negotiated version to reach fields the
+// vendored SDK's DefaultVersion can't; see upgradeAPIVersionForFeatures.
 func NewClient(opts ClientOptions) Client {
 	cli, err := sdkClient.NewClientWithOpts(sdkClient.FromEnv, sdkClient.WithAPIVersionNegotiation())
 	if err != nil {
 		log.Fatalf("Error instantiating Docker client: %s", err)
 	}
 
+	upgradeAPIVersionForFeatures(context.Background(), cli)
+
 	return dockerClient{
 		api:           cli,
 		ClientOptions: opts,
 	}
+}
+
+const (
+	// minFeatureAPIVersion is the lowest Docker API version that exposes
+	// fields Watchtower consumes through raw JSON decoding (currently: the
+	// Identity provenance record on /images/{id}/json, which lets the
+	// containerd image store distinguish locally-built images from Hub
+	// pulls). Below this, there is no point raising the version.
+	minFeatureAPIVersion = "1.53"
+	// preferredFeatureAPIVersion caps the opportunistic raise to a version
+	// we have tested against. Keeping it tight avoids drifting into
+	// API territory that might introduce request-body changes the vendored
+	// SDK can't formulate correctly. Revisit when the SDK is bumped.
+	preferredFeatureAPIVersion = "1.54"
+)
+
+// upgradeAPIVersionForFeatures opportunistically raises the client's API
+// version above the SDK's DefaultVersion so we can access response fields
+// added after the SDK was vendored — currently Identity on the image-inspect
+// response (v1.53+). The mechanism is safe in the narrow sense we use it:
+//   - URLs already use client.version as a plain path component, so any
+//     well-formed version string the daemon accepts works.
+//   - Unknown fields in JSON responses are silently dropped by the SDK's
+//     typed Unmarshal; code that needs the new fields uses the raw-response
+//     option instead.
+//   - Explicit user pins via DOCKER_API_VERSION are left untouched.
+//
+// No-op when the daemon doesn't advertise a version, the ping fails, or the
+// daemon's max is already below minFeatureAPIVersion. Any error leaves the
+// negotiated version in place — best-effort only.
+func upgradeAPIVersionForFeatures(ctx context.Context, cli *sdkClient.Client) {
+	if os.Getenv(sdkClient.EnvOverrideAPIVersion) != "" {
+		// Explicit pin; respect the operator's choice even if it forgoes
+		// newer features.
+		return
+	}
+	ping, err := cli.Ping(ctx)
+	if err != nil {
+		log.WithError(err).Debug("Daemon ping failed; leaving negotiated API version in place")
+		return
+	}
+	if ping.APIVersion == "" {
+		return
+	}
+	if versions.LessThan(ping.APIVersion, minFeatureAPIVersion) {
+		return
+	}
+	target := preferredFeatureAPIVersion
+	if versions.LessThan(ping.APIVersion, target) {
+		target = ping.APIVersion
+	}
+	if err := sdkClient.WithVersion(target)(cli); err != nil {
+		log.WithError(err).Debugf("Could not pin client to API %s; leaving negotiated version", target)
+		return
+	}
+	log.Debugf("Pinned Docker client to API v%s for containerd-snapshotter Identity support (daemon advertises v%s)", target, ping.APIVersion)
 }
 
 // ClientOptions contains the options for how the docker client wrapper should behave
@@ -504,12 +566,81 @@ func (client dockerClient) IsContainerStale(container t.Container, params t.Upda
 		// setting --no-pull or the per-container no-pull label.
 		log.Debugf("Skipping image pull for %s: locally built or loaded.", container.Name())
 	default:
-		if err := client.PullImage(ctx, container); err != nil {
-			return false, container.SafeImageID(), err
+		if pullErr := client.PullImage(ctx, container); pullErr != nil {
+			if pullFailureLooksLocal(container.ImageName(), pullErr) {
+				// Safeguard: Identity provenance isn't available on every
+				// Docker version (the response field only appears at API
+				// v1.53+). For older daemons and edge cases where Identity
+				// is absent, a pull failure on a bare-name reference ("app",
+				// not "ghcr.io/foo/app") plus a definitive "not found" from
+				// the registry is a strong signal that the image is local —
+				// the only registry a bare name normalizes to is Docker Hub,
+				// and if Hub says no such repo, it's locally built.
+				// Hostname-qualified references never hit this path, so
+				// typos and broken private-registry creds still surface
+				// loudly instead of being silently masked.
+				log.Debugf("Pull rejected for %s (%v); treating as locally built and falling back to HasNewImage", container.Name(), pullErr)
+			} else {
+				return false, container.SafeImageID(), pullErr
+			}
 		}
 	}
 
 	return client.HasNewImage(ctx, container)
+}
+
+// pullFailureLooksLocal reports whether a PullImage error for the given
+// image reference should be treated as a locally-built image rather than a
+// real failure. It fires only when the image reference lacks a registry
+// hostname AND the daemon's error classifies as a not-found, which scopes
+// the silent-skip to the exact case the containerd image store creates for
+// `docker build -t app:latest .` on modern engines.
+func pullFailureLooksLocal(imageRef string, pullErr error) bool {
+	if pullErr == nil {
+		return false
+	}
+	if !cerrdefs.IsNotFound(pullErr) {
+		return false
+	}
+	return !imageRefHasRegistryHost(imageRef)
+}
+
+// imageRefHasRegistryHost reports whether an image reference includes an
+// explicit registry hostname, mirroring the daemon's splitDockerDomain
+// rules exactly. The first "/"-separated segment is a hostname iff it
+// contains "." (FQDN / IP), contains ":" (hostname:port), equals
+// "localhost" (reserved), or has uppercase letters (since namespace
+// components must be lowercase). Anything else — "app", "myorg/app",
+// "tg-antispam:latest" — is a bare name that the daemon normalizes to
+// docker.io/library/ or docker.io/myorg/ when pulling.
+//
+// We inline the rules rather than using reference.Parse because Parse's
+// non-normalizing splitDomain regex classifies a single lowercase segment
+// ("myorg") as a domain, which disagrees with what the daemon actually
+// does when resolving the pull target — and the daemon's behavior is what
+// we need to match, since we're predicting what the daemon will do next.
+func imageRefHasRegistryHost(imageRef string) bool {
+	// Strip digest suffix first (digests contain ":" which would confuse
+	// head-split downstream). Tags come after the final path segment and
+	// can't precede the first "/", so they don't need special handling.
+	if i := strings.IndexByte(imageRef, '@'); i >= 0 {
+		imageRef = imageRef[:i]
+	}
+	slash := strings.IndexByte(imageRef, '/')
+	if slash < 0 {
+		return false
+	}
+	head := imageRef[:slash]
+	if head == "localhost" {
+		return true
+	}
+	if strings.ContainsAny(head, ".:") {
+		return true
+	}
+	if strings.ToLower(head) != head {
+		return true
+	}
+	return false
 }
 
 func (client dockerClient) HasNewImage(ctx context.Context, container t.Container) (hasNew bool, latestImage t.ImageID, err error) {

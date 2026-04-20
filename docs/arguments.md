@@ -172,8 +172,10 @@ The API version to use by the Docker client for connecting to the Docker daemon.
             Argument: --api-version, -a
 Environment Variable: DOCKER_API_VERSION
                 Type: String
-             Default: "1.24"
+             Default: "" (negotiate)
 ```
+
+**Leave this unset unless you have a specific reason to pin.** When unset, Watchtower negotiates the API version on first request to the daemon's reported maximum (capped by the SDK), and then opportunistically raises the client to the daemon's version if the daemon supports features Watchtower consumes through raw JSON (currently: the `Identity` provenance record at API v1.53+, which distinguishes locally-built from registry-pulled images on the containerd image store). Setting the variable or flag disables negotiation and pins to the specified version — you'll lose access to those fields and the local-build heuristic falls back to an error-classification safeguard instead of the authoritative signal. If you're running Docker 25+ with the containerd image store and have `DOCKER_API_VERSION=1.44` left over from an older deployment, removing it is the recommended migration step.
 
 ## Include restarting
 Will also include restarting containers.
