@@ -1325,6 +1325,11 @@
 <td><strong>Bounded exp backoff</strong> (3 tries, 500 ms → 4 s + jitter) on network / 5xx / 429 / oauth flake</td>
 </tr>
 <tr>
+<td>Docker daemon retry</td>
+<td>None — single request, then abort the scan</td>
+<td><strong>Bounded exp backoff</strong> on <code>ListContainers</code> for transient daemon errors (restart, socket blip, engine 5xx)</td>
+</tr>
+<tr>
 <td>Bearer-token auth</td>
 <td>One exchange per image</td>
 <td><strong>In-memory cache</strong> keyed on auth URL + credential, respects <code>expires_in</code></td>
@@ -1333,6 +1338,11 @@
 <td>Local rebuild detection</td>
 <td>Wait for next poll (up to <code>--interval</code>)</td>
 <td><strong><code>--watch-docker-events</code></strong> subscribes to the Docker event stream and fires a targeted scan within seconds of <code>docker build -t app:latest .</code></td>
+</tr>
+<tr>
+<td>Local builds on containerd image store</td>
+<td>Noisy <code>pull access denied for app</code> on every poll (heuristic ignores containerd-snapshotter RepoDigest synthesis)</td>
+<td><strong>Reads the daemon's per-image <code>Identity</code> provenance record</strong> — <code>Build</code>-only means skip the pull; <code>Pull</code> entry means try it</td>
 </tr>
 <tr>
 <td>Stuck on GC'd source image</td>
@@ -1345,9 +1355,19 @@
 <td>Targets the original image via <code>SourceImageID()</code>; <code>NotFound</code> treated as success</td>
 </tr>
 <tr>
+<td><code>--cleanup</code> vs. shared base image</td>
+<td>Force-removes image even when another active container references it (next restart fails with <code>No such image</code>)</td>
+<td><strong>Defers removal</strong> when any non-recreated container in the scan still references the image</td>
+</tr>
+<tr>
 <td>Compose-deploy race</td>
 <td>Aborts the scan on container NotFound</td>
 <td>Skipped container, scan continues</td>
+</tr>
+<tr>
+<td>Mid-scan container vanish (stop)</td>
+<td>Untyped error aborts the iteration; restart then collides with the Compose-created replacement</td>
+<td><strong>Typed <code>ErrContainerNotFound</code></strong> — marked Skipped in the report, no restart attempt, scan continues</td>
 </tr>
 </tbody>
 </table>

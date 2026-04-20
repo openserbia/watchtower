@@ -1301,6 +1301,11 @@ change once per scan.</p>
 <td><code>operation</code></td>
 <td>Errors from the Docker engine API, broken down by operation. Operations: <code>list</code>, <code>inspect</code>, <code>kill</code>, <code>start</code>, <code>create</code>, <code>remove</code>, <code>image_inspect</code>, <code>image_remove</code>, <code>image_pull</code>, <code>rename</code>, <code>network_connect</code>, <code>network_disconnect</code>, <code>events</code>. Sustained non-zero rates usually mean socket permission issues or a daemon under load.</td>
 </tr>
+<tr>
+<td><code>watchtower_docker_api_retries_total</code></td>
+<td><code>operation</code></td>
+<td>Retry attempts against the Docker engine API after a transient failure (daemon restart, socket blip, engine 5xx). One increment per retry attempt, not per failed call. Currently emitted for <code>operation="list"</code>. Zero is healthy; a rising counter points at a flaky daemon.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="docker_event_stream_--watch-docker-events">Docker event stream (<a href="../arguments/#watch_docker_engine_for_local_rebuilds"><code>--watch-docker-events</code></a>)<a class="headerlink" href="#docker_event_stream_--watch-docker-events" title="Permanent link">&para;</a></h3>
