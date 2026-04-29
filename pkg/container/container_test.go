@@ -157,6 +157,22 @@ var _ = Describe("the container", func() {
 				}))
 			})
 		})
+		When("a target image ID has been recorded", func() {
+			It("pins config.Image to the digest, not the tag", func() {
+				// Closes the race where a CI rebuild untags `name:latest`
+				// between IsContainerStale and ContainerCreate. The recorded
+				// digest still resolves on disk because we just pulled it.
+				c := MockContainer(WithPortBindings())
+				c.SetTargetImageID(types.ImageID("sha256:deadbeef"))
+				Expect(c.GetCreateConfig().Image).To(Equal("sha256:deadbeef"))
+			})
+			It("falls back to the tag when the override is cleared", func() {
+				c := MockContainer(WithPortBindings())
+				c.SetTargetImageID(types.ImageID("sha256:deadbeef"))
+				c.SetTargetImageID("")
+				Expect(c.GetCreateConfig().Image).To(Equal(c.ImageName()))
+			})
+		})
 	})
 	When("asked for metadata", func() {
 		var c *Container

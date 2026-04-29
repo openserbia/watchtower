@@ -86,6 +86,7 @@ Concrete repairs for issues left open on `containrrr/watchtower` when it was arc
 - [upstream#966](https://github.com/containrrr/watchtower/issues/966) — `--cleanup` deletes the freshly-pulled replacement image and logs `conflict: unable to delete ... image is being used by running container`.
 - [upstream#1217](https://github.com/containrrr/watchtower/issues/1217) — nil-pointer panic in `Container.ImageID()` when a container's source image has been garbage-collected.
 - [upstream#1413](https://github.com/containrrr/watchtower/issues/1413) — `Unable to update container: Error: No such image` loop that permanently wedges the affected container.
+- **`ContainerCreate` "No such image: name:latest" race after stop+remove** — the recreate referenced the tag rather than the digest resolved by `IsContainerStale`, so a CI rebuild that briefly untagged `name:latest` between scan and recreate caused `ContainerCreate` to fail *after* the old container had already been killed and removed. The service stayed down with no automatic recovery. Fixed by threading the resolved digest onto the container (`SetTargetImageID`) and consuming it in `GetCreateConfig`. Belt-and-braces: `--cleanup` now defers image removal by one generation per container, so the previous image stays on disk as a manual recovery target if a recreate ever fails for a reason pinning can't cover.
 
 See [CHANGELOG.md](https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md) for the full list per release.
 

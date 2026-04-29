@@ -78,6 +78,8 @@ Environment Variable: TZ
 ## Cleanup
 Removes old images after updating. When this flag is specified, watchtower will remove the old image after restarting a container with a new image. Use this option to prevent the accumulation of orphaned images on your system as containers are updated.
 
+Image removal is deferred by **one generation per container**: the just-retired image stays on disk as the previous-generation rollback target until the *next* successful update of the same container rotates it out. This protects against an edge case where a recreate fails between stop and start (e.g. the registry tag is unresolvable mid-CI-rebuild) — the operator can `docker run` with the prior image to restore service. Disk cost is roughly one extra image per watched container, until that container's next update. The rotation map resets on watchtower restart; that under-cleans by one generation for the next update of each container, intentional in favor of zero on-disk state.
+
 ```text
             Argument: --cleanup
 Environment Variable: WATCHTOWER_CLEANUP

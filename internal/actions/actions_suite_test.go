@@ -19,6 +19,12 @@ func TestActions(t *testing.T) {
 	RunSpecs(t, "Actions Suite")
 }
 
+// Reset package-level state between specs. previousImages is populated by
+// every successful update and would otherwise leak across tests.
+var _ = BeforeEach(func() {
+	actions.ResetPreviousImagesForTest()
+})
+
 var _ = Describe("the actions package", func() {
 	Describe("the check prerequisites method", func() {
 		When("given an empty array", func() {

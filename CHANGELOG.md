@@ -11,6 +11,32 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 ## [Unreleased]
 
 ### Fixed
+- **`ContainerCreate` no longer races the registry tag.** The recreate
+  flow handed Docker a tag (`name:latest`) for the new image, so a CI
+  rebuild that briefly untagged the reference between the scan and the
+  recreate would surface as `Error response from daemon: No such image:
+  name:latest`. Because watchtower had already stopped *and removed*
+  the old container by that point, the service stayed down until an
+  operator intervened — observed in production with rebuild cadences
+  faster than the poll interval. The recreate now references the
+  digest resolved by `IsContainerStale` (threaded onto the container
+  via `SetTargetImageID` and consumed by `GetCreateConfig`); the image
+  is on disk because we just pulled it, so the create is immune to
+  tag churn. The health-gated rollback path repoints the override at
+  the *old* image's digest before restoring, so a rejected new build
+  doesn't get re-created on rollback either.
+- **`--cleanup` defers image removal by one generation per container.**
+  The just-retired image now stays on disk as the previous-generation
+  rollback target until the *next* successful update of the same
+  container rotates it out. If a future recreate fails for a reason
+  pinning can't cover (e.g. `docker image prune` ran in the gap), the
+  prior image is still resolvable and an operator can `docker run`
+  manually to restore service. Disk cost: roughly one extra image per
+  watched container, until the next update of that container. The
+  in-memory rotation map resets on watchtower restart, which under-
+  cleans by one generation for the next update of each container —
+  intentional, in favor of zero on-disk state. The `--cleanup` flag
+  shape and per-image still-in-use guard are unchanged.
 - **Identity-based local-build detection now actually reaches the wire.**
   The v1.12.2 Identity decoder was correct, but two stacked ceilings kept
   it from ever seeing a populated field on real daemons: the Docker

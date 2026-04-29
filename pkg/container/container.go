@@ -39,6 +39,14 @@ type Container struct {
 	// path, where the len(RepoDigests)==0 heuristic in ImageIsLocal still
 	// carries the signal.
 	imageIdentity *ImageIdentity
+	// targetImageID, when non-empty, overrides ImageName() in GetCreateConfig
+	// so ContainerCreate references the image by digest instead of by tag.
+	// Set by actions.Update after IsContainerStale resolves the new image,
+	// closing the race where an external rebuild untags `name:latest`
+	// between the scan and the recreate. The classic upstream flow used the
+	// tag here and would surface "No such image" if the tag moved mid-scan,
+	// leaving the old container already removed and the service down.
+	targetImageID wt.ImageID
 }
 
 // ImageIdentity captures the Docker engine's per-image provenance record as
@@ -75,6 +83,20 @@ type ImagePullIdentity struct {
 // inspect JSON. Safe to pass nil — ImageIsLocal falls back to RepoDigests.
 func (c *Container) SetImageIdentity(identity *ImageIdentity) {
 	c.imageIdentity = identity
+}
+
+// SetTargetImageID records the digest the next recreate should reference.
+// Non-empty values override the tag in GetCreateConfig; an empty value clears
+// the override and falls back to ImageName(). Idempotent.
+func (c *Container) SetTargetImageID(id wt.ImageID) {
+	c.targetImageID = id
+}
+
+// TargetImageID returns the digest that will be used for the next recreate,
+// or an empty string when no override has been set (in which case the
+// container's tag is used).
+func (c Container) TargetImageID() wt.ImageID {
+	return c.targetImageID
 }
 
 // ImageIdentity returns the per-image provenance record, or nil if the daemon
@@ -484,7 +506,16 @@ func (c Container) GetCreateConfig() *dockercontainer.Config {
 		config.ExposedPorts[p] = struct{}{}
 	}
 
-	config.Image = c.ImageName()
+	if c.targetImageID != "" {
+		// Pin to the digest resolved during IsContainerStale. Immune to tag
+		// churn between scan and recreate (e.g. a CI rebuild that briefly
+		// untags `name:latest`). The image is on disk because we just
+		// pulled/inspected it; ContainerCreate accepts a digest reference
+		// the same as a tag.
+		config.Image = string(c.targetImageID)
+	} else {
+		config.Image = c.ImageName()
+	}
 	return config
 }
 

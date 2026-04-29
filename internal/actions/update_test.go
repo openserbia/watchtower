@@ -18,20 +18,14 @@ import (
 	"github.com/openserbia/watchtower/pkg/types"
 )
 
-func getCommonTestData(keepContainer string) *TestData {
+func getCommonTestData() *TestData {
 	return &TestData{
-		NameOfContainerToKeep: keepContainer,
 		Containers: []types.Container{
 			CreateMockContainer(
 				"test-container-01",
 				"test-container-01",
 				"fake-image:latest",
 				time.Now().AddDate(0, 0, -1)),
-			CreateMockContainer(
-				"test-container-02",
-				"test-container-02",
-				"fake-image:latest",
-				time.Now()),
 			CreateMockContainer(
 				"test-container-02",
 				"test-container-02",
@@ -89,8 +83,10 @@ var _ = Describe("the update action", func() {
 
 		It("rolls back to the old container when the replacement reports unhealthy", func() {
 			old := buildHealthAwareContainer("gate-rollback-new-unhealthy")
+			newestDigest := types.ImageID("sha256:gate-new-digest")
 			data := &TestData{
 				Containers:            []types.Container{old},
+				NewestImageByName:     map[string]types.ImageID{old.Name(): newestDigest},
 				NextStartContainerIDs: []types.ContainerID{"new-id", "rollback-id"},
 				HealthStatusByID: map[types.ContainerID]string{
 					"new-id":      dockerContainer.Unhealthy,
@@ -105,6 +101,12 @@ var _ = Describe("the update action", func() {
 			// image, once for the rollback that restores the old state.
 			Expect(client.TestData.StartedContainers).To(HaveLen(2))
 			Expect(client.TestData.StartedContainers[1].Name()).To(Equal(old.Name()))
+			// Forward path pinned to the new digest; rollback repointed at
+			// the old image so the recreate doesn't bring back the broken
+			// version we just rejected. (The container instance is shared
+			// between the two StartContainer calls, so we read the final
+			// rollback-time value off either entry.)
+			Expect(client.TestData.StartedContainers[1].TargetImageID()).To(Equal(old.ImageID()))
 		})
 
 		It("surfaces a loud error when the rolled-back container is also unhealthy", func() {
@@ -181,22 +183,31 @@ var _ = Describe("the update action", func() {
 	})
 	When("watchtower has been instructed to clean up", func() {
 		When("there are multiple containers using the same image", func() {
-			It("should only try to remove the image once", func() {
-				client := CreateMockClient(getCommonTestData(""), false, false)
+			It("removes the recorded prior once even when multiple containers share it", func() {
+				// Cleanup is deferred by one generation: seed a synthetic
+				// prior so a single Update behaves like the second update
+				// would, with a recorded prior to clean.
+				data := getCommonTestData()
+				priorDigest := types.ImageID("sha256:prior-shared")
+				for _, c := range data.Containers {
+					actions.SeedPreviousImageForTest(c.Name(), priorDigest)
+				}
+				client := CreateMockClient(data, false, false)
 				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(1))
+				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 			})
 		})
 		When("the container's imageInfo was populated from a fallback name lookup", func() {
-			It("should target the creation-time image ID, not the fallback imageInfo ID", func() {
+			It("rotates the creation-time image ID into the previous-image slot, not the fallback imageInfo ID", func() {
 				// Simulates the post-fallback state: containerInfo.Image (the
 				// ID the container was actually created from) differs from
 				// imageInfo.ID (the freshly-pulled replacement found by name).
-				// Without SourceImageID, cleanup would try to delete the
-				// replacement image that the new container is now using.
+				// SourceImageID is what gets rotated into the prior slot;
+				// the fallback imageInfo ID is never written to either slot.
 				oldImageID := "sha256:4d239725ac8da47ecfcf04356f19845a4207c3423f61979151bff56612f04807"
 				newImageID := "sha256:b00ed20a1dd0000000000000000000000000000000000000000000000000000a"
+				priorDigest := types.ImageID("sha256:older-prior")
 				containerInfo := &dockerContainer.InspectResponse{
 					ContainerJSONBase: &dockerContainer.ContainerJSONBase{
 						ID:    "post-fallback-cont",
@@ -227,18 +238,23 @@ var _ = Describe("the update action", func() {
 				Expect(ctr.ContainerInfo()).NotTo(BeNil())
 				*ctr.ContainerInfo() = *containerInfo
 
+				actions.SeedPreviousImageForTest(ctr.Name(), priorDigest)
 				client := CreateMockClient(&TestData{
 					Containers: []types.Container{ctr},
 				}, false, false)
 				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(types.ImageID(oldImageID)))
+				// The seeded prior is what gets cleaned. The just-retired
+				// SourceImageID becomes the new prior; the fallback imageInfo
+				// ID is never written to either slot.
+				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 				Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(types.ImageID(newImageID)))
+				Expect(actions.PreviousImageForTest(ctr.Name())).To(Equal(types.ImageID(oldImageID)))
 			})
 		})
 		When("there are multiple containers using different images", func() {
-			It("should try to remove each of them", func() {
-				testData := getCommonTestData("")
+			It("removes each container's recorded prior", func() {
+				testData := getCommonTestData()
 				testData.Containers = append(
 					testData.Containers,
 					CreateMockContainer(
@@ -248,26 +264,60 @@ var _ = Describe("the update action", func() {
 						time.Now(),
 					),
 				)
+				sharedPrior := types.ImageID("sha256:shared-prior")
+				uniquePrior := types.ImageID("sha256:unique-prior")
+				for _, c := range testData.Containers {
+					if c.Name() == "unique-test-container" {
+						actions.SeedPreviousImageForTest(c.Name(), uniquePrior)
+					} else {
+						actions.SeedPreviousImageForTest(c.Name(), sharedPrior)
+					}
+				}
 				client := CreateMockClient(testData, false, false)
 				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(2))
+				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(sharedPrior, uniquePrior))
 			})
 		})
 		When("there are linked containers being updated", func() {
-			It("should not try to remove their images", func() {
-				client := CreateMockClient(getLinkedTestData(true), false, false)
+			It("removes only the stale container's recorded prior", func() {
+				data := getLinkedTestData(true)
+				stalePrior := types.ImageID("sha256:linked-stale-prior")
+				actions.SeedPreviousImageForTest("/test-container-01", stalePrior)
+				// Seed the linked container too — it should not be rotated
+				// because it isn't being recreated.
+				actions.SeedPreviousImageForTest("/test-container-02", types.ImageID("sha256:linked-untouched"))
+				client := CreateMockClient(data, false, false)
 				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(1))
+				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(stalePrior))
 			})
 		})
 		When("performing a rolling restart update", func() {
-			It("should try to remove the image once", func() {
-				client := CreateMockClient(getCommonTestData(""), false, false)
+			It("removes the recorded prior once across containers sharing an image", func() {
+				data := getCommonTestData()
+				priorDigest := types.ImageID("sha256:rolling-prior")
+				for _, c := range data.Containers {
+					actions.SeedPreviousImageForTest(c.Name(), priorDigest)
+				}
+				client := CreateMockClient(data, false, false)
 				_, err := actions.Update(client, types.UpdateParams{Cleanup: true, RollingRestart: true})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(1))
+				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
+			})
+		})
+		When("the container has no recorded prior (first successful update)", func() {
+			It("defers cleanup until the next update of that container", func() {
+				data := getCommonTestData()
+				client := CreateMockClient(data, false, false)
+				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+				Expect(err).NotTo(HaveOccurred())
+				// First-pass cleanup is empty — the just-retired digests have
+				// just been recorded as priors, awaiting the next update.
+				Expect(client.TestData.TriedToRemoveImageIDs).To(BeEmpty())
+				for _, c := range data.Containers {
+					Expect(actions.PreviousImageForTest(c.Name())).To(Equal(c.SourceImageID()))
+				}
 			})
 		})
 		When("updating a linked container with missing image info", func() {
@@ -287,6 +337,8 @@ var _ = Describe("the update action", func() {
 	When("watchtower has been instructed to monitor only", func() {
 		When("certain containers are set to monitor only", func() {
 			It("should not update those containers", func() {
+				priorDigest := types.ImageID("sha256:monitor-prior")
+				actions.SeedPreviousImageForTest("test-container-01", priorDigest)
 				client := CreateMockClient(
 					&TestData{
 						NameOfContainerToKeep: "test-container-02",
@@ -315,7 +367,10 @@ var _ = Describe("the update action", func() {
 				)
 				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(1))
+				// Only the non-monitored container rotates; its seeded prior
+				// is what gets cleaned. Cleanup is deferred by one generation,
+				// so without the seed nothing would be removed.
+				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 			})
 		})
 
@@ -345,6 +400,8 @@ var _ = Describe("the update action", func() {
 			})
 			When("watchtower has been instructed to have label take precedence", func() {
 				It("it should update containers when monitor only is set to false", func() {
+					priorDigest := types.ImageID("sha256:label-precedence-prior")
+					actions.SeedPreviousImageForTest("test-container-02", priorDigest)
 					client := CreateMockClient(
 						&TestData{
 							// NameOfContainerToKeep: "test-container-02",
@@ -368,7 +425,7 @@ var _ = Describe("the update action", func() {
 					)
 					_, err := actions.Update(client, types.UpdateParams{Cleanup: true, MonitorOnly: true, LabelPrecedence: true})
 					Expect(err).NotTo(HaveOccurred())
-					Expect(client.TestData.TriedToRemoveImageCount).To(Equal(1))
+					Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 				})
 				It("it should update not containers when monitor only is set to true", func() {
 					client := CreateMockClient(
@@ -484,6 +541,8 @@ var _ = Describe("the update action", func() {
 
 		When("prupddate script returns 0", func() {
 			It("should update those containers", func() {
+				priorDigest := types.ImageID("sha256:preupdate-0-prior")
+				actions.SeedPreviousImageForTest("test-container-02", priorDigest)
 				client := CreateMockClient(
 					&TestData{
 						// NameOfContainerToKeep: "test-container-02",
@@ -509,7 +568,7 @@ var _ = Describe("the update action", func() {
 				)
 				_, err := actions.Update(client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(1))
+				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 			})
 		})
 
@@ -560,6 +619,8 @@ var _ = Describe("the update action", func() {
 
 		When("container is not running", func() {
 			It("skip running preupdate", func() {
+				priorDigest := types.ImageID("sha256:preupdate-stopped-prior")
+				actions.SeedPreviousImageForTest("test-container-02", priorDigest)
 				client := CreateMockClient(
 					&TestData{
 						// NameOfContainerToKeep: "test-container-02",
@@ -585,12 +646,14 @@ var _ = Describe("the update action", func() {
 				)
 				_, err := actions.Update(client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(1))
+				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 			})
 		})
 
 		When("container is restarting", func() {
 			It("skip running preupdate", func() {
+				priorDigest := types.ImageID("sha256:preupdate-restarting-prior")
+				actions.SeedPreviousImageForTest("test-container-02", priorDigest)
 				client := CreateMockClient(
 					&TestData{
 						// NameOfContainerToKeep: "test-container-02",
@@ -616,7 +679,7 @@ var _ = Describe("the update action", func() {
 				)
 				_, err := actions.Update(client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
 				Expect(err).NotTo(HaveOccurred())
-				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(1))
+				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 			})
 		})
 	})
@@ -884,32 +947,79 @@ var _ = Describe("cleanup safety: image still in use", func() {
 		Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(stale.SafeImageID()))
 	})
 
-	It("removes the image when no surviving container references it", func() {
-		// Single container, stale, no other referrers — the standard cleanup
-		// flow must still fire.
+	It("removes the recorded prior when no surviving container references it", func() {
+		// Single container, stale, no other referrers. Cleanup is deferred by
+		// one generation, so we seed a synthetic prior digest and verify it
+		// gets removed on this run (the just-retired image becomes the new
+		// prior, awaiting the next update).
 		only := CreateMockContainer("only-svc", "only-svc", "lonely-image:latest", time.Now().AddDate(0, 0, -1))
+		priorDigest := types.ImageID("sha256:lonely-prior")
+		actions.SeedPreviousImageForTest(only.Name(), priorDigest)
 		client := CreateMockClient(&TestData{
 			Containers: []types.Container{only},
 		}, false, false)
 
 		_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(client.TestData.TriedToRemoveImageIDs).To(ContainElement(only.SafeImageID()))
+		Expect(client.TestData.TriedToRemoveImageIDs).To(ContainElement(priorDigest))
+		Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(only.SafeImageID()))
 	})
 
-	It("removes the image when the only other referrer is also being recreated", func() {
-		// Two stale containers sharing an image — both are being recreated, so
-		// neither's old image reference is load-bearing post-restart.
+	It("removes the recorded prior when the only other referrer is also being recreated", func() {
+		// Two stale containers sharing an image. Both rotate; the seeded
+		// prior digest is what gets cleaned this round. The just-retired
+		// image survives until the next update.
 		shared := "rotating-image:latest"
 		first := CreateMockContainer("rot-a", "rot-a", shared, time.Now().AddDate(0, 0, -1))
 		second := CreateMockContainer("rot-b", "rot-b", shared, time.Now().AddDate(0, 0, -1))
+		priorDigest := types.ImageID("sha256:rotating-prior")
+		actions.SeedPreviousImageForTest(first.Name(), priorDigest)
+		actions.SeedPreviousImageForTest(second.Name(), priorDigest)
 		client := CreateMockClient(&TestData{
 			Containers: []types.Container{first, second},
 		}, false, false)
 
 		_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(client.TestData.TriedToRemoveImageIDs).To(ContainElement(first.SafeImageID()))
+		Expect(client.TestData.TriedToRemoveImageIDs).To(ContainElement(priorDigest))
+		Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(first.SafeImageID()))
+	})
+})
+
+var _ = Describe("image-ID pinning during update", func() {
+	// GetCreateConfig's translation of TargetImageID to config.Image is unit-
+	// tested in pkg/container/container_test.go. These specs verify the
+	// integration: that actions.Update threads the digest resolved by
+	// IsContainerStale into the container before StartContainer fires.
+	It("threads the digest from IsContainerStale onto the container", func() {
+		// Closes the tag-race window: ContainerCreate references the digest
+		// resolved at scan time, not the tag, so an external untag between
+		// scan and recreate doesn't fail the create with "No such image".
+		newestDigest := types.ImageID("sha256:newest-from-pull")
+		target := CreateMockContainer("pin-target", "pin-target", "app:latest", time.Now().AddDate(0, 0, -1))
+		client := CreateMockClient(&TestData{
+			Containers:        []types.Container{target},
+			NewestImageByName: map[string]types.ImageID{target.Name(): newestDigest},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client.TestData.StartedContainers).To(HaveLen(1))
+		Expect(client.TestData.StartedContainers[0].TargetImageID()).To(Equal(newestDigest))
+	})
+
+	It("leaves the override empty when IsContainerStale returns no digest", func() {
+		// Defensive: an empty newestImage must not blank the slot. The
+		// recreate falls back to the tag.
+		target := CreateMockContainer("pin-empty", "pin-empty", "app:latest", time.Now().AddDate(0, 0, -1))
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{target},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(client.TestData.StartedContainers).To(HaveLen(1))
+		Expect(client.TestData.StartedContainers[0].TargetImageID()).To(BeEmpty())
 	})
 })
 
@@ -927,6 +1037,13 @@ var _ = Describe("a container vanishing mid-scan", func() {
 			"vanished-image:latest",
 			time.Now().AddDate(0, 0, -1),
 		)
+		// Seed priors so the deferred cleanup actually has something to
+		// remove on this run. The vanished one's prior must NOT be touched
+		// because its rotation never fires.
+		survivorPrior := types.ImageID("sha256:survivor-prior")
+		vanishedPrior := types.ImageID("sha256:vanished-prior")
+		actions.SeedPreviousImageForTest(survivor.Name(), survivorPrior)
+		actions.SeedPreviousImageForTest(vanished.Name(), vanishedPrior)
 		client := CreateMockClient(&TestData{
 			Containers:         []types.Container{vanished, survivor},
 			VanishedContainers: map[string]bool{vanished.Name(): true},
@@ -944,11 +1061,15 @@ var _ = Describe("a container vanishing mid-scan", func() {
 		Expect(skippedNames).To(ContainElement(vanished.Name()))
 		Expect(report.Failed()).To(BeEmpty())
 
-		// Vanished container's image must NOT be cleaned up — that container
-		// no longer exists from our perspective and we never stopped it. Only
-		// the surviving (stopped + restarted) container's image should be.
+		// Cleanup targets only the SURVIVING container's recorded prior —
+		// vanished never rotated, so its slot is untouched. The just-retired
+		// images stay on disk as the next-generation rollback target.
+		Expect(client.TestData.TriedToRemoveImageIDs).To(ContainElement(survivorPrior))
+		Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(vanishedPrior))
 		Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(vanished.SafeImageID()))
-		Expect(client.TestData.TriedToRemoveImageIDs).To(ContainElement(survivor.SafeImageID()))
+		Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(survivor.SafeImageID()))
+		// The vanished container's prior remains intact in the map.
+		Expect(actions.PreviousImageForTest(vanished.Name())).To(Equal(vanishedPrior))
 
 		// And StartContainer should not have been called for the vanished one.
 		startedNames := []string{}

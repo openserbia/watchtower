@@ -104,4 +104,6 @@ type Container interface {
 	IsRestarting() bool
 	GetCreateConfig() *dc.Config
 	GetCreateHostConfig() *dc.HostConfig
+	SetTargetImageID(ImageID)
+	TargetImageID() ImageID
 }

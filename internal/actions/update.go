@@ -48,6 +48,19 @@ var (
 	// if the registry serves a different digest during the window (author
 	// re-pushed), the entry resets so the clock restarts.
 	pendingImages = make(map[string]pendingImage)
+
+	previousImagesMu sync.Mutex
+	// previousImages keeps the digest a container was running on *before* its
+	// last successful update, keyed by container name. The next successful
+	// update of that container hands the recorded digest to --cleanup and
+	// rotates this slot to the digest just retired. Net effect: at any moment
+	// each managed container has exactly one prior generation preserved on
+	// disk, so a failed ContainerCreate (e.g. tag-race / image GC) leaves a
+	// recoverable starting point. Survives only within a process — on
+	// watchtower restart this resets, which under-cleans by one generation
+	// for the next update of each container; that's a deliberate trade in
+	// favor of zero persistent state.
+	previousImages = make(map[string]types.ImageID)
 )
 
 type pendingImage struct {
@@ -141,6 +154,50 @@ func ResetCooldownStateForTest() {
 	pendingImages = make(map[string]pendingImage)
 }
 
+// rotatePreviousImage records the just-retired digest for a container and
+// returns whatever digest was previously held in that slot. The returned ID
+// is the one safe to hand to --cleanup; the freshly-stored ID stays on disk
+// as the rollback target until the next update of this container rotates it
+// out. An empty stored or rotated value is a normal first-pass condition,
+// not an error.
+func rotatePreviousImage(containerName string, justRetired types.ImageID) types.ImageID {
+	previousImagesMu.Lock()
+	defer previousImagesMu.Unlock()
+	prior := previousImages[containerName]
+	if justRetired == "" {
+		// Don't blow away a known prior with a sentinel. Leaves the map slot
+		// alone so the next real rotation still finds the recorded digest.
+		return prior
+	}
+	previousImages[containerName] = justRetired
+	return prior
+}
+
+// ResetPreviousImagesForTest clears the in-memory previous-image map.
+// External test-only helper.
+func ResetPreviousImagesForTest() {
+	previousImagesMu.Lock()
+	defer previousImagesMu.Unlock()
+	previousImages = make(map[string]types.ImageID)
+}
+
+// SeedPreviousImageForTest pre-records a prior digest for a container so a
+// test's first Update behaves as if it were the second (cleanup of the
+// previous-previous fires immediately). External test-only helper.
+func SeedPreviousImageForTest(containerName string, id types.ImageID) {
+	previousImagesMu.Lock()
+	defer previousImagesMu.Unlock()
+	previousImages[containerName] = id
+}
+
+// PreviousImageForTest exposes the recorded prior digest for a container,
+// for assertions in external tests.
+func PreviousImageForTest(containerName string) types.ImageID {
+	previousImagesMu.Lock()
+	defer previousImagesMu.Unlock()
+	return previousImages[containerName]
+}
+
 // RewindCooldownFirstSeenForTest shifts a container's recorded firstSeen
 // backwards by the given amount, simulating the passage of wall-clock time
 // without making tests sleep.
@@ -185,6 +242,12 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 
 	for i, targetContainer := range containers {
 		stale, newestImage, err := client.IsContainerStale(targetContainer, params)
+		if stale && err == nil && newestImage != "" {
+			// Pin the upcoming recreate to the digest we just resolved so a
+			// concurrent rebuild that untags name:latest between scan and
+			// recreate doesn't trip ContainerCreate with "No such image".
+			targetContainer.SetTargetImageID(newestImage)
+		}
 		if stale && err == nil {
 			if remaining := rollbackCooldownRemaining(targetContainer.Name()); remaining > 0 {
 				log.WithFields(log.Fields{
@@ -302,12 +365,17 @@ func performRollingRestart(containers, scanView []types.Container, client contai
 				if err := restartStaleContainer(containers[i], client, params); err != nil {
 					failed[containers[i].ID()] = err
 				} else if containers[i].IsStale() {
-					// Only add (previously) stale containers' images to cleanup.
-					// Use SourceImageID so we target the image the old container
-					// was created from, not whatever imageInfo currently holds
-					// (which may be a freshly-pulled replacement when the old
-					// image has been GC'd — see Container.SourceImageID).
-					cleanupImageIDs[containers[i].SourceImageID()] = true
+					// Defer cleanup by one generation: hand --cleanup the
+					// image this container was on *before* the previous
+					// successful update, not the one we just retired.
+					// The just-retired image stays on disk as the rollback
+					// target until the next update of this container rotates
+					// it out. SourceImageID stays the right field — the old
+					// container was created from it, even if imageInfo now
+					// holds a freshly-pulled replacement.
+					if prior := rotatePreviousImage(containers[i].Name(), containers[i].SourceImageID()); prior != "" {
+						cleanupImageIDs[prior] = true
+					}
 				}
 			}
 		}
@@ -401,10 +469,11 @@ func restartContainersInSortedOrder(containers, scanView []types.Container, clie
 			if err := restartStaleContainer(c, client, params); err != nil {
 				failed[c.ID()] = err
 			} else if c.IsStale() {
-				// See the matching comment in performRollingRestart: use the
-				// creation-time image ID, not the inspected imageInfo, so we
-				// don't delete the replacement image after a fallback update.
-				cleanupImageIDs[c.SourceImageID()] = true
+				// Defer cleanup by one generation — see performRollingRestart
+				// for the rationale. SourceImageID is still the right key.
+				if prior := rotatePreviousImage(c.Name(), c.SourceImageID()); prior != "" {
+					cleanupImageIDs[prior] = true
+				}
 			}
 		}
 	}
@@ -643,6 +712,10 @@ func rollback(client container.Client, old types.Container, newID types.Containe
 		log.WithError(stopErr).Warnf("rollback: failed to stop unhealthy new container %s", newSnapshot.Name())
 	}
 
+	// Repoint the recreate at the old image's digest. Without this, the
+	// targetImageID set on the forward path would still hold the *new* image
+	// and rollback would re-create with the broken version we just rejected.
+	old.SetTargetImageID(old.ImageID())
 	rolledBackID, err := client.StartContainer(old)
 	if err != nil {
 		return err

@@ -41,6 +41,10 @@ type TestData struct {
 	// error (e.g. container.ErrPinnedImage) for a named container, exercising
 	// the typed-error skip paths in actions.Update.
 	StalenessErrors map[string]error
+	// NewestImageByName lets tests override the digest returned by
+	// IsContainerStale's newestImage out-parameter, so they can verify
+	// downstream pinning of ContainerCreate to the resolved image ID.
+	NewestImageByName map[string]t.ImageID
 }
 
 // TriedToRemoveImage is a test helper function to check whether RemoveImageByID has been called
@@ -133,7 +137,11 @@ func (client MockClient) IsContainerStale(cont t.Container, _ t.UpdateParams) (b
 	if !found {
 		stale = true
 	}
-	return stale, "", nil
+	newest := t.ImageID("")
+	if id, ok := client.TestData.NewestImageByName[cont.Name()]; ok {
+		newest = id
+	}
+	return stale, newest, nil
 }
 
 // WarnOnHeadPullFailed is always true for the mock client
