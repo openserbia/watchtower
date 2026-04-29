@@ -181,11 +181,29 @@ func (c Container) SourceImageID() wt.ImageID {
 // ImageName returns the name of the Docker image that was used to start the
 // container. If the original image was specified without a particular tag, the
 // "latest" tag is assumed.
+//
+// When Config.Image holds a bare digest reference (e.g. "sha256:abc..."), we
+// fall back to the first entry in imageInfo.RepoTags. That state is mostly a
+// recovery path for containers that were recreated by an early version of the
+// digest-pinning fix (commit 178bd7a) which incorrectly wrote the digest into
+// Config.Image — those containers would otherwise be stuck forever, since
+// inspecting a digest against itself never reports a new image and the
+// targeted-scan filter would never match them. The fallback returns the live
+// canonical tag, which is what callers (registry auth, HasNewImage,
+// FilterByImage) actually want.
 func (c Container) ImageName() string {
 	// Compatibility w/ Zodiac deployments
 	imageName, ok := c.getLabelValue(zodiacLabel)
 	if !ok {
 		imageName = c.containerInfo.Config.Image
+	}
+
+	if strings.HasPrefix(imageName, "sha256:") && c.imageInfo != nil {
+		for _, tag := range c.imageInfo.RepoTags {
+			if tag != "" && !strings.HasPrefix(tag, "sha256:") {
+				return tag
+			}
+		}
 	}
 
 	if !strings.Contains(imageName, ":") {
@@ -506,16 +524,14 @@ func (c Container) GetCreateConfig() *dockercontainer.Config {
 		config.ExposedPorts[p] = struct{}{}
 	}
 
-	if c.targetImageID != "" {
-		// Pin to the digest resolved during IsContainerStale. Immune to tag
-		// churn between scan and recreate (e.g. a CI rebuild that briefly
-		// untags `name:latest`). The image is on disk because we just
-		// pulled/inspected it; ContainerCreate accepts a digest reference
-		// the same as a tag.
-		config.Image = string(c.targetImageID)
-	} else {
-		config.Image = c.ImageName()
-	}
+	// Always emit the human-readable tag here. The race against a CI rebuild
+	// that may have untagged or moved name:latest between IsContainerStale
+	// and ContainerCreate is closed inside dockerClient.StartContainer, where
+	// targetImageID is re-bound to the original tag via ImageTag immediately
+	// before create. Writing the digest into Config.Image instead is unsafe:
+	// every downstream reader (HasNewImage, PullImage, FilterByImage,
+	// registry auth) treats Config.Image as a tag and breaks on a digest.
+	config.Image = c.ImageName()
 	return config
 }
 

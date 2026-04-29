@@ -18,13 +18,34 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   name:latest`. Because watchtower had already stopped *and removed*
   the old container by that point, the service stayed down until an
   operator intervened — observed in production with rebuild cadences
-  faster than the poll interval. The recreate now references the
-  digest resolved by `IsContainerStale` (threaded onto the container
-  via `SetTargetImageID` and consumed by `GetCreateConfig`); the image
-  is on disk because we just pulled it, so the create is immune to
-  tag churn. The health-gated rollback path repoints the override at
-  the *old* image's digest before restoring, so a rejected new build
-  doesn't get re-created on rollback either.
+  faster than the poll interval. `IsContainerStale` records the resolved
+  digest on the container (`SetTargetImageID`); the Docker client then
+  re-binds the original tag to that digest via `ImageTag` immediately
+  before `ContainerCreate`, so the create resolves the image we just
+  pulled rather than whatever the registry tag happens to point at by
+  the time we get there. The health-gated rollback path repoints the
+  override at the *old* image's digest before restoring, so a rejected
+  new build doesn't get re-created on rollback either.
+  - **Why not write the digest into `Config.Image` directly.** The
+    initial attempt at this fix mutated `Config.Image` to the digest
+    inside `GetCreateConfig`, which read clean in the recreate path
+    but quietly broke every consumer that treats `Config.Image` as a
+    tag: `HasNewImage` compared the digest against itself and reported
+    no change, `PullImage` short-circuited with `ErrPinnedImage`,
+    `FilterByImage` split on `:` and never matched the original repo
+    name on event-driven scans, and registry-auth lookups keyed by
+    name. Containers recreated under that flow stopped receiving any
+    further updates until manually restarted. Closing the race outside
+    `Config.Image` keeps every downstream reader on the well-known tag
+    contract.
+- **`ImageName()` falls back to `RepoTags[0]` when `Config.Image` is a
+  bare digest.** Recovery path for containers recreated by the early
+  digest-in-`Config.Image` version of the fix above: their stored
+  reference is `sha256:...`, and without a fallback they would remain
+  stuck across watchtower restarts. The fallback returns the image's
+  current canonical tag, which is what `HasNewImage`, `PullImage`,
+  `FilterByImage`, and registry-auth all expect, so affected
+  containers self-heal on the next poll.
 - **`--cleanup` defers image removal by one generation per container.**
   The just-retired image now stays on disk as the previous-generation
   rollback target until the *next* successful update of the same

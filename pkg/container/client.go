@@ -530,6 +530,27 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 
 	name := c.Name()
 
+	// Re-bind the original tag to the digest IsContainerStale resolved, so a
+	// CI rebuild that untagged or moved name:latest between scan and create
+	// can't leave us with "No such image" or with an unintended digest.
+	// Idempotent and local-only — no-op if the tag still points where we
+	// expect, instant overwrite otherwise. We call this after Stop has already
+	// removed the previous container, so the tiny window between tag and
+	// create can no longer be widened by a slow stop.
+	if target := c.TargetImageID(); target != "" {
+		if err := client.api.ImageTag(bg, string(target), config.Image); err != nil {
+			// A failure here is non-fatal: ContainerCreate will surface the
+			// real problem (or succeed if the tag was already correct). Log
+			// and count, but don't abort the recreate — the existing
+			// behavior is to lean on ContainerCreate's error path.
+			metrics.RegisterDockerAPIError("image_tag")
+			log.WithError(err).WithFields(log.Fields{
+				"image":  config.Image,
+				"digest": string(target),
+			}).Debug("Image retag before create failed; proceeding with original tag")
+		}
+	}
+
 	log.Infof("Creating %s", name)
 
 	createdContainer, err := client.api.ContainerCreate(bg, config, hostConfig, simpleNetworkConfig, nil, name)

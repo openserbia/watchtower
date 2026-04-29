@@ -158,19 +158,22 @@ var _ = Describe("the container", func() {
 			})
 		})
 		When("a target image ID has been recorded", func() {
-			It("pins config.Image to the digest, not the tag", func() {
-				// Closes the race where a CI rebuild untags `name:latest`
-				// between IsContainerStale and ContainerCreate. The recorded
-				// digest still resolves on disk because we just pulled it.
+			It("keeps config.Image as the human-readable tag", func() {
+				// The race against a CI rebuild that may have untagged
+				// name:latest between IsContainerStale and ContainerCreate is
+				// closed inside the Docker client (ImageTag immediately before
+				// create), not by writing the digest into Config.Image —
+				// every downstream reader (HasNewImage, PullImage,
+				// FilterByImage) treats Config.Image as a tag and breaks on
+				// a digest.
 				c := MockContainer(WithPortBindings())
 				c.SetTargetImageID(types.ImageID("sha256:deadbeef"))
-				Expect(c.GetCreateConfig().Image).To(Equal("sha256:deadbeef"))
-			})
-			It("falls back to the tag when the override is cleared", func() {
-				c := MockContainer(WithPortBindings())
-				c.SetTargetImageID(types.ImageID("sha256:deadbeef"))
-				c.SetTargetImageID("")
 				Expect(c.GetCreateConfig().Image).To(Equal(c.ImageName()))
+			})
+			It("preserves the digest on the container for the create path to use", func() {
+				c := MockContainer(WithPortBindings())
+				c.SetTargetImageID(types.ImageID("sha256:deadbeef"))
+				Expect(c.TargetImageID()).To(Equal(types.ImageID("sha256:deadbeef")))
 			})
 		})
 	})
@@ -276,6 +279,30 @@ var _ = Describe("the container", func() {
 				c = MockContainer(WithImageName(name))
 				imageName := c.ImageName()
 				Expect(imageName).To(Equal(name + ":latest"))
+			})
+			When("Config.Image is a bare digest", func() {
+				// Recovery path for containers recreated by the early version
+				// of the digest-pinning fix (commit 178bd7a) which wrote the
+				// digest into Config.Image. Without this fallback, those
+				// containers would be stuck forever — HasNewImage would
+				// inspect the digest against itself and report no change,
+				// FilterByImage would split the digest on ":" and never match
+				// the original repo name, and PullImage would treat them as
+				// user-pinned.
+				It("falls back to the first entry in imageInfo.RepoTags", func() {
+					c = MockContainer(WithImageName("srb-guide:latest"))
+					c.containerInfo.Config.Image = "sha256:abcdef0123456789"
+					Expect(c.ImageName()).To(Equal("srb-guide:latest"))
+				})
+				It("returns the bare digest unchanged when no RepoTags are available", func() {
+					// Belt-and-braces: an image with no tags (rare, but
+					// possible after a `docker rmi` race) shouldn't mutate
+					// the digest reference into "sha256:abc:latest".
+					c = MockContainer(WithPortBindings())
+					c.containerInfo.Config.Image = "sha256:abcdef0123456789"
+					c.imageInfo.RepoTags = nil
+					Expect(c.ImageName()).To(Equal("sha256:abcdef0123456789"))
+				})
 			})
 		})
 
