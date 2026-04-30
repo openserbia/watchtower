@@ -10,7 +10,28 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+### Added
+- **Typed pull-error sentinels for unauthorized and not-found.** `PullImage`
+  now wraps daemon errors as `ErrPullImageUnauthorized` (HTTP 401) and
+  `ErrPullImageNotFound` (HTTP 404), logging auth failures at warn (so a
+  rotated credential doesn't sit silent at debug) and missing manifests
+  at debug (so a transient registry blip doesn't escalate to warn). The
+  underlying `cerrdefs` error stays in the chain via `fmt.Errorf("%w: %w")`,
+  so the existing local-build safeguard in `pullFailureLooksLocal` keeps
+  firing on bare-name references — no behaviour change for the silent-skip
+  path. Borrowed from
+  [nicholas-fedor/watchtower#1477](https://github.com/nicholas-fedor/watchtower/pull/1477).
+
 ### Fixed
+- **Misconfigured port bindings no longer abort a recreate.** A compose
+  file with `ports: ["8080:"]` (or any entry that resolves to an empty port
+  number) used to fall through to `ContainerCreate` and surface as Docker's
+  opaque `invalid port range: value is empty`, leaving operators chasing a
+  failure whose root cause was upstream of watchtower. `VerifyConfiguration`
+  now strips empty / `"/proto"`-only entries from `HostConfig.PortBindings`
+  and `Config.ExposedPorts` before the create call, logging a warn that
+  identifies the offending key and the affected container. Borrowed from
+  [nicholas-fedor/watchtower#1478](https://github.com/nicholas-fedor/watchtower/pull/1478).
 - **`ContainerCreate` no longer races the registry tag.** The recreate
   flow handed Docker a tag (`name:latest`) for the new image, so a CI
   rebuild that briefly untagged the reference between the scan and the

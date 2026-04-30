@@ -652,6 +652,28 @@ func (client dockerClient) IsContainerStale(container t.Container, params t.Upda
 	return client.HasNewImage(ctx, container)
 }
 
+// classifyPullError wraps a daemon ImagePull error with a typed sentinel
+// when it carries a recognisable category (HTTP 401 → unauthorized, HTTP 404
+// → not-found). The original error is kept in the chain via
+// fmt.Errorf("%w: %w") so cerrdefs.IsUnauthorized / cerrdefs.IsNotFound
+// continue to detect the underlying classification — that's what
+// pullFailureLooksLocal relies on for the local-build safeguard. Errors that
+// don't match a known category are returned untouched so existing call-sites
+// that inspect the raw daemon error keep behaving identically.
+func classifyPullError(imageName string, err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case cerrdefs.IsUnauthorized(err):
+		return fmt.Errorf("%w: %s: %w", ErrPullImageUnauthorized, imageName, err)
+	case cerrdefs.IsNotFound(err):
+		return fmt.Errorf("%w: %s: %w", ErrPullImageNotFound, imageName, err)
+	default:
+		return err
+	}
+}
+
 // pullFailureLooksLocal reports whether a PullImage error for the given
 // image reference should be treated as a locally-built image rather than a
 // real failure. It fires only when the image reference lacks a registry
@@ -775,8 +797,15 @@ func (client dockerClient) PullImage(ctx context.Context, container t.Container)
 		// that we recover from via the local-build safeguard shouldn't
 		// count as a Docker API error, because it isn't one — the daemon
 		// correctly reported a registry miss for an image it never had.
-		log.Debugf("Error pulling image %s, %s", imageName, err)
-		return err
+		switch {
+		case cerrdefs.IsUnauthorized(err):
+			log.WithError(err).WithFields(fields).Warn("Image pull failed: authentication required")
+		case cerrdefs.IsNotFound(err):
+			log.WithError(err).WithFields(fields).Debug("Image pull failed: image not found in registry")
+		default:
+			log.Debugf("Error pulling image %s, %s", imageName, err)
+		}
+		return classifyPullError(imageName, err)
 	}
 
 	defer func() { _ = response.Close() }()

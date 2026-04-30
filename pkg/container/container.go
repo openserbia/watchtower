@@ -588,5 +588,32 @@ func (c Container) VerifyConfiguration() error {
 		containerConfig.ExposedPorts = make(map[nat.Port]struct{})
 	}
 
+	// A misconfigured compose file (e.g. `ports: ["8080:"]`) can leave an
+	// empty port string or a "/tcp" entry with no port number on the
+	// running container. Those values fall through GetCreateConfig and
+	// surface as Docker's opaque "invalid port range: value is empty"
+	// during ContainerCreate, leaving operators chasing a recreate failure
+	// whose root cause was upstream of watchtower. Strip the malformed
+	// entries here so the rest of the bindings still go through and the
+	// log line points at the actual offender.
+	for port := range hostConfig.PortBindings {
+		portStr := string(port)
+		if portStr == "" {
+			logrus.WithField("container", c.Name()).
+				Warn("Dropping empty port binding before recreate")
+			delete(hostConfig.PortBindings, port)
+			delete(containerConfig.ExposedPorts, port)
+			continue
+		}
+		// nat.Port is "<number>/<proto>"; the proto half can legitimately
+		// be missing, but the number half must be non-empty.
+		if portPart, _, _ := strings.Cut(portStr, "/"); portPart == "" {
+			logrus.WithFields(logrus.Fields{"container": c.Name(), "port": portStr}).
+				Warn("Dropping port binding with empty port number before recreate")
+			delete(hostConfig.PortBindings, port)
+			delete(containerConfig.ExposedPorts, port)
+		}
+	}
+
 	return nil
 }

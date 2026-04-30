@@ -22,4 +22,19 @@ var (
 	// preserved verbatim from the pre-typed-error wording so existing
 	// downstream parsers and notification templates keep matching.
 	ErrPinnedImage = errors.New("container uses a pinned image, and cannot be updated by watchtower")
+
+	// ErrPullImageUnauthorized is returned by PullImage when the registry
+	// rejects the request with HTTP 401. Distinct from a transient daemon
+	// error so operators can wire alerts on persistent auth failure (rotated
+	// credentials, expired token) without drowning in DNS / timeout noise.
+	// The original cerrdefs error stays in the chain via fmt.Errorf("%w: %w"),
+	// so cerrdefs.IsUnauthorized still returns true on the wrapped value.
+	ErrPullImageUnauthorized = errors.New("failed to pull image: authentication required")
+
+	// ErrPullImageNotFound is returned by PullImage when the registry
+	// reports the manifest is missing (HTTP 404 / cerrdefs.ErrNotFound).
+	// Kept as a distinct sentinel so the scan-loop's local-build safeguard
+	// in pullFailureLooksLocal can keep recognising the case via
+	// cerrdefs.IsNotFound (which walks both single- and multi-unwrap chains).
+	ErrPullImageNotFound = errors.New("failed to pull image: image not found in registry")
 )

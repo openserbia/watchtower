@@ -70,6 +70,47 @@ var _ = Describe("the container", func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
+		When("a port binding has an empty port string", func() {
+			It("drops it from PortBindings and ExposedPorts and keeps the rest", func() {
+				c := MockContainer(WithPortBindings("80/tcp"))
+				c.containerInfo.HostConfig.PortBindings[""] = []nat.PortBinding{}
+				c.containerInfo.Config.ExposedPorts = map[nat.Port]struct{}{
+					"":       {},
+					"80/tcp": {},
+				}
+				Expect(c.VerifyConfiguration()).To(Succeed())
+				Expect(c.containerInfo.HostConfig.PortBindings).To(HaveKey(nat.Port("80/tcp")))
+				Expect(c.containerInfo.HostConfig.PortBindings).ToNot(HaveKey(nat.Port("")))
+				Expect(c.containerInfo.Config.ExposedPorts).To(HaveKey(nat.Port("80/tcp")))
+				Expect(c.containerInfo.Config.ExposedPorts).ToNot(HaveKey(nat.Port("")))
+			})
+		})
+		When("a port binding has an empty port number (\"/tcp\")", func() {
+			It("drops it so ContainerCreate doesn't fail with \"invalid port range\"", func() {
+				c := MockContainer(WithPortBindings("80/tcp"))
+				c.containerInfo.HostConfig.PortBindings["/tcp"] = []nat.PortBinding{}
+				c.containerInfo.Config.ExposedPorts = map[nat.Port]struct{}{
+					"/tcp":   {},
+					"80/tcp": {},
+				}
+				Expect(c.VerifyConfiguration()).To(Succeed())
+				Expect(c.containerInfo.HostConfig.PortBindings).ToNot(HaveKey(nat.Port("/tcp")))
+				Expect(c.containerInfo.Config.ExposedPorts).ToNot(HaveKey(nat.Port("/tcp")))
+				Expect(c.containerInfo.HostConfig.PortBindings).To(HaveKey(nat.Port("80/tcp")))
+			})
+		})
+		When("all port bindings are valid", func() {
+			It("preserves them unchanged", func() {
+				c := MockContainer(WithPortBindings("8080/tcp", "443/tcp"))
+				c.containerInfo.Config.ExposedPorts = map[nat.Port]struct{}{
+					"8080/tcp": {},
+					"443/tcp":  {},
+				}
+				Expect(c.VerifyConfiguration()).To(Succeed())
+				Expect(c.containerInfo.HostConfig.PortBindings).To(HaveLen(2))
+				Expect(c.containerInfo.Config.ExposedPorts).To(HaveLen(2))
+			})
+		})
 	})
 	Describe("GetCreateConfig", func() {
 		When("container healthcheck config is equal to image config", func() {

@@ -664,6 +664,35 @@ var _ = Describe("the client", func() {
 		})
 	})
 
+	Describe(`classifyPullError`, func() {
+		It(`returns nil for a nil error`, func() {
+			Expect(classifyPullError("foo:latest", nil)).To(BeNil())
+		})
+		It(`wraps unauthorized errors with ErrPullImageUnauthorized`, func() {
+			wrapped := classifyPullError("private/app:latest", cerrdefs.ErrUnauthenticated)
+			Expect(errors.Is(wrapped, ErrPullImageUnauthorized)).To(BeTrue())
+			// Underlying classification stays detectable so cerrdefs-based
+			// callers (like pullFailureLooksLocal) keep working.
+			Expect(cerrdefs.IsUnauthorized(wrapped)).To(BeTrue())
+			Expect(wrapped).To(MatchError(ContainSubstring("private/app:latest")))
+		})
+		It(`wraps not-found errors with ErrPullImageNotFound`, func() {
+			wrapped := classifyPullError("ghcr.io/missing/app:latest", cerrdefs.ErrNotFound)
+			Expect(errors.Is(wrapped, ErrPullImageNotFound)).To(BeTrue())
+			// pullFailureLooksLocal's IsNotFound check must keep firing on
+			// the wrapped value or the local-build safeguard regresses.
+			Expect(cerrdefs.IsNotFound(wrapped)).To(BeTrue())
+			Expect(wrapped).To(MatchError(ContainSubstring("ghcr.io/missing/app:latest")))
+		})
+		It(`returns transient errors untouched (no typed sentinel)`, func() {
+			transient := errors.New("connection reset")
+			wrapped := classifyPullError("app:latest", transient)
+			Expect(wrapped).To(Equal(transient))
+			Expect(errors.Is(wrapped, ErrPullImageUnauthorized)).To(BeFalse())
+			Expect(errors.Is(wrapped, ErrPullImageNotFound)).To(BeFalse())
+		})
+	})
+
 	Describe(`pullFailureLooksLocal`, func() {
 		notFoundErr := cerrdefs.ErrNotFound
 		otherErr := errors.New("connection reset")
@@ -681,6 +710,12 @@ var _ = Describe("the client", func() {
 		It(`returns true for a bare-name reference with a NotFound pull error`, func() {
 			Expect(pullFailureLooksLocal("tg-antispam:latest", notFoundErr)).To(BeTrue())
 			Expect(pullFailureLooksLocal("myorg/app:latest", notFoundErr)).To(BeTrue())
+		})
+		It(`still recognises NotFound after classifyPullError wraps it`, func() {
+			// IsContainerStale receives the wrapped error from PullImage now;
+			// the local-build safeguard must keep firing on bare-name refs.
+			wrapped := classifyPullError("tg-antispam:latest", notFoundErr)
+			Expect(pullFailureLooksLocal("tg-antispam:latest", wrapped)).To(BeTrue())
 		})
 	})
 })
