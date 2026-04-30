@@ -86,6 +86,34 @@ const (
 	// API territory that might introduce request-body changes the vendored
 	// SDK can't formulate correctly. Revisit when the SDK is bumped.
 	preferredFeatureAPIVersion = "1.54"
+
+	// dockerAPITimeout is an upper bound on individual Docker daemon
+	// management calls (list / inspect / create / kill / remove / rename /
+	// network attach / image-tag / start). Healthy daemons answer in
+	// milliseconds; this exists only to keep a single hung syscall from
+	// wedging the scan loop forever — typically when the daemon socket
+	// accepts the connection but doesn't respond, e.g. during a partial
+	// engine upgrade or a hung containerd snapshotter. Set generously
+	// because the SDK call returning doesn't cancel the daemon's work
+	// (the daemon may still create / remove the resource), so a too-tight
+	// timeout can leave torn state without recovering anything.
+	dockerAPITimeout = 2 * time.Minute
+
+	// imageRemoveTimeout grants extra headroom over dockerAPITimeout because
+	// ImageRemove on disk-heavy multi-layer images can take noticeably
+	// longer than other API calls — the daemon's snapshot teardown is
+	// disk-bound, not network-bound, and slower hosts have legitimately
+	// hit the dockerAPITimeout default during routine --cleanup runs.
+	imageRemoveTimeout = 5 * time.Minute
+
+	// imagePullTimeout bounds the IsContainerStale path, which streams the
+	// pull. Generous because legitimate pulls of multi-GB images on slow
+	// links can take a long time; the goal is only to recover from a
+	// truly hung daemon, not to time out real-world pulls. Operators with
+	// pulls that consistently exceed this window will see staleness
+	// detection back off, which is the correct signal to size the link
+	// or the image — not to silently extend forever.
+	imagePullTimeout = 30 * time.Minute
 )
 
 // upgradeAPIVersionForFeatures opportunistically raises the client's API
@@ -136,7 +164,14 @@ type ClientOptions struct {
 	IncludeStopped    bool
 	ReviveStopped     bool
 	IncludeRestarting bool
-	WarnOnHeadFailed  WarningStrategy
+	// DisableMemorySwappiness, when set, nils HostConfig.MemorySwappiness on
+	// recreate. Podman + crun on cgroupv2 rejects the implicit `0` Docker
+	// writes when the field is unset, so a Watchtower recreate that copies
+	// the inspected HostConfig back through ContainerCreate fails with
+	// `swappiness must be in the range [0, 100]`. Opt-in: Docker behavior
+	// is unchanged when this is left false.
+	DisableMemorySwappiness bool
+	WarnOnHeadFailed        WarningStrategy
 }
 
 // WarningStrategy is a value determining when to show warnings
@@ -169,7 +204,8 @@ func (client dockerClient) WarnOnHeadPullFailed(container t.Container) bool {
 
 func (client dockerClient) ListContainers(fn t.Filter) ([]t.Container, error) {
 	cs := []t.Container{}
-	bg := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), dockerAPITimeout)
+	defer cancel()
 
 	switch {
 	case client.IncludeStopped && client.IncludeRestarting:
@@ -183,7 +219,7 @@ func (client dockerClient) ListContainers(fn t.Filter) ([]t.Container, error) {
 	}
 
 	filter := client.createListFilter()
-	containers, err := listContainersWithRetry(bg, client.api, container.ListOptions{Filters: filter})
+	containers, err := listContainersWithRetry(ctx, client.api, container.ListOptions{Filters: filter})
 	if err != nil {
 		metrics.RegisterDockerAPIError("list")
 		return nil, err
@@ -304,9 +340,10 @@ func (client dockerClient) createListFilter() filters.Args {
 }
 
 func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container, error) {
-	bg := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), dockerAPITimeout)
+	defer cancel()
 
-	containerInfo, err := client.api.ContainerInspect(bg, string(containerID))
+	containerInfo, err := client.api.ContainerInspect(ctx, string(containerID))
 	if err != nil {
 		recordDaemonError("inspect", err, cerrdefs.IsNotFound)
 		return &Container{}, err
@@ -314,7 +351,7 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 
 	netType, netContainerID, found := strings.Cut(string(containerInfo.HostConfig.NetworkMode), ":")
 	if found && netType == "container" {
-		parentContainer, err := client.api.ContainerInspect(bg, netContainerID)
+		parentContainer, err := client.api.ContainerInspect(ctx, netContainerID)
 		if err != nil {
 			recordDaemonError("inspect", err, cerrdefs.IsNotFound)
 			log.WithFields(map[string]interface{}{
@@ -328,7 +365,7 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 		}
 	}
 
-	imageInfo, identity, err := client.inspectImageWithIdentity(bg, containerInfo.Image)
+	imageInfo, identity, err := client.inspectImageWithIdentity(ctx, containerInfo.Image)
 	if err != nil {
 		// The image the container was created from may have been garbage-collected
 		// off disk (e.g. a previous --cleanup run after the tag was moved to a
@@ -339,7 +376,7 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 		// doesn't churn the WatchtowerDockerAPIErrorsSustained alert, and
 		// NotFound responses never count (see recordDaemonInspectError).
 		if ref := containerInfo.Config.Image; ref != "" && ref != containerInfo.Image && !strings.HasPrefix(ref, "sha256:") {
-			if fallbackInfo, fallbackIdentity, fallbackErr := client.inspectImageWithIdentity(bg, ref); fallbackErr == nil {
+			if fallbackInfo, fallbackIdentity, fallbackErr := client.inspectImageWithIdentity(ctx, ref); fallbackErr == nil {
 				metrics.RegisterImageFallback()
 				log.Warnf("Image %s for container %s is missing locally; falling back to %q for config", containerInfo.Image, containerInfo.Name, ref)
 				c := &Container{containerInfo: &containerInfo, imageInfo: &fallbackInfo}
@@ -355,6 +392,26 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 	c := &Container{containerInfo: &containerInfo, imageInfo: &imageInfo}
 	c.SetImageIdentity(identity)
 	return c, nil
+}
+
+// applyRecreatePolicy applies client-level recreate-time mutations to the
+// HostConfig before ContainerCreate. The inspected HostConfig that comes
+// back from the daemon is mostly safe to round-trip, but a few fields need
+// host-runtime-specific cleanup so they don't trip ContainerCreate. Today
+// this is just the Podman/cgroupv2 MemorySwappiness fix; future
+// host-targeted carve-outs belong here so StartContainer stays linear.
+func applyRecreatePolicy(opts ClientOptions, hc *container.HostConfig) {
+	if hc == nil {
+		return
+	}
+	if opts.DisableMemorySwappiness {
+		// Podman + crun on cgroupv2 rejects MemorySwappiness=0 when the
+		// field was never explicitly set. Docker writes 0 anyway as the
+		// inspected default, so we'd otherwise feed a value back in that
+		// the host runtime considers invalid. A nil pointer signals
+		// "operator did not set this," which Podman accepts.
+		hc.MemorySwappiness = nil
+	}
 }
 
 // recordDaemonError increments docker_api_errors_total only when the error
@@ -432,7 +489,6 @@ func decodeImageIdentity(raw []byte) *ImageIdentity {
 }
 
 func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) error {
-	bg := context.Background()
 	signal := c.StopSignal()
 	if signal == "" {
 		signal = defaultStopSignal
@@ -450,9 +506,20 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 		timeout = perContainer
 	}
 
+	// Bound the entire stop+remove path. The grace period gates each of
+	// the two in-loop waitForStopOrTimeout calls independently (one before
+	// Remove, one after), so the outer ctx must cover *both* full grace
+	// windows plus dockerAPITimeout of headroom for the Kill, Remove, and
+	// any individual ContainerInspect that hangs. Without the headroom a
+	// user-supplied grace of N minutes would leave zero slack for the
+	// daemon calls and the outer ctx would race the second wait's normal
+	// timeout to fire first.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*timeout+dockerAPITimeout)
+	defer cancel()
+
 	if c.IsRunning() {
 		log.Infof("Stopping %s (%s) with %s", c.Name(), shortID, signal)
-		if err := client.api.ContainerKill(bg, idStr, signal); err != nil {
+		if err := client.api.ContainerKill(ctx, idStr, signal); err != nil {
 			if cerrdefs.IsNotFound(err) {
 				log.Debugf("Container %s already gone before kill, nothing to stop.", shortID)
 				return ErrContainerNotFound
@@ -463,14 +530,14 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 	}
 
 	// TODO: This should probably be checked.
-	_ = client.waitForStopOrTimeout(c, timeout)
+	_ = client.waitForStopOrTimeout(ctx, c, timeout)
 
 	if c.ContainerInfo().HostConfig.AutoRemove {
 		log.Debugf("AutoRemove container %s, skipping ContainerRemove call.", shortID)
 	} else {
 		log.Debugf("Removing container %s", shortID)
 
-		if err := client.api.ContainerRemove(bg, idStr, container.RemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
+		if err := client.api.ContainerRemove(ctx, idStr, container.RemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
 			if cerrdefs.IsNotFound(err) {
 				log.Debugf("Container %s not found, skipping removal.", shortID)
 				return ErrContainerNotFound
@@ -481,7 +548,7 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 	}
 
 	// Wait for container to be removed. In this case an error is a good thing
-	if err := client.waitForStopOrTimeout(c, timeout); err == nil {
+	if err := client.waitForStopOrTimeout(ctx, c, timeout); err == nil {
 		return fmt.Errorf("container %s (%s) could not be removed", c.Name(), shortID)
 	}
 
@@ -511,10 +578,14 @@ func (client dockerClient) GetNetworkConfig(c t.Container) *network.NetworkingCo
 }
 
 func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) {
-	bg := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), dockerAPITimeout)
+	defer cancel()
+
 	config := c.GetCreateConfig()
 	hostConfig := c.GetCreateHostConfig()
 	networkConfig := client.GetNetworkConfig(c)
+
+	applyRecreatePolicy(client.ClientOptions, hostConfig)
 
 	// simpleNetworkConfig is a networkConfig with only 1 network.
 	// see: https://github.com/docker/docker/issues/29265
@@ -538,7 +609,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 	// removed the previous container, so the tiny window between tag and
 	// create can no longer be widened by a slow stop.
 	if target := c.TargetImageID(); target != "" {
-		if err := client.api.ImageTag(bg, string(target), config.Image); err != nil {
+		if err := client.api.ImageTag(ctx, string(target), config.Image); err != nil {
 			// A failure here is non-fatal: ContainerCreate will surface the
 			// real problem (or succeed if the tag was already correct). Log
 			// and count, but don't abort the recreate — the existing
@@ -553,7 +624,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 
 	log.Infof("Creating %s", name)
 
-	createdContainer, err := client.api.ContainerCreate(bg, config, hostConfig, simpleNetworkConfig, nil, name)
+	createdContainer, err := client.api.ContainerCreate(ctx, config, hostConfig, simpleNetworkConfig, nil, name)
 	if err != nil {
 		metrics.RegisterDockerAPIError("create")
 		return "", err
@@ -561,7 +632,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 
 	if !(hostConfig.NetworkMode.IsHost()) {
 		for k := range simpleNetworkConfig.EndpointsConfig {
-			err = client.api.NetworkDisconnect(bg, k, createdContainer.ID, true)
+			err = client.api.NetworkDisconnect(ctx, k, createdContainer.ID, true)
 			if err != nil {
 				metrics.RegisterDockerAPIError("network_disconnect")
 				return "", err
@@ -569,7 +640,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 		}
 
 		for k, v := range networkConfig.EndpointsConfig {
-			err = client.api.NetworkConnect(bg, k, createdContainer.ID, v)
+			err = client.api.NetworkConnect(ctx, k, createdContainer.ID, v)
 			if err != nil {
 				metrics.RegisterDockerAPIError("network_connect")
 				return "", err
@@ -582,14 +653,14 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 		return createdContainerID, nil
 	}
 
-	return createdContainerID, client.doStartContainer(bg, c, createdContainer)
+	return createdContainerID, client.doStartContainer(ctx, c, createdContainer)
 }
 
-func (client dockerClient) doStartContainer(bg context.Context, c t.Container, creation container.CreateResponse) error {
+func (client dockerClient) doStartContainer(ctx context.Context, c t.Container, creation container.CreateResponse) error {
 	name := c.Name()
 
 	log.Debugf("Starting container %s (%s)", name, t.ContainerID(creation.ID).ShortID())
-	err := client.api.ContainerStart(bg, creation.ID, container.StartOptions{})
+	err := client.api.ContainerStart(ctx, creation.ID, container.StartOptions{})
 	if err != nil {
 		metrics.RegisterDockerAPIError("start")
 		return err
@@ -598,9 +669,10 @@ func (client dockerClient) doStartContainer(bg context.Context, c t.Container, c
 }
 
 func (client dockerClient) RenameContainer(c t.Container, newName string) error {
-	bg := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), dockerAPITimeout)
+	defer cancel()
 	log.Debugf("Renaming container %s (%s) to %s", c.Name(), c.ID().ShortID(), newName)
-	if err := client.api.ContainerRename(bg, string(c.ID()), newName); err != nil {
+	if err := client.api.ContainerRename(ctx, string(c.ID()), newName); err != nil {
 		metrics.RegisterDockerAPIError("rename")
 		return err
 	}
@@ -608,7 +680,12 @@ func (client dockerClient) RenameContainer(c t.Container, newName string) error 
 }
 
 func (client dockerClient) IsContainerStale(container t.Container, params t.UpdateParams) (stale bool, latestImage t.ImageID, err error) {
-	ctx := context.Background()
+	// Use the longer pull-bound timeout — IsContainerStale streams the pull
+	// when the digest doesn't match, and that legitimately takes minutes for
+	// large images. The dockerAPITimeout default would cut healthy pulls off
+	// mid-stream, leaving the scan flapping rather than completing.
+	ctx, cancel := context.WithTimeout(context.Background(), imagePullTimeout)
+	defer cancel()
 
 	switch {
 	case container.IsNoPull(params):
@@ -820,8 +897,11 @@ func (client dockerClient) PullImage(ctx context.Context, container t.Container)
 func (client dockerClient) RemoveImageByID(id t.ImageID) error {
 	log.Infof("Removing image %s", id.ShortID())
 
+	ctx, cancel := context.WithTimeout(context.Background(), imageRemoveTimeout)
+	defer cancel()
+
 	items, err := client.api.ImageRemove(
-		context.Background(),
+		ctx,
 		string(id),
 		image.RemoveOptions{
 			Force: true,
@@ -973,16 +1053,20 @@ func (client dockerClient) waitForExecOrTimeout(bg context.Context, execID, exec
 	return false, nil
 }
 
-func (client dockerClient) waitForStopOrTimeout(c t.Container, waitTime time.Duration) error {
-	bg := context.Background()
+func (client dockerClient) waitForStopOrTimeout(ctx context.Context, c t.Container, waitTime time.Duration) error {
 	timeout := time.After(waitTime)
 
 	for {
 		select {
 		case <-timeout:
 			return nil
+		case <-ctx.Done():
+			// Outer StopContainer ctx fired — usually means the daemon is
+			// hung. Surface the cancellation so the scan loop knows the
+			// stop didn't complete cleanly.
+			return ctx.Err()
 		default:
-			if ci, err := client.api.ContainerInspect(bg, string(c.ID())); err != nil {
+			if ci, err := client.api.ContainerInspect(ctx, string(c.ID())); err != nil {
 				return err
 			} else if !ci.State.Running {
 				return nil

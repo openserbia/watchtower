@@ -411,6 +411,15 @@ Environment Variable: WATCHTOWER_LABEL_TAKE_PRECEDENCE
              Default: false
 ```
 
+## Disable memory swappiness on recreate (Podman / cgroupv2 compat)
+Drop the container's `MemorySwappiness` setting from the recreate request. Podman with crun on cgroupv2 rejects the implicit `0` Docker writes when the field is unset, so a Watchtower recreate that copies the inspected `HostConfig` back through `ContainerCreate` fails with `swappiness must be in the range [0, 100]`. Opt-in: leaves Docker behavior unchanged (Docker hosts continue to round-trip `MemorySwappiness` exactly as inspected).
+```text
+            Argument: --disable-memory-swappiness
+Environment Variable: WATCHTOWER_DISABLE_MEMORY_SWAPPINESS
+                Type: Boolean
+             Default: false
+```
+
 ## Without restarting containers
 Do not restart containers after updating. This option can be useful when the start of the containers
 is managed by an external system such as systemd.

@@ -138,6 +138,7 @@ func PreRun(cmd *cobra.Command, _ []string) {
 	includeRestarting, _ := f.GetBool("include-restarting")
 	reviveStopped, _ := f.GetBool("revive-stopped")
 	removeVolumes, _ := f.GetBool("remove-volumes")
+	disableMemorySwappiness, _ := f.GetBool("disable-memory-swappiness")
 	warnOnHeadPullFailed, _ := f.GetString("warn-on-head-failure")
 
 	if monitorOnly && noPull {
@@ -145,11 +146,12 @@ func PreRun(cmd *cobra.Command, _ []string) {
 	}
 
 	client = container.NewClient(container.ClientOptions{
-		IncludeStopped:    includeStopped,
-		ReviveStopped:     reviveStopped,
-		RemoveVolumes:     removeVolumes,
-		IncludeRestarting: includeRestarting,
-		WarnOnHeadFailed:  container.WarningStrategy(warnOnHeadPullFailed),
+		IncludeStopped:          includeStopped,
+		ReviveStopped:           reviveStopped,
+		RemoveVolumes:           removeVolumes,
+		IncludeRestarting:       includeRestarting,
+		DisableMemorySwappiness: disableMemorySwappiness,
+		WarnOnHeadFailed:        container.WarningStrategy(warnOnHeadPullFailed),
 	})
 
 	notifier = notifications.NewNotifier(cmd)

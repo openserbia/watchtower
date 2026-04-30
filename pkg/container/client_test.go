@@ -664,6 +664,35 @@ var _ = Describe("the client", func() {
 		})
 	})
 
+	Describe(`applyRecreatePolicy`, func() {
+		It(`is a no-op on a nil HostConfig`, func() {
+			Expect(func() { applyRecreatePolicy(ClientOptions{DisableMemorySwappiness: true}, nil) }).
+				ToNot(Panic())
+		})
+		It(`leaves MemorySwappiness untouched when the flag is off`, func() {
+			val := int64(0)
+			hc := &container.HostConfig{Resources: container.Resources{MemorySwappiness: &val}}
+			applyRecreatePolicy(ClientOptions{DisableMemorySwappiness: false}, hc)
+			Expect(hc.MemorySwappiness).ToNot(BeNil())
+			Expect(*hc.MemorySwappiness).To(Equal(int64(0)))
+		})
+		It(`nils MemorySwappiness when the flag is on (Podman/cgroupv2 compat)`, func() {
+			val := int64(0)
+			hc := &container.HostConfig{Resources: container.Resources{MemorySwappiness: &val}}
+			applyRecreatePolicy(ClientOptions{DisableMemorySwappiness: true}, hc)
+			Expect(hc.MemorySwappiness).To(BeNil())
+		})
+		It(`leaves a non-zero MemorySwappiness alone too — fix is unconditional when opted in`, func() {
+			// The Podman host objects to any inspected MemorySwappiness echoed
+			// back through ContainerCreate, not just 0. We strip
+			// unconditionally when the flag is set.
+			val := int64(60)
+			hc := &container.HostConfig{Resources: container.Resources{MemorySwappiness: &val}}
+			applyRecreatePolicy(ClientOptions{DisableMemorySwappiness: true}, hc)
+			Expect(hc.MemorySwappiness).To(BeNil())
+		})
+	})
+
 	Describe(`classifyPullError`, func() {
 		It(`returns nil for a nil error`, func() {
 			Expect(classifyPullError("foo:latest", nil)).To(BeNil())

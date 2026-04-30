@@ -281,6 +281,12 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"",
 		envBool("WATCHTOWER_LABEL_TAKE_PRECEDENCE"),
 		"Label applied to containers take precedence over arguments")
+
+	flags.BoolP(
+		"disable-memory-swappiness",
+		"",
+		envBool("WATCHTOWER_DISABLE_MEMORY_SWAPPINESS"),
+		"Drop the container's MemorySwappiness setting before recreate. Podman with crun on cgroupv2 rejects the implicit `MemorySwappiness=0` Docker writes when the field is left unset, so a recreate that copies the inspected HostConfig back through ContainerCreate fails with `swappiness must be in the range [0, 100]`. Opt-in: leaves Docker behavior unchanged.")
 }
 
 // RegisterNotificationFlags that are used by watchtower to send notifications

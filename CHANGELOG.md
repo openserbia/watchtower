@@ -11,6 +11,15 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 ## [Unreleased]
 
 ### Added
+- **`--disable-memory-swappiness` for Podman / cgroupv2 hosts.** Podman with
+  crun on cgroupv2 rejects the implicit `MemorySwappiness=0` Docker writes
+  when the field is unset, but the inspected `HostConfig` still carries that
+  `0`, so a Watchtower recreate that copies the inspected config back through
+  `ContainerCreate` failed with `swappiness must be in the range [0, 100]`.
+  When this flag (or `WATCHTOWER_DISABLE_MEMORY_SWAPPINESS=true`) is set,
+  `MemorySwappiness` is dropped from the recreate request — Podman accepts
+  the absent field. No-op on Docker hosts (opt-in). Borrowed from
+  [beatkind/watchtower](https://github.com/beatkind/watchtower/commit/70426e1838cf78416faaddae4c71dc420b82199e).
 - **Typed pull-error sentinels for unauthorized and not-found.** `PullImage`
   now wraps daemon errors as `ErrPullImageUnauthorized` (HTTP 401) and
   `ErrPullImageNotFound` (HTTP 404), logging auth failures at warn (so a
@@ -23,6 +32,21 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   [nicholas-fedor/watchtower#1477](https://github.com/nicholas-fedor/watchtower/pull/1477).
 
 ### Fixed
+- **Bounded timeouts on every Docker daemon API call.** `pkg/container/client.go`
+  used `context.Background()` everywhere, so a hung daemon (socket accepts
+  the connection but never responds — common during a partial engine upgrade
+  or a wedged containerd snapshotter) could block a single API call forever
+  and wedge the scan loop with no recovery. Each operation now runs under a
+  `context.WithTimeout`: 2 minutes for the management calls (list / inspect /
+  create / kill / remove / rename / network / image-tag / start), 5 minutes
+  for `ImageRemove` (snapshot teardown is disk-bound on multi-layer images),
+  30 minutes for `IsContainerStale` (covers a streaming pull). `StopContainer`
+  budgets `2 × stop-timeout + 2m` so both wait phases plus the in-loop
+  `ContainerInspect` have full headroom. Healthy daemons are unaffected;
+  hung daemons surface a deadline error and the next poll retries. Adapted
+  from [Marrrrrrrrry/watchtower](https://github.com/Marrrrrrrrry/watchtower/commit/69616e64c479af8a8472d1db5722e96bbb524225)
+  with revised per-call budgets (their 60 s in `IsContainerStale` would have
+  cut healthy multi-GB pulls off mid-stream).
 - **Misconfigured port bindings no longer abort a recreate.** A compose
   file with `ports: ["8080:"]` (or any entry that resolves to an empty port
   number) used to fall through to `ContainerCreate` and surface as Docker's
