@@ -354,11 +354,11 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 		parentContainer, err := client.api.ContainerInspect(ctx, netContainerID)
 		if err != nil {
 			recordDaemonError("inspect", err, cerrdefs.IsNotFound)
-			log.WithFields(map[string]interface{}{
+			log.WithError(err).WithFields(log.Fields{
 				"container":         containerInfo.Name,
-				"error":             err,
+				"image":             containerInfo.Image,
 				"network-container": netContainerID,
-			}).Warnf("Unable to resolve network container: %v", err)
+			}).Warn("Unable to resolve network container")
 		} else {
 			// Replace the container ID with a container name to allow it to reference the re-created network container
 			containerInfo.HostConfig.NetworkMode = container.NetworkMode(fmt.Sprintf("container:%s", parentContainer.Name))
@@ -378,14 +378,21 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 		if ref := containerInfo.Config.Image; ref != "" && ref != containerInfo.Image && !strings.HasPrefix(ref, "sha256:") {
 			if fallbackInfo, fallbackIdentity, fallbackErr := client.inspectImageWithIdentity(ctx, ref); fallbackErr == nil {
 				metrics.RegisterImageFallback()
-				log.Warnf("Image %s for container %s is missing locally; falling back to %q for config", containerInfo.Image, containerInfo.Name, ref)
+				log.WithFields(log.Fields{
+					"container":      containerInfo.Name,
+					"image":          containerInfo.Image,
+					"fallback_image": ref,
+				}).Warn("Container image missing locally; falling back to configured ref")
 				c := &Container{containerInfo: &containerInfo, imageInfo: &fallbackInfo}
 				c.SetImageIdentity(fallbackIdentity)
 				return c, nil
 			}
 		}
 		recordDaemonError("image_inspect", err, cerrdefs.IsNotFound)
-		log.Warnf("Failed to retrieve container image info: %v", err)
+		log.WithError(err).WithFields(log.Fields{
+			"container": containerInfo.Name,
+			"image":     containerInfo.Image,
+		}).Warn("Failed to retrieve container image info")
 		return &Container{containerInfo: &containerInfo, imageInfo: nil}, nil
 	}
 
@@ -894,7 +901,7 @@ func (client dockerClient) PullImage(ctx context.Context, container t.Container)
 		case cerrdefs.IsNotFound(err):
 			log.WithError(err).WithFields(fields).Debug("Image pull failed: image not found in registry")
 		default:
-			log.Debugf("Error pulling image %s, %s", imageName, err)
+			log.WithError(err).WithFields(fields).Debug("Error pulling image")
 		}
 		return classifyPullError(imageName, err)
 	}
@@ -902,7 +909,7 @@ func (client dockerClient) PullImage(ctx context.Context, container t.Container)
 	defer func() { _ = response.Close() }()
 	// the pull request will be aborted prematurely unless the response is read
 	if _, err = io.ReadAll(response); err != nil {
-		log.Error(err)
+		log.WithError(err).WithFields(fields).Error("Failed to read image pull response")
 		return err
 	}
 	return nil

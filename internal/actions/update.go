@@ -3,6 +3,8 @@ package actions
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"strings"
 	"sync"
 	"time"
 
@@ -667,16 +669,61 @@ func gateOnHealthCheck(client container.Client, old types.Container, newID types
 		return nil
 	}
 
-	log.WithError(err).WithFields(log.Fields{
+	fields := log.Fields{
 		"container":  old.Name(),
 		"image":      old.ImageName(),
 		"new_digest": old.TargetImageID().ShortID(),
 		"old_digest": old.ImageID().ShortID(),
-	}).Error("Health check failed after update — rolling back to the previous image")
+	}
+	// Inspect the new container *before* rollback tears it down to capture
+	// why the gate failed — OOM-kill, non-zero exit, or the trimmed output of
+	// the last failing probe. Without this an operator only sees "rolling
+	// back" and has to reproduce locally to find the cause.
+	maps.Copy(fields, healthFailureContext(client, newID))
+	log.WithError(err).WithFields(fields).Error("Health check failed after update — rolling back to the previous image")
 	if rbErr := rollback(client, old, newID, params); rbErr != nil {
 		return fmt.Errorf("rollback failed for %s: %w (original health-check error: %v)", old.Name(), rbErr, err)
 	}
 	return fmt.Errorf("update of %s rolled back after failed health check: %w", old.Name(), err)
+}
+
+// healthFailureContext gathers actionable diagnostics for an unhealthy
+// container: the kernel OOM-kill flag, the container's last exit code, and
+// the trimmed output of its most recent failing healthcheck probe. Folded
+// into the rollback log so an operator can see *why* the new image failed
+// without re-inspecting the container — which is impossible after rollback,
+// since the new container has been stopped and removed by then.
+func healthFailureContext(client container.Client, id types.ContainerID) log.Fields {
+	fields := log.Fields{}
+	c, err := client.GetContainer(id)
+	if err != nil {
+		return fields
+	}
+	info := c.ContainerInfo()
+	if info == nil || info.State == nil {
+		return fields
+	}
+	if info.State.OOMKilled {
+		fields["oom_killed"] = true
+	}
+	if info.State.ExitCode != 0 {
+		fields["exit_code"] = info.State.ExitCode
+	}
+	if info.State.Health != nil && len(info.State.Health.Log) > 0 {
+		last := info.State.Health.Log[len(info.State.Health.Log)-1]
+		fields["probe_exit_code"] = last.ExitCode
+		// Healthcheck probe stdout/stderr is unbounded — trim so a chatty
+		// probe doesn't blow up the log line or the notification body.
+		const maxProbeOutput = 240
+		out := strings.TrimSpace(last.Output)
+		if out != "" {
+			if len(out) > maxProbeOutput {
+				out = out[:maxProbeOutput] + "…"
+			}
+			fields["probe_output"] = out
+		}
+	}
+	return fields
 }
 
 // waitForHealthy polls the container's State.Health.Status every
