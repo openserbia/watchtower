@@ -299,7 +299,10 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 				// still recorded in the progress report.
 				log.WithField("container", targetContainer.Name()).Debug("Skipping container with pinned image")
 			} else {
-				log.Warnf("Unable to update container %q: %v. Proceeding to next.", targetContainer.Name(), err)
+				log.WithError(err).WithFields(log.Fields{
+					"container": targetContainer.Name(),
+					"image":     targetContainer.ImageName(),
+				}).Warn("Unable to update container — proceeding to next")
 			}
 			stale = false
 			staleCheckFailed++
@@ -435,9 +438,10 @@ func stopStaleContainer(cont types.Container, client container.Client, params ty
 			// container; a failure reflects on the hook script, not on
 			// watchtower's orchestration. Warn is the right level — strict
 			// NOTIFICATIONS_LEVEL=error shouldn't fire for user-script flakes.
-			log.WithError(err).WithField("container", cont.Name()).Warn(
-				"Skipping container: pre-update lifecycle command failed",
-			)
+			log.WithError(err).WithFields(log.Fields{
+				"container": cont.Name(),
+				"image":     cont.ImageName(),
+			}).Warn("Skipping container: pre-update lifecycle command failed")
 			return err
 		}
 		if skipUpdate {
@@ -451,7 +455,10 @@ func stopStaleContainer(cont types.Container, client container.Client, params ty
 			log.WithField("container", cont.Name()).Debug("Container vanished before stop — skipping")
 			return err
 		}
-		log.Error(err)
+		log.WithError(err).WithFields(log.Fields{
+			"container": cont.Name(),
+			"image":     cont.ImageName(),
+		}).Error("Failed to stop container")
 		return err
 	}
 	return nil
@@ -502,7 +509,7 @@ func cleanupImages(client container.Client, imageIDs map[types.ImageID]bool, sca
 			continue
 		}
 		if err := client.RemoveImageByID(imageID); err != nil {
-			log.Error(err)
+			log.WithError(err).WithField("image", imageID.ShortID()).Error("Failed to remove image")
 		}
 	}
 }
@@ -545,7 +552,10 @@ func restartStaleContainer(container types.Container, client container.Client, p
 			return nil
 		}
 		if err := client.RenameContainer(container, util.RandName()); err != nil {
-			log.Error(err)
+			log.WithError(err).WithFields(log.Fields{
+				"container": container.Name(),
+				"image":     container.ImageName(),
+			}).Error("Failed to rename container")
 			return nil
 		}
 	}
@@ -553,7 +563,10 @@ func restartStaleContainer(container types.Container, client container.Client, p
 	if !params.NoRestart {
 		newContainerID, err := client.StartContainer(container)
 		if err != nil {
-			log.Error(err)
+			log.WithError(err).WithFields(log.Fields{
+				"container": container.Name(),
+				"image":     container.ImageName(),
+			}).Error("Failed to start container")
 			return err
 		}
 		if container.ToRestart() && params.LifecycleHooks {
@@ -654,9 +667,12 @@ func gateOnHealthCheck(client container.Client, old types.Container, newID types
 		return nil
 	}
 
-	log.WithError(err).WithField("container", old.Name()).Error(
-		"Health check failed after update — rolling back to the previous image",
-	)
+	log.WithError(err).WithFields(log.Fields{
+		"container":  old.Name(),
+		"image":      old.ImageName(),
+		"new_digest": old.TargetImageID().ShortID(),
+		"old_digest": old.ImageID().ShortID(),
+	}).Error("Health check failed after update — rolling back to the previous image")
 	if rbErr := rollback(client, old, newID, params); rbErr != nil {
 		return fmt.Errorf("rollback failed for %s: %w (original health-check error: %v)", old.Name(), rbErr, err)
 	}
@@ -707,9 +723,16 @@ func rollback(client container.Client, old types.Container, newID types.Containe
 
 	newSnapshot, err := client.GetContainer(newID)
 	if err != nil {
-		log.WithError(err).Warnf("rollback: could not inspect new container %s, attempting restart of old anyway", newID.ShortID())
+		log.WithError(err).WithFields(log.Fields{
+			"container": old.Name(),
+			"image":     old.ImageName(),
+			"new_id":    newID.ShortID(),
+		}).Warn("rollback: could not inspect new container, attempting restart of old anyway")
 	} else if stopErr := client.StopContainer(newSnapshot, params.Timeout); stopErr != nil {
-		log.WithError(stopErr).Warnf("rollback: failed to stop unhealthy new container %s", newSnapshot.Name())
+		log.WithError(stopErr).WithFields(log.Fields{
+			"container": newSnapshot.Name(),
+			"image":     newSnapshot.ImageName(),
+		}).Warn("rollback: failed to stop unhealthy new container")
 	}
 
 	// Repoint the recreate at the old image's digest. Without this, the
@@ -739,6 +762,8 @@ func rollback(client container.Client, old types.Container, newID types.Containe
 		if errors.Is(err, errNoHealthcheck) {
 			log.WithFields(log.Fields{
 				"container":   old.Name(),
+				"image":       old.ImageName(),
+				"old_digest":  old.ImageID().ShortID(),
 				"rollback":    true,
 				"rollback_ok": true,
 			}).Warn("Rollback complete — previous image restored (no HEALTHCHECK to verify)")
@@ -746,6 +771,8 @@ func rollback(client container.Client, old types.Container, newID types.Containe
 		}
 		log.WithError(err).WithFields(log.Fields{
 			"container":       old.Name(),
+			"image":           old.ImageName(),
+			"old_digest":      old.ImageID().ShortID(),
 			"rollback":        true,
 			"rollback_failed": true,
 		}).Error("Rollback restored the previous image but it is also unhealthy — manual intervention required")
@@ -754,6 +781,8 @@ func rollback(client container.Client, old types.Container, newID types.Containe
 
 	log.WithFields(log.Fields{
 		"container":   old.Name(),
+		"image":       old.ImageName(),
+		"old_digest":  old.ImageID().ShortID(),
 		"rollback":    true,
 		"rollback_ok": true,
 	}).Warn("Rollback complete — previous image restored")

@@ -379,8 +379,11 @@ func writeStartupMessage(c *cobra.Command, sched time.Time, filtering string) {
 	}
 
 	if enableUpdateAPI {
-		// TODO: make listen port configurable
-		startupLog.Info("The HTTP API is enabled at :8080.")
+		listenAddr, _ := c.PersistentFlags().GetString("http-api-host")
+		if listenAddr == "" {
+			listenAddr = api.DefaultListenAddr
+		}
+		startupLog.Info("The HTTP API is enabled at " + listenAddr + ".")
 	}
 
 	if !noStartupMessage {

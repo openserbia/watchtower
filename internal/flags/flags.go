@@ -691,8 +691,13 @@ func ProcessFlagAliases(flags *pflag.FlagSet) {
 
 	scheduleChanged := flags.Changed(`schedule`)
 	intervalChanged := flags.Changed(`interval`)
-	// FIXME: snakeswap
-	// due to how viper is integrated by swapping the defaults for the flags, we need this hack:
+	// flags.Changed only reports CLI-set values; viper rebinds env defaults
+	// (WATCHTOWER_SCHEDULE, WATCHTOWER_POLL_INTERVAL) by overwriting the
+	// flag's default at registration time, so the cobra-side "Changed" stays
+	// false for env-only configuration. The schedule/interval mutual-exclusion
+	// check below has to fire for env values too, so we re-derive Changed by
+	// comparing the resolved value against the documented default. Keep both
+	// signals in sync if either flag's default ever moves.
 	if val, _ := flags.GetString(`schedule`); val != `` {
 		scheduleChanged = true
 	}

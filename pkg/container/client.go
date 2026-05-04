@@ -529,8 +529,22 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 		}
 	}
 
-	// TODO: This should probably be checked.
-	_ = client.waitForStopOrTimeout(ctx, c, timeout)
+	// Pre-remove wait. We're forgiving about most return cases here so a
+	// transient inspect blip doesn't block the force-remove that follows:
+	//   - timeout fired (graceful stop didn't finish in the grace window):
+	//     fall through to ContainerRemove with Force=true.
+	//   - ContainerInspect error (incl. NotFound): fall through; Remove
+	//     surfaces the real problem if there is one.
+	// The exception is parent-ctx cancellation — that means the outer
+	// StopContainer budget is exhausted (hung daemon) or the operator
+	// asked us to bail. Don't waste the next call on a context that's
+	// already dead; surface the cancellation so the scan can move on.
+	if err := client.waitForStopOrTimeout(ctx, c, timeout); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return err
+		}
+		log.WithError(err).Debugf("Pre-remove wait for %s reported %v; continuing to ContainerRemove", shortID, err)
+	}
 
 	if c.ContainerInfo().HostConfig.AutoRemove {
 		log.Debugf("AutoRemove container %s, skipping ContainerRemove call.", shortID)

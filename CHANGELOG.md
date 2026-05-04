@@ -10,6 +10,18 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+### Changed
+- **Container error logs now always include the image.** Every warn/error log
+  in `internal/actions/update.go` that touches a container or image carries
+  structured `container=`/`image=` fields. The health-check rollback line in
+  particular adds `new_digest=` (the image that just failed) and
+  `old_digest=` (the rollback target) so an operator chasing a "rolling back
+  to the previous image" notification can see *which* tag and *which* push
+  triggered it without cross-referencing the inspect output. Bare
+  `log.Error(err)` calls in `stopStaleContainer`, `restartStaleContainer`,
+  `cleanupImages`, and the rollback inspect/stop paths are now structured the
+  same way.
+
 ### Added
 - **`--disable-memory-swappiness` for Podman / cgroupv2 hosts.** Podman with
   crun on cgroupv2 rejects the implicit `MemorySwappiness=0` Docker writes
@@ -42,11 +54,20 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   for `ImageRemove` (snapshot teardown is disk-bound on multi-layer images),
   30 minutes for `IsContainerStale` (covers a streaming pull). `StopContainer`
   budgets `2 × stop-timeout + 2m` so both wait phases plus the in-loop
-  `ContainerInspect` have full headroom. Healthy daemons are unaffected;
-  hung daemons surface a deadline error and the next poll retries. Adapted
-  from [Marrrrrrrrry/watchtower](https://github.com/Marrrrrrrrry/watchtower/commit/69616e64c479af8a8472d1db5722e96bbb524225)
+  `ContainerInspect` have full headroom, and its pre-remove wait now bails
+  on parent-ctx cancellation instead of wasting the next call on a dead
+  context (still forgiving about inspect blips and the timeout case so a
+  graceful-stop overflow falls through to force-remove as before). Healthy
+  daemons are unaffected; hung daemons surface a deadline error and the
+  next poll retries. Adapted from
+  [Marrrrrrrrry/watchtower](https://github.com/Marrrrrrrrry/watchtower/commit/69616e64c479af8a8472d1db5722e96bbb524225)
   with revised per-call budgets (their 60 s in `IsContainerStale` would have
   cut healthy multi-GB pulls off mid-stream).
+- **Startup log reflects the actual HTTP API listen address.** When
+  `--http-api-update` was enabled, the startup banner always said
+  `The HTTP API is enabled at :8080.` even if the operator had bound to
+  `127.0.0.1:9090` via `--http-api-host`. The log now reads from the same
+  flag the API server uses, so the banner matches reality.
 - **Misconfigured port bindings no longer abort a recreate.** A compose
   file with `ports: ["8080:"]` (or any entry that resolves to an empty port
   number) used to fall through to `ContainerCreate` and surface as Docker's
