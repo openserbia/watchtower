@@ -10,6 +10,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-05-06
+
 ### Changed
 - **Dependency refresh.** Routine bump of Go module dependencies (direct
   and indirect) via `go get -u ./...` + `go get -u all`: `fsnotify` v1.9.0
