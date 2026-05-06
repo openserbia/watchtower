@@ -127,7 +127,7 @@ func (api *API) Start(block bool) error {
 	if addr == "" {
 		addr = DefaultListenAddr
 	}
-	log.Infof("Watchtower HTTP API listening on %s", addr)
+	log.Debugf("Watchtower HTTP API listening on %s", addr)
 
 	if block {
 		runHTTPServer(addr)

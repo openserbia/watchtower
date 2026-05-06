@@ -10,6 +10,58 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+### Fixed
+- **Self-update no longer multiplies orphan watchtower containers.** The
+  rename-and-respawn pattern in `restartStaleContainer` was gated by
+  `IsWatchtower()` — a label-only check that returns true for *every*
+  watchtower-labeled container in the scan, not just the running self.
+  When a previous self-update left a renamed orphan around (e.g. its
+  startup `CheckForMultipleWatchtowerInstances` was outraced or the
+  orphan's `restart: unless-stopped` policy fought the cleanup), the next
+  scan treated the orphan as another "self," renamed it to a fresh random
+  string, and created a *new* container under the orphan's prior random
+  name. After a few cycles the operator's container was a chain of
+  random-named replacements with the original `watchtower` name lost
+  entirely, and the deploy-notifier (or any monitor watching `start`
+  events with the watchtower label) fired for each random name.
+  `cmd/root.go` now detects the watchtower process's own container ID
+  once at startup by matching `os.Hostname()` against
+  watchtower-labeled containers' short IDs, and threads it through
+  `UpdateParams.SelfContainerID`. `stopStaleContainer` and
+  `restartStaleContainer` use `cont.ID() == params.SelfContainerID` for
+  the self check; orphans take the normal stop+remove path and skip the
+  recreate (resurrecting an orphan under its random name was the original
+  bug). The legacy `IsWatchtower()` check remains as a fallback for
+  watchtower running outside a container or with `--hostname` overridden
+  off the short-ID default.
+- **Self-update notification noise filtered.** Same root cause — orphan
+  rename-respawn — was emitting a `Found new image` line on every poll
+  for every container the registry had a newer digest for, *even when an
+  image cooldown was holding the update*. With `WATCHTOWER_IMAGE_COOLDOWN`
+  set to 72h on a single container, that produced ~4320 identical log
+  lines before the cooldown elapsed, all paired with `Skipping update:
+  image cooldown window has not elapsed`. Both messages, plus the
+  per-poll `Skipping update: container is on post-rollback cooldown`
+  during the 1h post-rollback window, are now `Debug` so the default
+  INFO log captures only state transitions: the `Stopping` /
+  `Creating` / `Removing image` lines and the per-scan `Session done`
+  summary already report what actually happened. Operators who need
+  visibility into "registry has a newer digest but cooldown is holding"
+  can flip `WATCHTOWER_DEBUG=true`.
+
+### Changed
+- **HTTP API startup banner downgraded from INFO to DEBUG.** Three
+  startup lines moved off INFO: `Watchtower HTTP API listening on …`
+  (in `pkg/api/api.go`), `The HTTP API is enabled at …` (in
+  `cmd/root.go`'s `writeStartupMessage`), and `Serving /v1/metrics
+  without token auth — …` (only emitted when
+  `--http-api-metrics-no-auth` is set). The first two duplicated each
+  other and were just metadata; the third is a security-relevant choice
+  but reflects the operator's own configuration, not a runtime
+  condition that needs an alert. With these gone, default-INFO logs
+  show only Watchtower's actual scan/update activity instead of being
+  front-loaded with config echo. Visible again under `WATCHTOWER_DEBUG`.
+
 ## [1.13.0] - 2026-05-06
 
 ### Changed

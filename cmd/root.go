@@ -54,6 +54,7 @@ var (
 	scope              string
 	labelPrecedence    bool
 	runOnce            bool
+	selfContainerID    t.ContainerID
 )
 
 var rootCmd = NewRootCommand()
@@ -187,6 +188,12 @@ func Run(c *cobra.Command, names []string) {
 
 	awaitDockerClient()
 
+	// Detect our own container ID once after the daemon is reachable, so
+	// restartStaleContainer can distinguish the actual running self (rename-
+	// and-respawn) from orphan watchtower-labeled containers (stop+remove,
+	// no respawn). Empty result falls back to the IsWatchtower label check.
+	selfContainerID = actions.DetectSelfContainerID(client)
+
 	if err := actions.CheckForSanity(client, filter, rollingRestart); err != nil {
 		logNotifyExit(err)
 	}
@@ -235,7 +242,7 @@ func Run(c *cobra.Command, names []string) {
 		metricsHandler := apiMetrics.New()
 		metricsNoAuth, _ := c.PersistentFlags().GetBool("http-api-metrics-no-auth")
 		if metricsNoAuth {
-			log.Info("Serving /v1/metrics without token auth — ensure :8080 is on a trusted network, bound to localhost, or fronted by a reverse proxy.")
+			log.Debug("Serving /v1/metrics without token auth — ensure :8080 is on a trusted network, bound to localhost, or fronted by a reverse proxy.")
 			httpAPI.RegisterPublicHandler(metricsHandler.Path, metricsHandler.Handle)
 		} else {
 			httpAPI.RegisterHandler(metricsHandler.Path, metricsHandler.Handle)
@@ -383,7 +390,7 @@ func writeStartupMessage(c *cobra.Command, sched time.Time, filtering string) {
 		if listenAddr == "" {
 			listenAddr = api.DefaultListenAddr
 		}
-		startupLog.Info("The HTTP API is enabled at " + listenAddr + ".")
+		startupLog.Debug("The HTTP API is enabled at " + listenAddr + ".")
 	}
 
 	if !noStartupMessage {
@@ -495,6 +502,7 @@ func runUpdatesWithNotifications(filter t.Filter) *metrics.Metric {
 		ImageCooldown:      imageCooldown,
 		ComposeDependsOn:   composeDependsOn,
 		RunOnce:            runOnce,
+		SelfContainerID:    selfContainerID,
 	}
 	result, err := actions.Update(client, updateParams)
 	if err != nil {

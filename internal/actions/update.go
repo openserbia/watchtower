@@ -255,7 +255,7 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 				log.WithFields(log.Fields{
 					"container": targetContainer.Name(),
 					"retry_in":  remaining.Round(time.Second),
-				}).Info("Skipping update: container is on post-rollback cooldown")
+				}).Debug("Skipping update: container is on post-rollback cooldown")
 				stale = false
 			}
 		}
@@ -272,7 +272,7 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 						"container": targetContainer.Name(),
 						"digest":    newestImage.ShortID(),
 						"retry_in":  remaining.Round(time.Second),
-					}).Info("Skipping update: image cooldown window has not elapsed")
+					}).Debug("Skipping update: image cooldown window has not elapsed")
 					stale = false
 				}
 			}
@@ -416,8 +416,26 @@ func stopContainersInReversedOrder(containers []types.Container, client containe
 	return failed, stopped
 }
 
+// isRunningSelf reports whether cont is the watchtower process's own
+// container. When SelfContainerID was successfully detected at startup,
+// only the container with that exact ID counts as self. When detection
+// failed (watchtower running outside a container, or --hostname overridden
+// off the short ID) we fall back to the legacy IsWatchtower label check —
+// which loses the orphan-vs-self distinction but matches upstream behavior.
+func isRunningSelf(cont types.Container, params types.UpdateParams) bool {
+	if params.SelfContainerID != "" {
+		return cont.ID() == params.SelfContainerID
+	}
+	return cont.IsWatchtower()
+}
+
 func stopStaleContainer(cont types.Container, client container.Client, params types.UpdateParams) error {
-	if cont.IsWatchtower() {
+	// Only the actual running self skips the stop — it can't kill itself, so
+	// restartStaleContainer's rename-and-respawn pattern handles it instead.
+	// Other watchtower-labeled containers (orphans from a prior self-update
+	// whose post-restart cleanup did not finish) take the normal stop+remove
+	// path so they don't accumulate or get re-spawned with random names.
+	if isRunningSelf(cont, params) {
 		log.Debugf("This is the watchtower container %s", cont.Name())
 		return nil
 	}
@@ -535,11 +553,24 @@ func isImageStillReferenced(scanView []types.Container, imageID types.ImageID) b
 }
 
 func restartStaleContainer(container types.Container, client container.Client, params types.UpdateParams) error {
+	// Orphan watchtower-labeled containers (random-named leftovers from a
+	// previous self-update whose CheckForMultipleWatchtowerInstances pass did
+	// not complete) reach this point already stopped+removed by
+	// stopStaleContainer. Re-creating them would just resurrect the orphan
+	// under its random name, so skip the recreate entirely. The actual
+	// running self still goes through the rename-respawn branch below.
+	if container.IsWatchtower() && !isRunningSelf(container, params) {
+		log.WithField("container", container.Name()).Info(
+			"Skipping respawn of orphan watchtower-labeled container — it was stopped+removed; recreating would revive the orphan with its random name.",
+		)
+		return nil
+	}
+
 	// Since we can't shutdown a watchtower container immediately, we need to
 	// start the new one while the old one is still running. This prevents us
 	// from re-using the same container name so we first rename the current
 	// instance so that the new one can adopt the old name.
-	if container.IsWatchtower() {
+	if isRunningSelf(container, params) {
 		// The rename-and-respawn pattern briefly overlaps the old and new
 		// containers. That works fine for most setups, but if the current
 		// watchtower is publishing host ports (e.g. --http-api-* mapped to
