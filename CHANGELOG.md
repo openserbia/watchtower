@@ -11,16 +11,30 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 ## [Unreleased]
 
 ### Changed
-- **Container error logs now always include the image.** Every warn/error log
-  in `internal/actions/update.go` that touches a container or image carries
-  structured `container=`/`image=` fields. The health-check rollback line in
-  particular adds `new_digest=` (the image that just failed) and
-  `old_digest=` (the rollback target) so an operator chasing a "rolling back
-  to the previous image" notification can see *which* tag and *which* push
-  triggered it without cross-referencing the inspect output. Bare
-  `log.Error(err)` calls in `stopStaleContainer`, `restartStaleContainer`,
-  `cleanupImages`, and the rollback inspect/stop paths are now structured the
-  same way.
+- **Dependency refresh.** Routine bump of Go module dependencies (direct
+  and indirect) via `go get -u ./...` + `go get -u all`: `fsnotify` v1.9.0
+  → v1.10.1, `onsi/gomega` v1.39.1 → v1.40.0, `onsi/ginkgo/v2` v2.28.1 →
+  v2.28.3, `docker/cli` v29.4.0 → v29.4.2,
+  `docker/docker-credential-helpers` v0.9.5 → v0.9.6,
+  `Masterminds/semver/v3` v3.4.0 → v3.5.0, `mattn/go-isatty` v0.0.21 →
+  v0.0.22, `pelletier/go-toml/v2` v2.3.0 → v2.3.1, `klauspost/compress`
+  v1.18.5 → v1.18.6. Build, tests, and lint all pass; no source changes
+  required.
+- **Container error logs now always include the image, and rollback logs
+  carry the failure reason.** Every warn/error log in
+  `internal/actions/update.go` and `pkg/container/client.go` that touches a
+  container or image carries structured `container=`/`image=` fields. The
+  health-check rollback line in particular adds `new_digest=` (the image
+  that just failed) and `old_digest=` (the rollback target), and inspects
+  the failed container *before* tearing it down to attach
+  `oom_killed=`/`exit_code=`/`probe_exit_code=`/`probe_output=` so an
+  operator chasing a "rolling back to the previous image" notification can
+  see at a glance whether the new image OOMed, exited non-zero, or just
+  failed its readiness probe — and what the probe printed — without having
+  to reproduce the failure locally. Bare `log.Error(err)` calls in
+  `stopStaleContainer`, `restartStaleContainer`, `cleanupImages`, the
+  rollback inspect/stop paths, and `PullImage`'s response-read fallback are
+  now structured the same way.
 
 ### Added
 - **`--disable-memory-swappiness` for Podman / cgroupv2 hosts.** Podman with

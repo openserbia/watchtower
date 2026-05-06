@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
   "packages": {
-    "go": "1.26.1",
-    "golangci-lint": "latest",
+    "go": "1.26.2",
+    "golangci-lint": "2.11.4",
     "gofumpt": "latest",
     "gci": "latest",
     "go-task": "latest",
@@ -18,7 +18,8 @@
     "init_hook": [
       "export \"GOROOT=$(go env GOROOT)\"",
       ". $VENV_DIR/bin/activate",
-      "pip install -r requirements.txt"
+      "pip install --upgrade pip -qq",
+      "pip install -r requirements.txt -qq"
     ]
   }
 }
