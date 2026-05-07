@@ -838,11 +838,21 @@ func (client dockerClient) HasNewImage(ctx context.Context, container t.Containe
 
 	newImageID := t.ImageID(newImageInfo.ID)
 	if newImageID == currentImageID {
-		log.Debugf("No new images found for %s", container.Name())
+		log.WithFields(log.Fields{
+			"container":  container.Name(),
+			"image_name": imageName,
+			"current_id": string(currentImageID),
+			"latest_id":  string(newImageID),
+		}).Debug("No new images found")
 		return false, currentImageID, nil
 	}
 
-	log.Debugf("Found new %s image (%s)", imageName, newImageID.ShortID())
+	log.WithFields(log.Fields{
+		"container":  container.Name(),
+		"image_name": imageName,
+		"current_id": string(currentImageID),
+		"latest_id":  string(newImageID),
+	}).Debug("Found new image")
 	return true, newImageID, nil
 }
 
