@@ -17,3 +17,6 @@ docs/assets/*.wasm
 /vendor/
 # Added by code-review-graph
 .code-review-graph/
+
+/.trivycache/
+/build/security/

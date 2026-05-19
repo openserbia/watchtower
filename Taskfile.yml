@@ -1,5 +1,8 @@
 version: "3"
 
+includes:
+  security: Taskfile.security.yml
+
 vars:
   PACKAGE_NAME:
     sh: grep -m 1 "^module" go.mod | awk '{print $2}'

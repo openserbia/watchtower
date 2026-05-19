@@ -1,0 +1,105 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  PACKAGE_NAME:
+    sh: grep -m 1 "^module" ./go.mod | awk '{print $2}' | xargs basename
+  TRIVY_SEVERITY: '{{.TRIVY_SEVERITY | default "HIGH,CRITICAL"}}'
+  TRIVY_EXIT_CODE: '{{.TRIVY_EXIT_CODE | default "1"}}'
+  TRIVY_CACHE_DIR: '{{.TRIVY_CACHE_DIR | default ".trivycache"}}'
+  SNYK_SEVERITY: '{{.SNYK_SEVERITY | default "high"}}'
+  REPORT_DIR: '{{.REPORT_DIR | default "build/security"}}'
+
+tasks:
+  fs:
+    desc: Scan repo filesystem for vulnerable dependencies and leaked secrets
+    cmds:
+      - mkdir -p {{.REPORT_DIR}}
+      - >
+        trivy fs
+        --cache-dir {{.TRIVY_CACHE_DIR}}
+        --scanners vuln,secret,misconfig
+        --severity {{.TRIVY_SEVERITY}}
+        --exit-code {{.TRIVY_EXIT_CODE}}
+        --ignore-unfixed
+        --skip-dirs vendor,build,.venv,{{.TRIVY_CACHE_DIR}},{{.REPORT_DIR}}
+        --format table
+        .
+      - >
+        trivy fs
+        --cache-dir {{.TRIVY_CACHE_DIR}}
+        --scanners vuln,secret,misconfig
+        --severity {{.TRIVY_SEVERITY}}
+        --exit-code 0
+        --skip-dirs vendor,build,.venv,{{.TRIVY_CACHE_DIR}},{{.REPORT_DIR}}
+        --format sarif
+        --output {{.REPORT_DIR}}/trivy-fs.sarif
+        .
+
+  config:
+    desc: Scan Dockerfile and other config for misconfigurations
+    cmds:
+      - mkdir -p {{.REPORT_DIR}}
+      - >
+        trivy config
+        --cache-dir {{.TRIVY_CACHE_DIR}}
+        --severity {{.TRIVY_SEVERITY}}
+        --exit-code {{.TRIVY_EXIT_CODE}}
+        --skip-dirs vendor,build,.venv,{{.TRIVY_CACHE_DIR}},{{.REPORT_DIR}}
+        --format table
+        .
+      - >
+        trivy config
+        --cache-dir {{.TRIVY_CACHE_DIR}}
+        --severity {{.TRIVY_SEVERITY}}
+        --exit-code 0
+        --skip-dirs vendor,build,.venv,{{.TRIVY_CACHE_DIR}},{{.REPORT_DIR}}
+        --format sarif
+        --output {{.REPORT_DIR}}/trivy-config.sarif
+        .
+
+  snyk:auth:
+    desc: Verify snyk is authenticated (via SNYK_TOKEN env or stored CLI credentials)
+    cmds:
+      - >
+        test -n "$SNYK_TOKEN" || test -n "$(snyk config get api 2>/dev/null)"
+        || (echo "snyk is not authenticated — run 'snyk auth' or export SNYK_TOKEN" && exit 1)
+
+  snyk:deps:
+    desc: Snyk Open Source vulnerability scan of Go modules
+    deps: [snyk:auth]
+    cmds:
+      - mkdir -p {{.REPORT_DIR}}
+      - snyk test --severity-threshold={{.SNYK_SEVERITY}} --file=go.mod
+      - snyk test --severity-threshold={{.SNYK_SEVERITY}} --file=go.mod --sarif-file-output={{.REPORT_DIR}}/snyk-deps.sarif || true
+
+  snyk:code:
+    desc: Snyk Code static analysis (SAST)
+    deps: [snyk:auth]
+    cmds:
+      - mkdir -p {{.REPORT_DIR}}
+      - snyk code test --severity-threshold={{.SNYK_SEVERITY}}
+      - snyk code test --severity-threshold={{.SNYK_SEVERITY}} --sarif-file-output={{.REPORT_DIR}}/snyk-code.sarif || true
+
+  snyk:all:
+    desc: Run all snyk scans (deps, code, image)
+    cmds:
+      - task: snyk:deps
+      - task: snyk:code
+
+  all:
+    desc: Run every trivy + snyk scan
+    cmds:
+      - task: fs
+      - task: config
+      - task: snyk:all
+
+  clean:
+    desc: Remove trivy cache and security reports
+    cmds:
+      - rm -rf {{.TRIVY_CACHE_DIR}} {{.REPORT_DIR}}
+
+  default:
+    cmds:
+      - task -l

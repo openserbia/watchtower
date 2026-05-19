@@ -1,9 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
   "packages": {
-    "go": "1.26.2",
-    "golangci-lint": "2.11.4",
-    "gofumpt": "latest",
+    "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#go_1_26_3":            "",
+    "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#golangci-lint_2_11_4": "",
+    "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#gofumpt_0_10_0":       "",
     "gci": "latest",
     "go-task": "latest",
     "gopls": "latest",
@@ -12,11 +12,15 @@
     "git": "latest",
     "docker": "latest",
     "goreleaser": "latest",
-    "python3": "latest"
+    "python3": "latest",
+    "Trivy": "latest",
+    "snyk": "latest"
+  },
+  "env": {
+    "GOROOT": "$DEVBOX_PROJECT_ROOT/.devbox/nix/profile/default"
   },
   "shell": {
     "init_hook": [
-      "export \"GOROOT=$(go env GOROOT)\"",
       ". $VENV_DIR/bin/activate",
       "pip install --upgrade pip -qq",
       "pip install -r requirements.txt -qq"
