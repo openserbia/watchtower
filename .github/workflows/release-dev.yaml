@@ -78,7 +78,7 @@ jobs:
           format: table
           severity: CRITICAL
           ignore-unfixed: true
-          exit-code: 0
+          exit-code: 1
       - name: Sync Docker Hub description
         uses: peter-evans/dockerhub-description@v5
         with:

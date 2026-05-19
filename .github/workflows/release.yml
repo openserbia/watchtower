@@ -77,4 +77,4 @@ jobs:
           format: table
           severity: CRITICAL
           ignore-unfixed: true
-          exit-code: 0
+          exit-code: 1
