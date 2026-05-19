@@ -1,9 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
   "packages": {
-    "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#go_1_26_3":            "",
-    "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#golangci-lint_2_11_4": "",
-    "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#gofumpt_0_10_0":       "",
+    "github:openserbia/go-flake#go_1_26_3":            "",
+    "github:openserbia/go-flake#golangci-lint_2_11_4": "",
+    "github:openserbia/go-flake#gofumpt_0_10_0":       "",
     "gci": "latest",
     "go-task": "latest",
     "gopls": "latest",
