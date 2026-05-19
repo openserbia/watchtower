@@ -66,3 +66,15 @@ jobs:
         run: devbox run -- goreleaser release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Trivy CVE scan (observation mode — exit-code: 0 = never fail.
+      # Flip to 1 after the baseline is clean to make this a hard gate).
+      # Scans the just-published :latest tag (same digest as :${{ github.ref_name }}
+      # since goreleaser publishes both in lockstep).
+      - name: Trivy CVE scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: ghcr.io/openserbia/watchtower:latest
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: 0
