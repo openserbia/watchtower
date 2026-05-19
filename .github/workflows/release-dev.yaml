@@ -67,6 +67,18 @@ jobs:
           tags: |
             openserbia/watchtower:latest-dev
             ghcr.io/openserbia/watchtower:latest-dev
+      # Trivy CVE scan (observation mode — exit-code: 0 = never fail.
+      # Flip to 1 after the baseline is clean to make this a hard gate).
+      # SARIF upload omitted (private repo without GHAS); operator
+      # reads findings from the Trivy table output below.
+      - name: Trivy CVE scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: ghcr.io/openserbia/watchtower:latest-dev
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: 0
       - name: Sync Docker Hub description
         uses: peter-evans/dockerhub-description@v5
         with:
