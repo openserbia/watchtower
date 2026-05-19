@@ -568,15 +568,15 @@
     },
     "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#go_1_26_3": {
       "last_modified": "2026-05-19T07:50:27Z",
-      "resolved": "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main?lastModified=1779177027&narHash=sha256-JAfZsjmu3tBK%2FGfjQVvSgMAaMogAlrwo76%2B70O4EgVo%3D#go_1_26_3"
+      "resolved": "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#go_1_26_3"
     },
     "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#gofumpt_0_10_0": {
       "last_modified": "2026-05-19T07:50:27Z",
-      "resolved": "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main?lastModified=1779177027&narHash=sha256-JAfZsjmu3tBK%2FGfjQVvSgMAaMogAlrwo76%2B70O4EgVo%3D#gofumpt_0_10_0"
+      "resolved": "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#gofumpt_0_10_0"
     },
     "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#golangci-lint_2_11_4": {
       "last_modified": "2026-05-19T07:50:27Z",
-      "resolved": "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main?lastModified=1779177027&narHash=sha256-JAfZsjmu3tBK%2FGfjQVvSgMAaMogAlrwo76%2B70O4EgVo%3D#golangci-lint_2_11_4"
+      "resolved": "tarball+https://codeload.github.com/openserbia/go-flake/tar.gz/main#golangci-lint_2_11_4"
     }
   }
 }

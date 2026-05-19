@@ -17,7 +17,7 @@
     "snyk": "latest"
   },
   "env": {
-    "GOROOT": "$DEVBOX_PROJECT_ROOT/.devbox/nix/profile/default"
+    "GOROOT": "$DEVBOX_PROJECT_ROOT/.devbox/nix/profile/default/share/go"
   },
   "shell": {
     "init_hook": [
