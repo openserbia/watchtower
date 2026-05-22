@@ -10,6 +10,36 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+### Added
+- **`--rerun-init-deps` honors Compose `service_completed_successfully` on
+  every update.** Compose's `depends_on: { condition: service_completed_successfully }`
+  is evaluated only by `docker compose up`, never by Watchtower's
+  container-level update loop. Stacks that moved bootstrap logic out of an
+  `entrypoint.sh` wrapper and into a sibling init container (the canonical
+  example: a `migrate` service that runs `goose up` against the new image)
+  silently regressed to "new code, old schema" on every Watchtower-driven
+  restart. The new opt-in flag closes that gap by re-executing each
+  `service_completed_successfully` init sibling against the resolved new
+  digest *before* the target container is recreated. The old target keeps
+  serving traffic the entire time the init runs — if the init container
+  exits non-zero, the new digest is cached in an in-process rejected-digest
+  map and the target stays on its old image until the registry serves a
+  different digest (operator pushed a fix). The failed init container is
+  left in `Exited(N)` state for `docker logs` inspection. Same-image init
+  containers (migrate using the same image tag as the target — common
+  pattern when goose is bundled into the app image) inherit the target's
+  freshly-resolved digest so both run against identical bits; different-image
+  init containers (e.g. `pg-ready: postgres:18`) keep their own pinning.
+  Independent of `--compose-depends-on`; both can be enabled together.
+  Migrations must be backwards-compatible with the previous image — the old
+  container keeps serving while the init runs, so the schema in between
+  must be readable by both versions. New package `internal/initrerun`,
+  new client method `RerunInitContainer` (unconditional start that bypasses
+  the `IsRunning()` gate so `Exited(0)` init containers actually run again),
+  new parser `Container.ComposeInitDependencies()` (preserves the
+  `service_completed_successfully` filter that `ComposeDependencies()`
+  intentionally strips for the sorter).
+
 ### Fixed
 - **Self-update no longer multiplies orphan watchtower containers.** The
   rename-and-respawn pattern in `restartStaleContainer` was gated by

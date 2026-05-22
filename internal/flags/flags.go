@@ -208,6 +208,12 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"Honor Docker Compose's `depends_on` declarations when ordering updates (reads the com.docker.compose.depends_on label). Opt-in because it can change stop/start ordering for Compose stacks that have been relying on Watchtower's simpler link-based graph. Incompatible with --rolling-restart — a warning fires at startup if both are set.")
 
 	flags.BoolP(
+		"rerun-init-deps",
+		"",
+		envBool("WATCHTOWER_RERUN_INIT_DEPS"),
+		"Re-create Compose `service_completed_successfully` init containers against the new image before recreating the target. Restores the every-restart-runs-migrations contract for stacks whose bootstrap (goose, schema init) lives in a sibling Compose service. The old target keeps serving while the init runs, so migrations MUST be backwards-compatible with the previous image. If the init container exits non-zero, the failed digest is cached in memory and the target keeps its old image until a new digest arrives. Independent of --compose-depends-on; both can be enabled.")
+
+	flags.BoolP(
 		"http-api-update",
 		"",
 		envBool("WATCHTOWER_HTTP_API_UPDATE"),

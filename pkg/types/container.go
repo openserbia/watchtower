@@ -89,6 +89,7 @@ type Container interface {
 	ComposeProject() string
 	ComposeService() string
 	ComposeDependencies() []string
+	ComposeInitDependencies() []string
 	GetLifecyclePreCheckCommand() string
 	GetLifecyclePostCheckCommand() string
 	GetLifecyclePreUpdateCommand() string

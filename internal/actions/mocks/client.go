@@ -45,6 +45,14 @@ type TestData struct {
 	// IsContainerStale's newestImage out-parameter, so they can verify
 	// downstream pinning of ContainerCreate to the resolved image ID.
 	NewestImageByName map[string]t.ImageID
+	// RerunInitContainers records each container that RerunInitContainer
+	// was called with, in order — used by --rerun-init-deps tests to
+	// assert which deps ran and in what sequence.
+	RerunInitContainers []t.Container
+	// InitExitByName lets tests force RerunInitContainer to return a specific
+	// exit code for a named init container, exercising the failure path that
+	// caches the digest and skips the target update.
+	InitExitByName map[string]int
 }
 
 // TriedToRemoveImage is a test helper function to check whether RemoveImageByID has been called
@@ -112,6 +120,19 @@ func (client MockClient) GetContainer(id t.ContainerID) (t.Container, error) {
 		return ContainerWithHealthStatus(id, status), nil
 	}
 	return client.TestData.Containers[0], nil
+}
+
+// RerunInitContainer is a mock method. Records each init container it was
+// asked to re-run so tests can assert orchestration order, and returns a
+// per-container exit code from InitExitByName (defaults to 0 if unset).
+func (client MockClient) RerunInitContainer(c t.Container, _ time.Duration) (int, error) {
+	client.TestData.RerunInitContainers = append(client.TestData.RerunInitContainers, c)
+	if client.TestData.InitExitByName != nil {
+		if code, ok := client.TestData.InitExitByName[c.Name()]; ok {
+			return code, nil
+		}
+	}
+	return 0, nil
 }
 
 // ExecuteCommand is a mock method

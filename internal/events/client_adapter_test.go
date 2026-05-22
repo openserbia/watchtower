@@ -37,6 +37,10 @@ func (c *clientAdapter) IsContainerStale(_ t.Container, _ t.UpdateParams) (bool,
 	panic("unexpected call: IsContainerStale")
 }
 
+func (c *clientAdapter) RerunInitContainer(_ t.Container, _ time.Duration) (int, error) {
+	panic("unexpected call: RerunInitContainer")
+}
+
 func (c *clientAdapter) ExecuteCommand(_ t.ContainerID, _ string, _ int) (bool, error) {
 	panic("unexpected call: ExecuteCommand")
 }

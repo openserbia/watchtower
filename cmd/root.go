@@ -51,6 +51,7 @@ var (
 	lifecycleHooks     bool
 	rollingRestart     bool
 	composeDependsOn   bool
+	rerunInitDeps      bool
 	scope              string
 	labelPrecedence    bool
 	runOnce            bool
@@ -121,6 +122,7 @@ func PreRun(cmd *cobra.Command, _ []string) {
 	lifecycleHooks, _ = f.GetBool("enable-lifecycle-hooks")
 	rollingRestart, _ = f.GetBool("rolling-restart")
 	composeDependsOn, _ = f.GetBool("compose-depends-on")
+	rerunInitDeps, _ = f.GetBool("rerun-init-deps")
 	scope, _ = f.GetString("scope")
 	labelPrecedence, _ = f.GetBool("label-take-precedence")
 
@@ -501,6 +503,7 @@ func runUpdatesWithNotifications(filter t.Filter) *metrics.Metric {
 		HealthCheckTimeout: healthCheckTimeout,
 		ImageCooldown:      imageCooldown,
 		ComposeDependsOn:   composeDependsOn,
+		RerunInitDeps:      rerunInitDeps,
 		RunOnce:            runOnce,
 		SelfContainerID:    selfContainerID,
 	}

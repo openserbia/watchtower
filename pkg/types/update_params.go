@@ -19,6 +19,14 @@ type UpdateParams struct {
 	HealthCheckTimeout time.Duration
 	ImageCooldown      time.Duration
 	ComposeDependsOn   bool
+	// RerunInitDeps re-creates compose `service_completed_successfully`
+	// init containers against the new image before recreating the target.
+	// Restores the every-restart-runs-migrations contract that an entrypoint.sh
+	// wrapper used to provide, for stacks that moved bootstrap (goose, schema
+	// init) into a sibling Compose service. See internal/initrerun. Opt-in:
+	// requires backwards-compatible migrations because the old target keeps
+	// serving traffic while the new image's init container runs.
+	RerunInitDeps bool
 	// RunOnce is set when the caller is Watchtower's --run-once mode. Signals
 	// to supply-chain gates like --image-cooldown that deferring an update
 	// to "next poll" isn't meaningful — there is no next poll — so those

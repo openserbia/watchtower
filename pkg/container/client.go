@@ -38,6 +38,14 @@ type Client interface {
 	StartContainer(t.Container) (t.ContainerID, error)
 	RenameContainer(t.Container, string) error
 	IsContainerStale(t.Container, t.UpdateParams) (stale bool, latestImage t.ImageID, err error)
+	// RerunInitContainer recreates the given container against c.TargetImageID()
+	// (or its current image when unset), unconditionally starts the new
+	// container even if it was Exited(0), and waits for it to exit. Returns
+	// the exit code or -1 on orchestration error. Used by --rerun-init-deps
+	// to re-execute compose service_completed_successfully siblings before
+	// updating a target. On failure the new container is LEFT in place so
+	// `docker logs` can surface the failure cause.
+	RerunInitContainer(c t.Container, timeout time.Duration) (exitCode int, err error)
 	ExecuteCommand(containerID t.ContainerID, command string, timeout int) (skipUpdate bool, err error)
 	RemoveImageByID(t.ImageID) error
 	WarnOnHeadPullFailed(container t.Container) bool
@@ -687,6 +695,90 @@ func (client dockerClient) doStartContainer(ctx context.Context, c t.Container, 
 		return err
 	}
 	return nil
+}
+
+// RerunInitContainer implements the Client interface. See Client.RerunInitContainer
+// for the contract. Internally: stops the prior container (best-effort), creates
+// a fresh one against the resolved digest, unconditionally starts it (init
+// containers are normally Exited(0) so StartContainer's IsRunning gate would
+// skip them), and blocks on ContainerWait until exit or timeout.
+func (client dockerClient) RerunInitContainer(c t.Container, timeout time.Duration) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Best-effort stop. ErrContainerNotFound means the previous instance
+	// already vanished (operator recreate, prior failure cleanup) — proceed
+	// to fresh create rather than abort. Other errors are fatal here because
+	// they indicate the docker daemon itself is unhealthy.
+	if err := client.StopContainer(c, dockerAPITimeout); err != nil && !errors.Is(err, ErrContainerNotFound) {
+		return -1, fmt.Errorf("stop prior init container %q: %w", c.Name(), err)
+	}
+
+	config := c.GetCreateConfig()
+	hostConfig := c.GetCreateHostConfig()
+	networkConfig := client.GetNetworkConfig(c)
+
+	applyRecreatePolicy(client.ClientOptions, hostConfig)
+
+	simpleNetworkConfig := &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{}}
+	for k, v := range networkConfig.EndpointsConfig {
+		simpleNetworkConfig.EndpointsConfig[k] = v
+		break
+	}
+
+	if target := c.TargetImageID(); target != "" {
+		if err := client.api.ImageTag(ctx, string(target), config.Image); err != nil {
+			metrics.RegisterDockerAPIError("image_tag")
+			log.WithError(err).WithFields(log.Fields{
+				"image":  config.Image,
+				"digest": string(target),
+			}).Debug("Init container image retag before create failed; proceeding with original tag")
+		}
+	}
+
+	log.Infof("Re-running init container %s", c.Name())
+
+	created, err := client.api.ContainerCreate(ctx, config, hostConfig, simpleNetworkConfig, nil, c.Name())
+	if err != nil {
+		metrics.RegisterDockerAPIError("create")
+		return -1, fmt.Errorf("create init container %q: %w", c.Name(), err)
+	}
+
+	if !hostConfig.NetworkMode.IsHost() {
+		for k := range simpleNetworkConfig.EndpointsConfig {
+			if err := client.api.NetworkDisconnect(ctx, k, created.ID, true); err != nil {
+				metrics.RegisterDockerAPIError("network_disconnect")
+				return -1, fmt.Errorf("network disconnect for init container %q: %w", c.Name(), err)
+			}
+		}
+		for k, v := range networkConfig.EndpointsConfig {
+			if err := client.api.NetworkConnect(ctx, k, created.ID, v); err != nil {
+				metrics.RegisterDockerAPIError("network_connect")
+				return -1, fmt.Errorf("network connect for init container %q: %w", c.Name(), err)
+			}
+		}
+	}
+
+	// Unconditional start — bypasses StartContainer's c.IsRunning() gate
+	// because init containers were Exited(0) on entry and we *want* to run
+	// them again.
+	if err := client.api.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+		metrics.RegisterDockerAPIError("start")
+		return -1, fmt.Errorf("start init container %q: %w", c.Name(), err)
+	}
+
+	statusC, errC := client.api.ContainerWait(ctx, created.ID, container.WaitConditionNotRunning)
+	select {
+	case st := <-statusC:
+		if st.Error != nil {
+			return int(st.StatusCode), fmt.Errorf("init container %q wait error: %s", c.Name(), st.Error.Message)
+		}
+		return int(st.StatusCode), nil
+	case err := <-errC:
+		return -1, fmt.Errorf("init container %q wait failed: %w", c.Name(), err)
+	case <-ctx.Done():
+		return -1, fmt.Errorf("init container %q did not exit within %s: %w", c.Name(), timeout, ctx.Err())
+	}
 }
 
 func (client dockerClient) RenameContainer(c t.Container, newName string) error {

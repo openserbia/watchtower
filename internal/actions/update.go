@@ -11,6 +11,7 @@ import (
 	dockercontainer "github.com/docker/docker/api/types/container"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/openserbia/watchtower/internal/initrerun"
 	"github.com/openserbia/watchtower/internal/util"
 	"github.com/openserbia/watchtower/pkg/container"
 	"github.com/openserbia/watchtower/pkg/lifecycle"
@@ -63,11 +64,31 @@ var (
 	// for the next update of each container; that's a deliberate trade in
 	// favor of zero persistent state.
 	previousImages = make(map[string]types.ImageID)
+
+	rejectedInitDigestsMu sync.Mutex
+	// rejectedInitDigests holds image digests whose --rerun-init-deps init
+	// container exited non-zero in the current Watchtower process. Keyed by
+	// digest, so a target whose newest image still resolves to a rejected
+	// digest stays skipped until the registry serves a different digest
+	// (operator pushed a fix). In-memory only — clears on Watchtower
+	// restart, which is intentional: a restart represents an operator
+	// touch-point that should trigger one retry.
+	rejectedInitDigests = make(map[types.ImageID]rejectionReason)
 )
 
 type pendingImage struct {
 	digest    types.ImageID
 	firstSeen time.Time
+}
+
+// rejectionReason captures why a digest is in the rejected-digest cache.
+// Surfaced in skip-reason logs so operators can correlate a stuck container
+// with the upstream init-container failure.
+type rejectionReason struct {
+	Container string
+	Dep       string
+	ExitCode  int
+	At        time.Time
 }
 
 // rollbackCooldownRemaining reports how long the container should continue to
@@ -91,6 +112,30 @@ func recordRollback(containerName string) {
 	failedRollbacksMu.Lock()
 	defer failedRollbacksMu.Unlock()
 	failedRollbacks[containerName] = time.Now()
+}
+
+// isRejectedInitDigest reports whether the given digest previously failed
+// --rerun-init-deps in this Watchtower process. Used to short-circuit
+// stale-checks without flooding logs every poll.
+func isRejectedInitDigest(id types.ImageID) (rejectionReason, bool) {
+	rejectedInitDigestsMu.Lock()
+	defer rejectedInitDigestsMu.Unlock()
+	r, ok := rejectedInitDigests[id]
+	return r, ok
+}
+
+func rejectInitDigest(id types.ImageID, reason rejectionReason) {
+	rejectedInitDigestsMu.Lock()
+	defer rejectedInitDigestsMu.Unlock()
+	rejectedInitDigests[id] = reason
+}
+
+// ResetRejectedInitDigestsForTest clears the in-memory rejected-digest cache.
+// Test-only helper, parallel to the cooldown ResetFor… utilities above.
+func ResetRejectedInitDigestsForTest() {
+	rejectedInitDigestsMu.Lock()
+	defer rejectedInitDigestsMu.Unlock()
+	rejectedInitDigests = make(map[types.ImageID]rejectionReason)
 }
 
 // resolveImageCooldown picks the effective cooldown for a container:
@@ -259,6 +304,23 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 				stale = false
 			}
 		}
+		// --rerun-init-deps rejection gate: a digest that previously failed
+		// its init container stays skipped until the registry serves a new
+		// one. We check the resolved newestImage, not the container's
+		// currently-running digest, so an operator's pushed-fix is detected
+		// by digest change at the next poll.
+		if stale && err == nil && params.RerunInitDeps && newestImage != "" {
+			if reason, rejected := isRejectedInitDigest(newestImage); rejected {
+				log.WithFields(log.Fields{
+					"container":  targetContainer.Name(),
+					"digest":     newestImage.ShortID(),
+					"failed_dep": reason.Dep,
+					"exit_code":  reason.ExitCode,
+					"at":         reason.At.Round(time.Second),
+				}).Debug("Skipping update: digest previously failed --rerun-init-deps")
+				stale = false
+			}
+		}
 		// Supply-chain gate: hold the update until the new digest has been
 		// stable for the configured cooldown window. Runs after the rollback
 		// cooldown so a freshly-rolled-back container doesn't also get
@@ -316,6 +378,47 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 
 		if stale {
 			staleCount++
+		}
+	}
+
+	// --rerun-init-deps: re-execute compose service_completed_successfully
+	// siblings against the new image *before* the target is recreated. If
+	// the init container fails the target keeps its old image (Stale
+	// unset) and the new digest is cached so it isn't retried until a
+	// newer one appears. Runs after the staleness loop so each target's
+	// TargetImageID is already pinned to a resolved digest.
+	if params.RerunInitDeps {
+		for i := range containers {
+			if !containers[i].IsStale() {
+				continue
+			}
+			target := containers[i]
+			if len(target.ComposeInitDependencies()) == 0 {
+				continue
+			}
+			results := initrerun.Run(client, target, containers, initrerun.DefaultTimeout)
+			if len(results) == 0 {
+				continue
+			}
+			last := results[len(results)-1]
+			if last.Succeeded() {
+				continue
+			}
+			rejectInitDigest(target.TargetImageID(), rejectionReason{
+				Container: target.Name(),
+				Dep:       last.DepName,
+				ExitCode:  last.ExitCode,
+				At:        time.Now(),
+			})
+			containers[i].SetStale(false)
+			staleCount--
+			progress.AddSkipped(target, fmt.Errorf("--rerun-init-deps: init container %q failed (exit %d); old container kept", last.DepName, last.ExitCode))
+			log.WithFields(log.Fields{
+				"container": target.Name(),
+				"dep":       last.DepName,
+				"exit_code": last.ExitCode,
+				"digest":    target.TargetImageID().ShortID(),
+			}).Warn("--rerun-init-deps: skipping target update, digest cached as rejected")
 		}
 	}
 

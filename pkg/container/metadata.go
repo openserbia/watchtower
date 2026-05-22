@@ -96,26 +96,74 @@ func (c Container) ComposeService() string {
 // condition/required bits govern Compose's own startup ordering which is
 // orthogonal to updates.
 func (c Container) ComposeDependencies() []string {
-	raw := c.getLabelValueOrEmpty(composeDependsOnLabel)
+	deps := parseComposeDependsOn(c.getLabelValueOrEmpty(composeDependsOnLabel))
+	if len(deps) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(deps))
+	for _, d := range deps {
+		names = append(names, d.Service)
+	}
+	return names
+}
+
+// ComposeInitDependencies returns the service names from depends_on that
+// declared `condition: service_completed_successfully` — i.e. one-shot
+// init containers. Other conditions (service_started, service_healthy)
+// describe long-running peers and are excluded.
+//
+// Consumed by the --rerun-init-deps update path: each returned service is
+// re-created against the *new* image before the target container is
+// recreated, restoring the entrypoint.sh-era contract for stacks that moved
+// migrations into a sibling compose service. See internal/initrerun.
+func (c Container) ComposeInitDependencies() []string {
+	deps := parseComposeDependsOn(c.getLabelValueOrEmpty(composeDependsOnLabel))
+	if len(deps) == 0 {
+		return nil
+	}
+	names := make([]string, 0)
+	for _, d := range deps {
+		if d.Condition == "service_completed_successfully" {
+			names = append(names, d.Service)
+		}
+	}
+	return names
+}
+
+// composeDep is the parsed shape of one entry in com.docker.compose.depends_on.
+// Internal to this package — call sites use ComposeDependencies (graph only) or
+// ComposeInitDependencies (init-only) depending on intent.
+type composeDep struct {
+	Service   string
+	Condition string // "", "service_started", "service_healthy", "service_completed_successfully"
+}
+
+// parseComposeDependsOn parses the comma-separated compose-v2 depends_on label
+// into structured entries. Format per entry: `service`, `service:condition`,
+// or `service:condition:required`. Unknown shapes are dropped silently —
+// Watchtower's update flow falls back to compose's existing graph rather than
+// failing the whole scan when a single label is malformed.
+func parseComposeDependsOn(raw string) []composeDep {
 	if raw == "" {
 		return nil
 	}
-	deps := make([]string, 0)
+	out := make([]composeDep, 0)
 	for _, entry := range strings.Split(raw, ",") {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
 			continue
 		}
-		// Strip modifiers after the first colon — the service name is
-		// everything before.
-		if i := strings.Index(entry, ":"); i >= 0 {
-			entry = entry[:i]
+		parts := strings.SplitN(entry, ":", 3)
+		dep := composeDep{Service: strings.TrimSpace(parts[0])}
+		if dep.Service == "" {
+			continue
 		}
-		if entry != "" {
-			deps = append(deps, entry)
+		if len(parts) >= 2 {
+			dep.Condition = strings.TrimSpace(parts[1])
 		}
+		out = append(out, dep)
 	}
-	return deps
+	return out
 }
 
 // IsInfrastructure reports whether this container is Docker-managed

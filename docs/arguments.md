@@ -616,6 +616,55 @@ Environment Variable: WATCHTOWER_COMPOSE_DEPENDS_ON
              Default: false
 ```
 
+## Re-run init containers (`service_completed_successfully`)
+Re-execute Compose siblings whose `depends_on` entry uses
+`condition: service_completed_successfully` *before* the target container is recreated with the new
+image. Restores the every-restart-runs-migrations contract that an `entrypoint.sh` wrapper used to
+provide, for stacks that moved bootstrap logic (`goose up`, schema init, seed jobs) into a sibling
+Compose service.
+
+**Why this exists.** Watchtower operates at the container level — it stops and recreates a single
+container when its image digest changes. Compose's `service_completed_successfully` is only honored by
+`docker compose up`, never by Watchtower. Stacks that rely on a sibling init container therefore
+regress to "new code, old schema" on every Watchtower-driven update. This flag fixes that by treating
+init siblings as part of the target's update transaction.
+
+**Lifecycle.** For each target with init deps, in order:
+
+1. Pull the new image (handled by the regular staleness check).
+2. Stop the prior init container (best-effort; missing is fine).
+3. Recreate the init container against the *new* image digest and start it unconditionally (its
+   `Exited(0)` state from the last cycle would otherwise skip the start).
+4. Block on exit. On exit code 0 → proceed with the target's normal recreate. On non-zero → cache the
+   digest in memory, leave the failed init container in `Exited(N)` for `docker logs`, and keep the
+   *old* target container serving traffic.
+
+**Cached rejected digests.** A failed init container marks its digest as rejected for the rest of the
+Watchtower process lifetime. Subsequent polls that resolve the same digest are skipped without
+re-running the init. When the operator pushes a fix and the registry serves a new digest, the cache
+naturally misses and the update is attempted again. The cache is in-memory only — restarting Watchtower
+forces exactly one retry.
+
+**Migrations must be backwards-compatible.** Because the old target keeps serving while the new
+image's init container runs, the schema after migrate must still be readable by the old code. This is
+standard expand-then-contract migration practice. Don't enable this flag for stacks that rely on
+breaking schema changes — those need a planned downtime window instead.
+
+**Same-image deps.** When the init container and the target share an image (the common
+`migrate: image: myapp:latest` pattern), the init container inherits the target's freshly-resolved
+digest so both run against identical bits. Init containers using a *different* image (e.g.
+`pg-ready: postgres:18` as a postgres-readiness probe) keep their own pinning untouched.
+
+Independent of `--compose-depends-on`. Both can be enabled together; neither implies the other.
+`--compose-depends-on` reorders updates, `--rerun-init-deps` injects init re-runs.
+
+```text
+            Argument: --rerun-init-deps
+Environment Variable: WATCHTOWER_RERUN_INIT_DEPS
+                Type: Boolean
+             Default: false
+```
+
 ## Image cooldown (supply-chain gate)
 After a new image digest is detected, defer applying it until the digest has been stable for this
 duration. Protects against the "broken `:latest` push reaches every host in one poll interval" failure
