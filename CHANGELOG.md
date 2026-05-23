@@ -10,6 +10,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.14.2] - 2026-05-23
+
 ### Fixed
 - **Self-update clears Hostname on recreate so `DetectSelfContainerID` stays
   accurate across self-update chains.** The v1.14.0
