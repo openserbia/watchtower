@@ -49,6 +49,7 @@ No config migration. No flag rename. No label rewrite.
 | `--cleanup` vs. shared base image | Force-removes image even when another active container references it (next restart fails with `No such image`) | **Defers removal** when any non-recreated container in the scan still references the image |
 | Compose-deploy race               | Aborts the scan on container NotFound | Skipped container, scan continues                                                          |
 | Mid-scan container vanish (stop)  | Untyped error aborts the iteration; restart then collides with the Compose-created replacement | **Typed `ErrContainerNotFound`** — marked Skipped in the report, no restart attempt, scan continues |
+| Compose `service_completed_successfully` init siblings | Honored only by `docker compose up`; Watchtower-driven updates silently bypass them ("new code, old schema") | **`--rerun-init-deps`** re-executes each init sibling against the resolved new digest *before* recreating the target; old container keeps serving while the init runs; failed digests cached in-process so a broken image isn't retried until the registry serves a different digest |
 
 ### Security
 
@@ -120,6 +121,15 @@ Not upstream-bug repairs — additions that harden the same feature set.
 
 - **Constant-time bearer-token comparison.** `api.RequireToken` now uses `crypto/subtle.ConstantTimeCompare` instead of `!=`, closing a theoretical timing-oracle on the `/v1/*` endpoints.
 - **Strict TLS by default** (noted above under v1.10).
+
+### Compose-aware init reruns (v1.14)
+
+- **`--rerun-init-deps` honors `service_completed_successfully`.** Compose's `depends_on: { condition: service_completed_successfully }` is evaluated only by `docker compose up`, never by Watchtower's container-level update loop. Stacks that moved bootstrap (goose schema migrations, seed jobs, anything one-shot before the long-running service) into a sibling init container therefore silently regressed to "new code, old schema" on every Watchtower-driven restart. The new opt-in flag closes the gap:
+    - When a target with `service_completed_successfully` deps becomes stale, Watchtower re-executes each declared init sibling against the *new* image first; only after every init exits 0 does it stop+recreate the target. Old container keeps serving traffic the entire time.
+    - On non-zero exit the failed init is left in `Exited(N)` for `docker logs` inspection, the new digest is cached in an in-process rejected-digest map, and the target keeps its old image until the registry serves a different digest (operator pushed a fix). The rejected cache evicts naturally on Watchtower restart, so a `docker restart watchtower` is the manual "retry once" lever.
+    - Same-image init containers (the common `migrate` service using the same image tag as the target) inherit the target's freshly-resolved digest so both run against identical bits; different-image inits (e.g. `pg-ready: postgres:18`) keep their own pinning untouched.
+    - Migrations must be backwards-compatible with the previous image — the old container keeps serving while the init runs, so the schema in between must be readable by both versions. Standard expand-then-contract practice; warn in the flag's help text.
+    - Independent of `--compose-depends-on`; both can be enabled together. New package `internal/initrerun`, new client method `RerunInitContainer` (unconditional start that bypasses the `IsRunning()` gate so `Exited(0)` init containers actually run again), new parser `Container.ComposeInitDependencies()` (preserves the `service_completed_successfully` filter that `ComposeDependencies()` intentionally strips for the sorter).
 
 ## Known rough edges (fork roadmap)
 
