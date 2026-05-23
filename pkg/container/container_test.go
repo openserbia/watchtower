@@ -559,6 +559,25 @@ var _ = Describe("the container", func() {
 			})
 		})
 	})
+	Describe("CreateName / SetCreateName", func() {
+		It("returns containerInfo.Name by default", func() {
+			c := MockContainer()
+			Expect(c.CreateName()).To(Equal(c.Name()))
+		})
+		It("returns the override when SetCreateName is non-empty", func() {
+			c := MockContainer()
+			c.SetCreateName("/watchtower")
+			Expect(c.CreateName()).To(Equal("/watchtower"))
+			// Name() unaffected — the override only steers StartContainer.
+			Expect(c.Name()).NotTo(Equal("/watchtower"))
+		})
+		It("clears the override when SetCreateName(\"\")", func() {
+			c := MockContainer()
+			c.SetCreateName("/watchtower")
+			c.SetCreateName("")
+			Expect(c.CreateName()).To(Equal(c.Name()))
+		})
+	})
 	Describe("ClearHostnameOnRecreate", func() {
 		When("the flag is set via SetClearHostnameOnRecreate(true)", func() {
 			It("makes GetCreateConfig return a config with empty Hostname so docker assigns a fresh short-ID-equal value on recreate", func() {

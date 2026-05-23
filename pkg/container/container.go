@@ -55,6 +55,16 @@ type Container struct {
 	// tag here and would surface "No such image" if the tag moved mid-scan,
 	// leaving the old container already removed and the service down.
 	targetImageID wt.ImageID
+	// createNameOverride, when non-empty, replaces containerInfo.Name as
+	// the name StartContainer passes to ContainerCreate. Set by
+	// restartStaleContainer's self-update branch when the cached name
+	// looks like a previous-cycle random rename target (util.IsRandName)
+	// AND a compose service label is available to derive the canonical
+	// from. Reverses the bug class where one historical self-update
+	// produced a random-named container and every subsequent self-update
+	// faithfully copies that random name forward instead of restoring
+	// the canonical "watchtower" / compose-service name.
+	createNameOverride string
 	// clearHostnameOnRecreate, when true, makes GetCreateConfig return a
 	// config with an empty Hostname so the next ContainerCreate forces
 	// docker to assign a fresh short-ID-equal hostname instead of
@@ -141,6 +151,25 @@ func (c *Container) SetClearHostnameOnRecreate(v bool) {
 // inherited Hostname so docker assigns a fresh short-ID-equal value.
 func (c Container) ClearHostnameOnRecreate() bool {
 	return c.clearHostnameOnRecreate
+}
+
+// SetCreateName overrides the name StartContainer passes to ContainerCreate
+// for the next recreate. Empty string clears the override (the cached
+// containerInfo.Name is used). Used by restartStaleContainer's self-update
+// branch to substitute a canonical name (derived from the compose service
+// label) when the cached Name looks like a previous rename target.
+func (c *Container) SetCreateName(name string) {
+	c.createNameOverride = name
+}
+
+// CreateName returns the name to pass to ContainerCreate on the next
+// recreate. Honors the SetCreateName override when non-empty; otherwise
+// falls back to the cached containerInfo.Name. Read by StartContainer.
+func (c Container) CreateName() string {
+	if c.createNameOverride != "" {
+		return c.createNameOverride
+	}
+	return c.containerInfo.Name
 }
 
 // ImageIdentity returns the per-image provenance record, or nil if the daemon

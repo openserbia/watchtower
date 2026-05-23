@@ -628,7 +628,10 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 		return &network.NetworkingConfig{EndpointsConfig: oneEndpoint}
 	}()
 
-	name := c.Name()
+	// CreateName honors the SetCreateName override set by
+	// restartStaleContainer's self-update branch when the cached Name was a
+	// previous-cycle rename target; falls back to containerInfo.Name otherwise.
+	name := c.CreateName()
 
 	// Re-bind the original tag to the digest IsContainerStale resolved, so a
 	// CI rebuild that untagged or moved name:latest between scan and create

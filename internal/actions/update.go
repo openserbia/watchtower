@@ -661,6 +661,15 @@ func isImageStillReferenced(scanView []types.Container, imageID types.ImageID) b
 	return false
 }
 
+// restartStaleContainer is the rename-and-respawn coordinator for one
+// container the scan flagged as stale. Self-update gating, name-rescue
+// heuristics, hostname-clear flag wiring, lifecycle hooks, and the
+// post-create safety net all live here intentionally — each branch is
+// the recovery path for one well-understood operational failure mode.
+//
+// state-machine across helpers. Refactor tracked separately.
+//
+//nolint:cyclop // linear orchestrator: split would scatter the
 func restartStaleContainer(container types.Container, client container.Client, params types.UpdateParams) error {
 	// Orphan watchtower-labeled containers (random-named leftovers from a
 	// previous self-update whose CheckForMultipleWatchtowerInstances pass did
@@ -680,7 +689,30 @@ func restartStaleContainer(container types.Container, client container.Client, p
 	// from re-using the same container name so we first rename the current
 	// instance so that the new one can adopt the old name.
 	wasRunningSelf := isRunningSelf(container, params)
-	originalName := container.Name()
+
+	if wasRunningSelf {
+		// When the cached Name looks like the output of util.RandName() (32
+		// chars of [a-zA-Z]), it was set by a *previous* self-update's
+		// rename-and-respawn — not by the operator. Faithfully propagating
+		// that random name forward is the bug class the safety net was
+		// supposed to catch but can't, because it compares the new
+		// container's name to a cached "original" that is itself random.
+		// Recover the canonical name from the compose service label, which
+		// survives docker rename, when available.
+		cachedName := container.Name()
+		trimmed := strings.TrimPrefix(cachedName, "/")
+		if util.IsRandName(trimmed) {
+			if service := container.ComposeService(); service != "" {
+				canonical := "/" + service
+				log.WithFields(log.Fields{
+					"cached_name": cachedName,
+					"canonical":   canonical,
+				}).Info("Self-update: cached name looks like a previous rename target; deriving canonical name from compose service label")
+				container.SetCreateName(canonical)
+			}
+		}
+	}
+	originalName := container.CreateName()
 
 	if wasRunningSelf {
 		// The rename-and-respawn pattern briefly overlaps the old and new

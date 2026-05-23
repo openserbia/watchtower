@@ -10,6 +10,35 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.14.3] - 2026-05-23
+
+### Fixed
+- **Self-update recovers the canonical container name when the cached
+  Name looks like a previous-cycle random rename target.** The
+  v1.14.2 safety net at `restartStaleContainer` end (rename the new
+  container back when its name diverged from the cached "original")
+  could only catch the case where the cached original was canonical.
+  Once one historical self-update produced a random-named container
+  (e.g. via the pre-cc3e07c orphan-multiplication path), every
+  subsequent self-update faithfully copied that random name forward:
+  StartContainer received `c.Name()` = `/random_X`, the safety net
+  compared the new container's name to `/random_X`, found them equal,
+  and concluded no rename was needed. The canonical name stayed lost
+  through the whole chain — observed all afternoon on AX41 across
+  ~7 successive self-updates today.
+  Fix: a new `util.IsRandName(s)` reports whether `s` has the exact
+  shape `util.RandName()` produces (32 chars of `[a-zA-Z]`). When the
+  cached Name matches *and* the container carries a
+  `com.docker.compose.service` label, `restartStaleContainer`'s
+  self-update branch substitutes `/<service>` as the canonical name
+  via the new `Container.SetCreateName(s)` override.
+  `StartContainer` reads through `c.CreateName()` (override-aware
+  wrapper around `c.Name()`), so the new container is created with
+  the canonical name from the start — no rescue rename needed and
+  no transient random-name window for deploy-notifiers to alert on.
+  The existing safety net remains as a backstop for unusual edge
+  cases that don't fit the IsRandName signature.
+
 ## [1.14.2] - 2026-05-23
 
 ### Fixed

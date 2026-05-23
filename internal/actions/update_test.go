@@ -823,10 +823,11 @@ var _ = Describe("watchtower self-update port conflict", func() {
 var _ = Describe("watchtower self-update name safety net", func() {
 	// Builds the canonical "watchtower" container the self-update path
 	// operates on — labeled, no published ports (so the rename-and-respawn
-	// branch fires), and stale by default.
-	buildSelf := func(id string) types.Container {
+	// branch fires), and stale by default. ID is fixed because none of
+	// these specs need to vary it.
+	buildSelf := func() types.Container {
 		return CreateMockContainerWithConfig(
-			id,
+			"self-id",
 			"/watchtower",
 			"openserbia/watchtower:latest",
 			true, false, time.Now(),
@@ -845,7 +846,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 		// is empty, and GetContainer with no ContainerByID override returns
 		// Containers[0]. So the safety net inspects the same /watchtower
 		// container the test set up — actual==expected, no extra rename.
-		self := buildSelf("self-id")
+		self := buildSelf()
 		client := CreateMockClient(&TestData{
 			Containers: []types.Container{self},
 		}, false, false)
@@ -859,6 +860,64 @@ var _ = Describe("watchtower self-update name safety net", func() {
 		Expect(client.TestData.RenameCalls[0].NewName).NotTo(Equal("watchtower"))
 	})
 
+	It("recovers the canonical name from the compose service label when the cached Name looks like a previous rename target", func() {
+		// Driver for the AX41 production bug observed today: when a prior
+		// self-update produced a random-named container, every subsequent
+		// self-update faithfully propagated that random name forward
+		// because the cached Name was already random (and the safety net
+		// could only compare actual==expected, both being random). The fix
+		// detects "name looks like util.RandName output" + a compose
+		// service label is present, and overrides the create name so the
+		// new container is created with the canonical name from the start.
+		randomCachedName := "VWhtejHFazORFJVQPmEDXTirLeVHxFAz" // matches util.RandName shape
+		self := CreateMockContainerWithConfig(
+			"self-id",
+			"/"+randomCachedName,
+			"openserbia/watchtower:latest",
+			true, false, time.Now(),
+			&dockerContainer.Config{
+				Image: "openserbia/watchtower:latest",
+				Labels: map[string]string{
+					"com.centurylinklabs.watchtower": "true",
+					"com.docker.compose.service":     "watchtower",
+					"com.docker.compose.project":     "watchtower",
+				},
+				ExposedPorts: map[nat.Port]struct{}{},
+			},
+		)
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{self},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(client.TestData.StartedContainers).To(HaveLen(1))
+		// StartContainer must see the canonical name (/watchtower) via
+		// CreateName(), not the cached random Name. That is what propagates
+		// into ContainerCreate's name argument and breaks the random-name
+		// chain at its root.
+		Expect(client.TestData.StartedContainers[0].CreateName()).To(Equal("/watchtower"))
+	})
+
+	It("leaves the cached Name alone when it doesn't look like a previous rename target (compose service is unused)", func() {
+		// Regression guard for the non-self-update case and for self-update
+		// chains that have NOT yet drifted into random-name territory: the
+		// heuristic must only fire when IsRandName matches, otherwise it
+		// could rewrite operator-chosen container names.
+		self := buildSelf() // name=/watchtower, no random
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{self},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(client.TestData.StartedContainers).To(HaveLen(1))
+		// CreateName falls back to the cached Name (no override set).
+		Expect(client.TestData.StartedContainers[0].CreateName()).To(Equal("/watchtower"))
+	})
+
 	It("marks the container for Hostname-clear before StartContainer so DetectSelfContainerID stays accurate across self-update chains", func() {
 		// Root-cause fix for the os.Hostname()-drift bug: when the self-update
 		// path fires, restartStaleContainer must call
@@ -869,7 +928,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 		// the same host carries Hostname forward, and DetectSelfContainerID
 		// /CheckForMultipleWatchtowerInstances silently degrade to label-only
 		// matching.
-		self := buildSelf("self-id")
+		self := buildSelf()
 		client := CreateMockClient(&TestData{
 			Containers: []types.Container{self},
 		}, false, false)
@@ -887,7 +946,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 		// whose Name() is a random string instead of /watchtower. This
 		// simulates the orphan-name-leakage scenario the safety net
 		// exists to recover from.
-		self := buildSelf("self-id")
+		self := buildSelf()
 		newID := types.ContainerID("newcontainer1234567890abcdef")
 		wrongName := CreateMockContainerWithConfig(
 			string(newID),

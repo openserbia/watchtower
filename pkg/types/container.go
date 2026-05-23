@@ -109,4 +109,6 @@ type Container interface {
 	TargetImageID() ImageID
 	SetClearHostnameOnRecreate(bool)
 	ClearHostnameOnRecreate() bool
+	SetCreateName(string)
+	CreateName() string
 }
