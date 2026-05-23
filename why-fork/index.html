@@ -543,6 +543,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#compose-aware_init_reruns_v114" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compose-aware init reruns (v1.14)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1181,6 +1192,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#compose-aware_init_reruns_v114" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Compose-aware init reruns (v1.14)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1342,7 +1364,7 @@
 <tr>
 <td>Local builds on containerd image store</td>
 <td>Noisy <code>pull access denied for app</code> on every poll (heuristic ignores containerd-snapshotter RepoDigest synthesis)</td>
-<td><strong>Reads the daemon's per-image <code>Identity</code> provenance record</strong> — <code>Build</code>-only means skip the pull; <code>Pull</code> entry means try it</td>
+<td><strong>Reads the daemon's per-image <code>Identity</code> provenance record</strong> on API v1.53+ (client auto-upgrades past the SDK's DefaultVersion cap) with a bare-name pull-error safeguard for older daemons</td>
 </tr>
 <tr>
 <td>Stuck on GC'd source image</td>
@@ -1368,6 +1390,11 @@
 <td>Mid-scan container vanish (stop)</td>
 <td>Untyped error aborts the iteration; restart then collides with the Compose-created replacement</td>
 <td><strong>Typed <code>ErrContainerNotFound</code></strong> — marked Skipped in the report, no restart attempt, scan continues</td>
+</tr>
+<tr>
+<td>Compose <code>service_completed_successfully</code> init siblings</td>
+<td>Honored only by <code>docker compose up</code>; Watchtower-driven updates silently bypass them ("new code, old schema")</td>
+<td><strong><code>--rerun-init-deps</code></strong> re-executes each init sibling against the resolved new digest <em>before</em> recreating the target; old container keeps serving while the init runs; failed digests cached in-process so a broken image isn't retried until the registry serves a different digest</td>
 </tr>
 </tbody>
 </table>
@@ -1445,6 +1472,9 @@
 <li><a href="https://github.com/containrrr/watchtower/issues/966">upstream#966</a> — <code>--cleanup</code> deletes the freshly-pulled replacement image and logs <code>conflict: unable to delete ... image is being used by running container</code>.</li>
 <li><a href="https://github.com/containrrr/watchtower/issues/1217">upstream#1217</a> — nil-pointer panic in <code>Container.ImageID()</code> when a container's source image has been garbage-collected.</li>
 <li><a href="https://github.com/containrrr/watchtower/issues/1413">upstream#1413</a> — <code>Unable to update container: Error: No such image</code> loop that permanently wedges the affected container.</li>
+<li><strong><code>ContainerCreate</code> "No such image: name:latest" race after stop+remove</strong> — the recreate referenced the tag rather than the digest resolved by <code>IsContainerStale</code>, so a CI rebuild that briefly untagged <code>name:latest</code> between scan and recreate caused <code>ContainerCreate</code> to fail <em>after</em> the old container had already been killed and removed. The service stayed down with no automatic recovery. Fixed by threading the resolved digest onto the container (<code>SetTargetImageID</code>) and re-binding the original tag to that digest via <code>ImageTag</code> just before <code>ContainerCreate</code>, so the create call still uses the human-readable tag (and every downstream reader of <code>Config.Image</code> keeps working) but is immune to a registry tag that has moved or vanished in the gap. Belt-and-braces: <code>--cleanup</code> now defers image removal by one generation per container, so the previous image stays on disk as a manual recovery target if a recreate ever fails for a reason pinning can't cover.</li>
+<li><strong>Malformed port bindings produced an opaque "invalid port range: value is empty" failure on recreate, after the old container was already gone</strong> — a compose file with <code>ports: ["8080:"]</code> (or any entry that resolved to an empty port number) passed through <code>VerifyConfiguration</code> untouched and only surfaced inside <code>ContainerCreate</code>, by which point the previous container had been stopped and removed. <code>VerifyConfiguration</code> now strips the malformed entries from <code>HostConfig.PortBindings</code> and <code>Config.ExposedPorts</code> and logs a warn that names the offending key and container, so the create proceeds with the remaining bindings instead of dropping the service. Borrowed from <a href="https://github.com/nicholas-fedor/watchtower/pull/1478">nicholas-fedor/watchtower#1478</a>.</li>
+<li><strong>A hung Docker daemon could wedge the scan loop forever</strong> — every call into the daemon used <code>context.Background()</code>, so a socket that accepted the connection but never responded (partial engine upgrade, wedged containerd snapshotter, daemon under extreme load) could block a single API call indefinitely with no recovery. Each operation now runs under a <code>context.WithTimeout</code> sized to its category (2 min for management calls, 5 min for <code>ImageRemove</code>, 30 min for the staleness path that streams the pull); <code>StopContainer</code> budgets <code>2 × stop-timeout + 2m</code> so both wait phases plus the in-loop inspect have full headroom. Healthy daemons see no change; hung daemons surface a deadline error and the next poll retries cleanly. Adapted from <a href="https://github.com/Marrrrrrrrry/watchtower/commit/69616e64c479af8a8472d1db5722e96bbb524225">Marrrrrrrrry/watchtower</a> with revised per-call budgets — their 60 s in <code>IsContainerStale</code> would have cut healthy multi-GB pulls off mid-stream.</li>
 </ul>
 <p>See <a href="https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md">CHANGELOG.md</a> for the full list per release.</p>
 <h2 id="reliability_and_performance_improvements">Reliability and performance improvements<a class="headerlink" href="#reliability_and_performance_improvements" title="Permanent link">&para;</a></h2>
@@ -1473,6 +1503,17 @@
 <ul>
 <li><strong>Constant-time bearer-token comparison.</strong> <code>api.RequireToken</code> now uses <code>crypto/subtle.ConstantTimeCompare</code> instead of <code>!=</code>, closing a theoretical timing-oracle on the <code>/v1/*</code> endpoints.</li>
 <li><strong>Strict TLS by default</strong> (noted above under v1.10).</li>
+</ul>
+<h3 id="compose-aware_init_reruns_v114">Compose-aware init reruns (v1.14)<a class="headerlink" href="#compose-aware_init_reruns_v114" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>--rerun-init-deps</code> honors <code>service_completed_successfully</code>.</strong> Compose's <code>depends_on: { condition: service_completed_successfully }</code> is evaluated only by <code>docker compose up</code>, never by Watchtower's container-level update loop. Stacks that moved bootstrap (goose schema migrations, seed jobs, anything one-shot before the long-running service) into a sibling init container therefore silently regressed to "new code, old schema" on every Watchtower-driven restart. The new opt-in flag closes the gap:<ul>
+<li>When a target with <code>service_completed_successfully</code> deps becomes stale, Watchtower re-executes each declared init sibling against the <em>new</em> image first; only after every init exits 0 does it stop+recreate the target. Old container keeps serving traffic the entire time.</li>
+<li>On non-zero exit the failed init is left in <code>Exited(N)</code> for <code>docker logs</code> inspection, the new digest is cached in an in-process rejected-digest map, and the target keeps its old image until the registry serves a different digest (operator pushed a fix). The rejected cache evicts naturally on Watchtower restart, so a <code>docker restart watchtower</code> is the manual "retry once" lever.</li>
+<li>Same-image init containers (the common <code>migrate</code> service using the same image tag as the target) inherit the target's freshly-resolved digest so both run against identical bits; different-image inits (e.g. <code>pg-ready: postgres:18</code>) keep their own pinning untouched.</li>
+<li>Migrations must be backwards-compatible with the previous image — the old container keeps serving while the init runs, so the schema in between must be readable by both versions. Standard expand-then-contract practice; warn in the flag's help text.</li>
+<li>Independent of <code>--compose-depends-on</code>; both can be enabled together. New package <code>internal/initrerun</code>, new client method <code>RerunInitContainer</code> (unconditional start that bypasses the <code>IsRunning()</code> gate so <code>Exited(0)</code> init containers actually run again), new parser <code>Container.ComposeInitDependencies()</code> (preserves the <code>service_completed_successfully</code> filter that <code>ComposeDependencies()</code> intentionally strips for the sorter).</li>
+</ul>
+</li>
 </ul>
 <h2 id="known_rough_edges_fork_roadmap">Known rough edges (fork roadmap)<a class="headerlink" href="#known_rough_edges_fork_roadmap" title="Permanent link">&para;</a></h2>
 <p>Contributions welcome. The list is currently empty — the original "<code>:latest</code> everywhere means a broken upstream push reaches prod in one poll interval" rough edge was substantially addressed in v1.12.0 by <code>--image-cooldown</code> (supply-chain grace window: defer applying a pulled image until its digest has been stable for N) and <code>--health-check-gated</code> (revert to previous image if the replacement isn't healthy). Together they turn the classic fast-broken-push scenario into a non-event: operators who enable both can afford the one-poll detection gap because the gate holds the update and, if one slips through, the rollback catches it.</p>

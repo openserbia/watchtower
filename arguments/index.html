@@ -802,6 +802,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#disable_memory_swappiness_on_recreate_podman_cgroupv2_compat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disable memory swappiness on recreate (Podman / cgroupv2 compat)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#without_restarting_containers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -949,6 +960,17 @@
     <span class="md-ellipsis">
       
         Compose depends_on ordering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#re-run_init_containers_service_completed_successfully" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-run init containers (service_completed_successfully)
       
     </span>
   </a>
@@ -1731,6 +1753,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#disable_memory_swappiness_on_recreate_podman_cgroupv2_compat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disable memory swappiness on recreate (Podman / cgroupv2 compat)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#without_restarting_containers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1885,6 +1918,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#re-run_init_containers_service_completed_successfully" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-run init containers (service_completed_successfully)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#image_cooldown_supply-chain_gate" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2032,6 +2076,7 @@ Environment Variable: TZ
 </code></pre></div>
 <h2 id="cleanup">Cleanup<a class="headerlink" href="#cleanup" title="Permanent link">&para;</a></h2>
 <p>Removes old images after updating. When this flag is specified, watchtower will remove the old image after restarting a container with a new image. Use this option to prevent the accumulation of orphaned images on your system as containers are updated.</p>
+<p>Image removal is deferred by <strong>one generation per container</strong>: the just-retired image stays on disk as the previous-generation rollback target until the <em>next</em> successful update of the same container rotates it out. This protects against an edge case where a recreate fails between stop and start (e.g. the registry tag is unresolvable mid-CI-rebuild) — the operator can <code>docker run</code> with the prior image to restore service. Disk cost is roughly one extra image per watched container, until that container's next update. The rotation map resets on watchtower restart; that under-cleans by one generation for the next update of each container, intentional in favor of zero on-disk state.</p>
 <div class="highlight"><pre><span></span><code>            Argument: --cleanup
 Environment Variable: WATCHTOWER_CLEANUP
                 Type: Boolean
@@ -2101,8 +2146,9 @@ Environment Variable: DOCKER_HOST
 <div class="highlight"><pre><span></span><code>            Argument: --api-version, -a
 Environment Variable: DOCKER_API_VERSION
                 Type: String
-             Default: &quot;1.24&quot;
+             Default: &quot;&quot; (negotiate)
 </code></pre></div>
+<p><strong>Leave this unset unless you have a specific reason to pin.</strong> When unset, Watchtower negotiates the API version on first request to the daemon's reported maximum (capped by the SDK), and then opportunistically raises the client to the daemon's version if the daemon supports features Watchtower consumes through raw JSON (currently: the <code>Identity</code> provenance record at API v1.53+, which distinguishes locally-built from registry-pulled images on the containerd image store). Setting the variable or flag disables negotiation and pins to the specified version — you'll lose access to those fields and the local-build heuristic falls back to an error-classification safeguard instead of the authoritative signal. If you're running Docker 25+ with the containerd image store and have <code>DOCKER_API_VERSION=1.44</code> left over from an older deployment, removing it is the recommended migration step.</p>
 <h2 id="include_restarting">Include restarting<a class="headerlink" href="#include_restarting" title="Permanent link">&para;</a></h2>
 <p>Will also include restarting containers.</p>
 <div class="highlight"><pre><span></span><code>            Argument: --include-restarting
@@ -2277,6 +2323,13 @@ Environment Variable: WATCHTOWER_LABEL_TAKE_PRECEDENCE
                 Type: Boolean
              Default: false
 </code></pre></div>
+<h2 id="disable_memory_swappiness_on_recreate_podman_cgroupv2_compat">Disable memory swappiness on recreate (Podman / cgroupv2 compat)<a class="headerlink" href="#disable_memory_swappiness_on_recreate_podman_cgroupv2_compat" title="Permanent link">&para;</a></h2>
+<p>Drop the container's <code>MemorySwappiness</code> setting from the recreate request. Podman with crun on cgroupv2 rejects the implicit <code>0</code> Docker writes when the field is unset, so a Watchtower recreate that copies the inspected <code>HostConfig</code> back through <code>ContainerCreate</code> fails with <code>swappiness must be in the range [0, 100]</code>. Opt-in: leaves Docker behavior unchanged (Docker hosts continue to round-trip <code>MemorySwappiness</code> exactly as inspected).
+<div class="highlight"><pre><span></span><code>            Argument: --disable-memory-swappiness
+Environment Variable: WATCHTOWER_DISABLE_MEMORY_SWAPPINESS
+                Type: Boolean
+             Default: false
+</code></pre></div></p>
 <h2 id="without_restarting_containers">Without restarting containers<a class="headerlink" href="#without_restarting_containers" title="Permanent link">&para;</a></h2>
 <p>Do not restart containers after updating. This option can be useful when the start of the containers
 is managed by an external system such as systemd.
@@ -2423,6 +2476,47 @@ startup if both are set; pick one.</p>
 edge, not the condition/required flags which govern Compose's own startup ordering.</p>
 <div class="highlight"><pre><span></span><code>            Argument: --compose-depends-on
 Environment Variable: WATCHTOWER_COMPOSE_DEPENDS_ON
+                Type: Boolean
+             Default: false
+</code></pre></div>
+<h2 id="re-run_init_containers_service_completed_successfully">Re-run init containers (<code>service_completed_successfully</code>)<a class="headerlink" href="#re-run_init_containers_service_completed_successfully" title="Permanent link">&para;</a></h2>
+<p>Re-execute Compose siblings whose <code>depends_on</code> entry uses
+<code>condition: service_completed_successfully</code> <em>before</em> the target container is recreated with the new
+image. Restores the every-restart-runs-migrations contract that an <code>entrypoint.sh</code> wrapper used to
+provide, for stacks that moved bootstrap logic (<code>goose up</code>, schema init, seed jobs) into a sibling
+Compose service.</p>
+<p><strong>Why this exists.</strong> Watchtower operates at the container level — it stops and recreates a single
+container when its image digest changes. Compose's <code>service_completed_successfully</code> is only honored by
+<code>docker compose up</code>, never by Watchtower. Stacks that rely on a sibling init container therefore
+regress to "new code, old schema" on every Watchtower-driven update. This flag fixes that by treating
+init siblings as part of the target's update transaction.</p>
+<p><strong>Lifecycle.</strong> For each target with init deps, in order:</p>
+<ol>
+<li>Pull the new image (handled by the regular staleness check).</li>
+<li>Stop the prior init container (best-effort; missing is fine).</li>
+<li>Recreate the init container against the <em>new</em> image digest and start it unconditionally (its
+   <code>Exited(0)</code> state from the last cycle would otherwise skip the start).</li>
+<li>Block on exit. On exit code 0 → proceed with the target's normal recreate. On non-zero → cache the
+   digest in memory, leave the failed init container in <code>Exited(N)</code> for <code>docker logs</code>, and keep the
+   <em>old</em> target container serving traffic.</li>
+</ol>
+<p><strong>Cached rejected digests.</strong> A failed init container marks its digest as rejected for the rest of the
+Watchtower process lifetime. Subsequent polls that resolve the same digest are skipped without
+re-running the init. When the operator pushes a fix and the registry serves a new digest, the cache
+naturally misses and the update is attempted again. The cache is in-memory only — restarting Watchtower
+forces exactly one retry.</p>
+<p><strong>Migrations must be backwards-compatible.</strong> Because the old target keeps serving while the new
+image's init container runs, the schema after migrate must still be readable by the old code. This is
+standard expand-then-contract migration practice. Don't enable this flag for stacks that rely on
+breaking schema changes — those need a planned downtime window instead.</p>
+<p><strong>Same-image deps.</strong> When the init container and the target share an image (the common
+<code>migrate: image: myapp:latest</code> pattern), the init container inherits the target's freshly-resolved
+digest so both run against identical bits. Init containers using a <em>different</em> image (e.g.
+<code>pg-ready: postgres:18</code> as a postgres-readiness probe) keep their own pinning untouched.</p>
+<p>Independent of <code>--compose-depends-on</code>. Both can be enabled together; neither implies the other.
+<code>--compose-depends-on</code> reorders updates, <code>--rerun-init-deps</code> injects init re-runs.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --rerun-init-deps
+Environment Variable: WATCHTOWER_RERUN_INIT_DEPS
                 Type: Boolean
              Default: false
 </code></pre></div>
