@@ -10,6 +10,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-05-23
+
 ### Added
 - **`--rerun-init-deps` honors Compose `service_completed_successfully` on
   every update.** Compose's `depends_on: { condition: service_completed_successfully }`
