@@ -138,6 +138,16 @@ type composeDep struct {
 	Condition string // "", "service_started", "service_healthy", "service_completed_successfully"
 }
 
+// composeDepMaxFields is the maximum number of colon-separated fields in a
+// single compose v2 depends_on entry: `service[:condition[:required]]`.
+//
+// composeDepMinFieldsForCondition is how many fields the entry needs before
+// a `:condition` segment is present (service alone = 1 field, no condition).
+const (
+	composeDepMaxFields             = 3
+	composeDepMinFieldsForCondition = 2
+)
+
 // parseComposeDependsOn parses the comma-separated compose-v2 depends_on label
 // into structured entries. Format per entry: `service`, `service:condition`,
 // or `service:condition:required`. Unknown shapes are dropped silently —
@@ -153,12 +163,12 @@ func parseComposeDependsOn(raw string) []composeDep {
 		if entry == "" {
 			continue
 		}
-		parts := strings.SplitN(entry, ":", 3)
+		parts := strings.SplitN(entry, ":", composeDepMaxFields)
 		dep := composeDep{Service: strings.TrimSpace(parts[0])}
 		if dep.Service == "" {
 			continue
 		}
-		if len(parts) >= 2 {
+		if len(parts) >= composeDepMinFieldsForCondition {
 			dep.Condition = strings.TrimSpace(parts[1])
 		}
 		out = append(out, dep)

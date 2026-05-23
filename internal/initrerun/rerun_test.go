@@ -12,13 +12,19 @@ import (
 	t "github.com/openserbia/watchtower/pkg/types"
 )
 
+// composeProjectName is the fixed compose project label every test fixture
+// uses — all rerun.Run() paths look containers up by {project, service} so
+// the project value just needs to be consistent across siblings, not
+// parameterized per test.
+const composeProjectName = "openserbia"
+
 // newComposeContainer builds a mock container with compose project/service
 // labels, optional depends_on, and a fixed image name. Mirrors the helper in
 // pkg/sorter/sort_test.go but exposes image name as an argument so we can
 // exercise same-image vs different-image dep paths.
-func newComposeContainer(name, project, service, image, dependsOn string) t.Container {
+func newComposeContainer(name, service, image, dependsOn string) t.Container {
 	labels := map[string]string{
-		"com.docker.compose.project": project,
+		"com.docker.compose.project": composeProjectName,
 		"com.docker.compose.service": service,
 	}
 	if dependsOn != "" {
@@ -36,7 +42,7 @@ func newComposeContainer(name, project, service, image, dependsOn string) t.Cont
 
 func TestRun_NoInitDeps_ReturnsNil(t1 *testing.T) {
 	client := mocks.CreateMockClient(&mocks.TestData{}, false, false)
-	target := newComposeContainer("api", "openserbia", "api", "myapp:latest", "")
+	target := newComposeContainer("api", "api", "myapp:latest", "")
 	got := initrerun.Run(client, target, []t.Container{target}, time.Minute)
 	if got != nil {
 		t1.Fatalf("expected nil results for target with no init deps, got %d", len(got))
@@ -47,8 +53,8 @@ func TestRun_HappyPath_OneSameImageDep(t1 *testing.T) {
 	td := &mocks.TestData{}
 	client := mocks.CreateMockClient(td, false, false)
 
-	migrate := newComposeContainer("migrate", "openserbia", "migrate", "myapp:latest", "")
-	target := newComposeContainer("api", "openserbia", "api", "myapp:latest",
+	migrate := newComposeContainer("migrate", "migrate", "myapp:latest", "")
+	target := newComposeContainer("api", "api", "myapp:latest",
 		"migrate:service_completed_successfully:true")
 	target.SetTargetImageID(t.ImageID("sha256:newdigest"))
 
@@ -82,9 +88,9 @@ func TestRun_FailedInit_StopsAtFirstFailure(t1 *testing.T) {
 	}
 	client := mocks.CreateMockClient(td, false, false)
 
-	migrate := newComposeContainer("migrate", "openserbia", "migrate", "myapp:latest", "")
-	seed := newComposeContainer("seed", "openserbia", "seed", "myapp:latest", "")
-	target := newComposeContainer("api", "openserbia", "api", "myapp:latest",
+	migrate := newComposeContainer("migrate", "migrate", "myapp:latest", "")
+	seed := newComposeContainer("seed", "seed", "myapp:latest", "")
+	target := newComposeContainer("api", "api", "myapp:latest",
 		"migrate:service_completed_successfully:true,seed:service_completed_successfully:true")
 
 	got := initrerun.Run(client, target, []t.Container{migrate, seed, target}, time.Minute)
@@ -105,7 +111,7 @@ func TestRun_FailedInit_StopsAtFirstFailure(t1 *testing.T) {
 
 func TestRun_MissingDep_ReturnsError(t1 *testing.T) {
 	client := mocks.CreateMockClient(&mocks.TestData{}, false, false)
-	target := newComposeContainer("api", "openserbia", "api", "myapp:latest",
+	target := newComposeContainer("api", "api", "myapp:latest",
 		"missing:service_completed_successfully:true")
 
 	got := initrerun.Run(client, target, []t.Container{target}, time.Minute)
@@ -127,10 +133,10 @@ func TestRun_DifferentImageDep_DoesNotInheritDigest(t1 *testing.T) {
 	// pg-ready uses a different image (postgres) than the target (myapp).
 	// The orchestrator should NOT pin pg-ready to target's digest — pg-ready
 	// pulls its own image lifecycle.
-	pgReady := newComposeContainer("pg-ready", "openserbia", "pg-ready", "postgres:18", "")
+	pgReady := newComposeContainer("pg-ready", "pg-ready", "postgres:18", "")
 	pgReady.SetTargetImageID("") // explicit: no prior pinning
 
-	target := newComposeContainer("api", "openserbia", "api", "myapp:latest",
+	target := newComposeContainer("api", "api", "myapp:latest",
 		"pg-ready:service_completed_successfully:true")
 	target.SetTargetImageID(t.ImageID("sha256:myapp-newdigest"))
 
@@ -151,9 +157,9 @@ func TestRun_NonInitConditionsAreIgnored(t1 *testing.T) {
 	client := mocks.CreateMockClient(td, false, false)
 
 	// peer uses service_started (long-running peer), should NOT be re-run.
-	peer := newComposeContainer("peer", "openserbia", "peer", "myapp:latest", "")
-	migrate := newComposeContainer("migrate", "openserbia", "migrate", "myapp:latest", "")
-	target := newComposeContainer("api", "openserbia", "api", "myapp:latest",
+	peer := newComposeContainer("peer", "peer", "myapp:latest", "")
+	migrate := newComposeContainer("migrate", "migrate", "myapp:latest", "")
+	target := newComposeContainer("api", "api", "myapp:latest",
 		"peer:service_started:true,migrate:service_completed_successfully:true")
 
 	got := initrerun.Run(client, target, []t.Container{peer, migrate, target}, time.Minute)
