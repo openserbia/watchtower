@@ -108,6 +108,19 @@ devbox run -- task build     # ./build/watchtower
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for PR expectations and [CLAUDE.md](./CLAUDE.md) for an architectural tour tuned for AI coding assistants (and handy for humans too).
 
+## Security scanning
+
+Trivy + Snyk are wired through `Taskfile.security.yml` (see `task -l security` for the full list). Quick start:
+- `task security:snyk:deps` — Snyk Open Source vulnerability scan
+- `task security:snyk:code` — Snyk Code SAST
+- `task security:all` — every trivy + snyk scan
+
+Shared config across CLI and the JetBrains Snyk plugin:
+- [`.snyk`](.snyk) — path excludes and per-issue ignores. Both the CLI and the IDE plugin read this automatically.
+- [`.idea/snyk.xml`](.idea/snyk.xml) — project-level plugin settings; sets `--severity-threshold=high` to match `SNYK_SEVERITY` in the Taskfile.
+
+One-time IDE setup (per-user state): in **Settings → Tools → Snyk**, enable **Open Source** and **Code**. Sign in via `SNYK_TOKEN` env or the plugin's "Authenticate" button — the CLI and plugin share the same token store.
+
 ## License
 
 Apache 2.0. Originally © containrrr authors; fork maintained under the same license. See [LICENSE.md](./LICENSE.md).

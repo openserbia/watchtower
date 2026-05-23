@@ -1,0 +1,17 @@
+version: v1.25.0
+ignore: {}
+patch: {}
+
+# Cross-tool config: read by both the Snyk CLI and the JetBrains Snyk plugin.
+# `global:` excludes apply to Snyk Code and IaC scans.
+exclude:
+  global:
+    # Vendored deps — already covered by `snyk:deps` against go.mod / package.json.
+    - "**/vendor/**"
+    - "**/node_modules/**"
+    # Build artifacts and tool caches.
+    - "**/build/**"
+    - "**/.trivycache/**"
+    - "**/.task/**"
+    - "**/.venv/**"
+    - "**/.devbox/**"

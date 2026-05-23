@@ -77,10 +77,11 @@ tasks:
   snyk:code:
     desc: Snyk Code static analysis (SAST)
     deps: [snyk:auth]
+    dir: '{{.TASKFILE_DIR}}'
     cmds:
       - mkdir -p {{.REPORT_DIR}}
-      - snyk code test --severity-threshold={{.SNYK_SEVERITY}}
-      - snyk code test --severity-threshold={{.SNYK_SEVERITY}} --sarif-file-output={{.REPORT_DIR}}/snyk-code.sarif || true
+      - snyk code test --severity-threshold={{.SNYK_SEVERITY}} .
+      - snyk code test --severity-threshold={{.SNYK_SEVERITY}} --sarif-file-output={{.REPORT_DIR}}/snyk-code.sarif . || true
 
   snyk:all:
     desc: Run all snyk scans (deps, code, image)
