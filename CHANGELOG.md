@@ -10,6 +10,26 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-05-23
+
+### Fixed
+- **Release pipeline.** v1.14.0's tag-driven release workflow failed at
+  the Lint step because golangci-lint 2.12.2's `mnd` (magic number) and
+  `unparam` rules flagged three items in the new `--rerun-init-deps`
+  code: two magic literals in `parseComposeDependsOn` (now named
+  constants `composeDepMaxFields` / `composeDepMinFieldsForCondition`)
+  and an always-"openserbia" `project` parameter in the rerun test
+  fixture (now a package-level `composeProjectName` constant).
+  Behavior is identical to v1.14.0 as specified; only the build
+  pipeline differs. No GitHub release or Docker image ever published
+  for the v1.14.0 tag.
+
+### Docs
+- **README badges.** Added Release-workflow status, OpenSSF Scorecard,
+  and Snyk vulnerability badges; stubbed an OpenSSF Best Practices
+  badge as an HTML comment pending self-attestation registration on
+  bestpractices.dev.
+
 ## [1.14.0] - 2026-05-23
 
 ### Added
