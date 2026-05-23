@@ -1,3 +1,9 @@
+# Unified openserbia golangci-lint config.
+#
+# Source of truth: openserbia/go-template/.golangci.yml.
+# Copy verbatim into every service module; append a SERVICE OVERRIDES block
+# at the bottom for paths/rules unique to that service.
+
 version: "2"
 
 run:
@@ -5,87 +11,165 @@ run:
   timeout: 5m
 
 linters:
-  default: standard
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+
   enable:
+    # Security
+    - bidichk
     - bodyclose
+    - gosec
+    - noctx
+    - sqlclosecheck
+
+    # Bug prevention
+    - durationcheck
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - gocheckcompilerdirectives
+    - makezero
+    - nilerr
+    - nosprintfhostport
+    - predeclared
+    - rowserrcheck
+
+    # Code quality
     - copyloopvar
     - dupl
     - errname
-    - exhaustive
-    - gocheckcompilerdirectives
     - goconst
     - gocritic
-    - mnd
+    - intrange
     - misspell
-    - nilerr
-    - noctx
+    - mnd
+    - perfsprint
     - prealloc
-    - predeclared
+    - recvcheck
     - revive
-    - sqlclosecheck
     - unconvert
     - unparam
     - usestdlibvars
     - wastedassign
     - whitespace
+
+    # Complexity (the gap that prompted this unification)
+    - cyclop
+
+    # Observability
+    - loggercheck
+    - promlinter
+
   settings:
+    cyclop:
+      max-complexity: 15
+      package-average: 10.0
+
     dupl:
       threshold: 150
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
     goconst:
       min-len: 3
       min-occurrences: 3
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - hugeParam
+
+    gosec:
+      excludes:
+        - G104 # unhandled errors — covered by errcheck with better signal
+        - G117 # int overflow on conversion — high FP rate on int→int32
+
     mnd:
       ignored-functions:
         - strconv.FormatInt
-        - strconv.ParseInt
         - strconv.FormatUint
-        - strconv.ParseUint
         - strconv.FormatFloat
+        - strconv.ParseInt
+        - strconv.ParseUint
         - strconv.ParseFloat
         - time.Duration
         - time.Sleep
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+          disabled: true
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+          disabled: true
+        - name: range
+        - name: receiver-naming
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: var-naming
+
   exclusions:
     generated: lax
+
     paths:
       - vendor
+      - "(^|/)mocks/"
       - pkg/notifications/preview
       - tplprev
-      - "(^|/)mocks/"
+
     rules:
-      # Ginkgo and Gomega rely on dot imports in spec files.
+      # Test files: dot-imports for Ginkgo/Gomega.
       - path: _test\.go
         linters:
           - revive
         text: "dot-imports"
-      # Test fixtures commonly use numeric literals, short-lived slices and repeated strings.
+
+      # Test fixtures legitimately use magic numbers, repeated strings, short slices.
       - path: _test\.go
         linters:
+          - cyclop
+          - dupl
+          - goconst
           - mnd
           - prealloc
-          - goconst
-          - dupl
-      # ContainerStatus is a session status record exposed through ContainerReport.Error();
-      # it is not an error type despite the method name.
-      - path: pkg/session/container_status\.go
-        linters:
-          - errname
-      # Ginkgo suite bootstraps pass unused *testing.T.
-      - path: _suite_test\.go
-        linters:
-          - revive
-        text: "unused-parameter"
+
+      # Ginkgo suite bootstraps + table tests have unused *testing.T / args.
       - path: _test\.go
         linters:
           - revive
         text: "unused-parameter"
 
+      # SERVICE OVERRIDE (watchtower) ─────────────────────────────────────
+      # ContainerStatus is a session status record (ContainerReport.Error()),
+      # not an error type despite the method name.
+      - path: pkg/session/container_status\.go
+        linters: [errname]
+
 formatters:
   enable:
-    - gofumpt
     - gci
+    - gofumpt
   settings:
     gci:
       sections:
         - standard
         - default
         - prefix(github.com/openserbia)
+
+issues:
+  max-same-issues: 5
