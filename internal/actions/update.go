@@ -673,7 +673,10 @@ func restartStaleContainer(container types.Container, client container.Client, p
 	// start the new one while the old one is still running. This prevents us
 	// from re-using the same container name so we first rename the current
 	// instance so that the new one can adopt the old name.
-	if isRunningSelf(container, params) {
+	wasRunningSelf := isRunningSelf(container, params)
+	originalName := container.Name()
+
+	if wasRunningSelf {
 		// The rename-and-respawn pattern briefly overlaps the old and new
 		// containers. That works fine for most setups, but if the current
 		// watchtower is publishing host ports (e.g. --http-api-* mapped to
@@ -682,14 +685,14 @@ func restartStaleContainer(container types.Container, client container.Client, p
 		// warning so the operator knows to stop/pull/recreate manually
 		// instead of silently wedging the update path. See upstream#1481.
 		if container.HasPublishedPorts() {
-			log.WithField("container", container.Name()).Warn(
+			log.WithField("container", originalName).Warn(
 				"Skipping self-update: watchtower has published host port bindings that would conflict with the rename-and-respawn pattern during the old/new overlap window. Update manually by stopping and recreating this container with the new image.",
 			)
 			return nil
 		}
 		if err := client.RenameContainer(container, util.RandName()); err != nil {
 			log.WithError(err).WithFields(log.Fields{
-				"container": container.Name(),
+				"container": originalName,
 				"image":     container.ImageName(),
 			}).Error("Failed to rename container")
 			return nil
@@ -700,10 +703,13 @@ func restartStaleContainer(container types.Container, client container.Client, p
 		newContainerID, err := client.StartContainer(container)
 		if err != nil {
 			log.WithError(err).WithFields(log.Fields{
-				"container": container.Name(),
+				"container": originalName,
 				"image":     container.ImageName(),
 			}).Error("Failed to start container")
 			return err
+		}
+		if wasRunningSelf {
+			verifySelfContainerName(client, newContainerID, originalName)
 		}
 		if container.ToRestart() && params.LifecycleHooks {
 			lifecycle.ExecutePostUpdateCommand(client, newContainerID)
@@ -715,6 +721,54 @@ func restartStaleContainer(container types.Container, client container.Client, p
 		}
 	}
 	return nil
+}
+
+// verifySelfContainerName is the belt-and-suspenders companion to the
+// SelfContainerID-based orphan-skip in restartStaleContainer. The primary
+// mechanism (DetectSelfContainerID at startup + orphan-skip at restart
+// time) is meant to keep the rename-and-respawn pattern from firing on
+// orphan watchtower-labeled containers — when it works, the new self
+// container always inherits the canonical name (e.g. "watchtower" from a
+// compose container_name: directive) via StartContainer's c.Name() path.
+//
+// In practice, the primary mechanism degrades silently after the first
+// self-update: ContainerCreate carries the old container's Hostname into
+// the new one, so os.Hostname() inside the new self no longer matches
+// any live container's short ID and DetectSelfContainerID returns "" —
+// pushing isRunningSelf back to the label-only fallback that treats
+// every watchtower-labeled container as self. A transient orphan during
+// that window can then have its random name copied onto the new
+// container.
+//
+// This check inspects the freshly-created container by ID and renames
+// it back to the canonical name when it diverged. It is intentionally
+// best-effort: failures log a warning but never abort the update, since
+// the new container is already running the right image and an
+// out-of-band rename is a cosmetic concern rather than a service one.
+func verifySelfContainerName(client container.Client, newID types.ContainerID, expected string) {
+	fresh, err := client.GetContainer(newID)
+	if err != nil {
+		log.WithError(err).WithField("id", newID.ShortID()).Warn(
+			"Self-update safety net: GetContainer failed; cannot verify new container's name",
+		)
+		return
+	}
+	actual := fresh.Name()
+	if actual == expected {
+		return
+	}
+	canonical := strings.TrimPrefix(expected, "/")
+	log.WithFields(log.Fields{
+		"expected": expected,
+		"actual":   actual,
+		"id":       newID.ShortID(),
+	}).Warn("Self-update safety net: new container's name diverged from the original; renaming back to canonical")
+	if err := client.RenameContainer(fresh, canonical); err != nil {
+		log.WithError(err).WithFields(log.Fields{
+			"from": actual,
+			"to":   canonical,
+		}).Error("Self-update safety net: rename-back failed; container will keep the wrong name until next manual fix")
+	}
 }
 
 // resolveHealthCheckTimeout picks the timeout to use for gating a specific

@@ -53,6 +53,25 @@ type TestData struct {
 	// exit code for a named init container, exercising the failure path that
 	// caches the digest and skips the target update.
 	InitExitByName map[string]int
+	// RenameCalls records every RenameContainer invocation in order — used
+	// by self-update tests to assert both the initial random rename and any
+	// follow-up safety-net rename back to the canonical name.
+	RenameCalls []RenameCall
+	// ContainerByID, when populated, overrides GetContainer to return the
+	// mapped container for matching IDs. Lets a test return a deliberately
+	// wrong-named container from GetContainer(newContainerID) to drive the
+	// post-recreate name-divergence safety net in restartStaleContainer.
+	ContainerByID map[t.ContainerID]t.Container
+}
+
+// RenameCall captures one invocation of MockClient.RenameContainer so tests
+// can assert both the order and arguments of rename activity (e.g. the
+// initial random rename followed by a safety-net restore of the canonical
+// name).
+type RenameCall struct {
+	ContainerID t.ContainerID
+	OldName     string
+	NewName     string
 }
 
 // TriedToRemoveImage is a test helper function to check whether RemoveImageByID has been called
@@ -99,8 +118,15 @@ func (client MockClient) StartContainer(c t.Container) (t.ContainerID, error) {
 	return c.ID(), nil
 }
 
-// RenameContainer is a mock method
-func (client MockClient) RenameContainer(_ t.Container, _ string) error {
+// RenameContainer is a mock method. Records each invocation in
+// TestData.RenameCalls so self-update tests can assert both the initial
+// random rename and any follow-up safety-net restore.
+func (client MockClient) RenameContainer(c t.Container, newName string) error {
+	client.TestData.RenameCalls = append(client.TestData.RenameCalls, RenameCall{
+		ContainerID: c.ID(),
+		OldName:     c.Name(),
+		NewName:     newName,
+	})
 	return nil
 }
 
@@ -112,10 +138,18 @@ func (client MockClient) RemoveImageByID(id t.ImageID) error {
 	return nil
 }
 
-// GetContainer is a mock method. When HealthStatusByID is populated, returns a
-// container whose State.Health.Status reflects the configured value, so tests
-// can drive --health-check-gated rollback paths deterministically.
+// GetContainer is a mock method. Lookup precedence (highest first):
+//  1. ContainerByID — a per-ID override used by self-update tests to make
+//     the safety net see a container whose Name() differs from the
+//     pre-rename canonical (driving the rename-back code path).
+//  2. HealthStatusByID — returns a container with the configured health
+//     state, used by --health-check-gated rollback tests.
+//  3. Containers[0] — default fallback for legacy tests that only need
+//     "some container" back from GetContainer.
 func (client MockClient) GetContainer(id t.ContainerID) (t.Container, error) {
+	if cont, ok := client.TestData.ContainerByID[id]; ok {
+		return cont, nil
+	}
 	if status, ok := client.TestData.HealthStatusByID[id]; ok {
 		return ContainerWithHealthStatus(id, status), nil
 	}

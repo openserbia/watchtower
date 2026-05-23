@@ -25,12 +25,14 @@ func getCommonTestData() *TestData {
 				"test-container-01",
 				"test-container-01",
 				"fake-image:latest",
-				time.Now().AddDate(0, 0, -1)),
+				time.Now().AddDate(0, 0, -1),
+			),
 			CreateMockContainer(
 				"test-container-02",
 				"test-container-02",
 				"fake-image:latest",
-				time.Now()),
+				time.Now(),
+			),
 		},
 	}
 }
@@ -40,7 +42,8 @@ func getLinkedTestData(withImageInfo bool) *TestData {
 		"test-container-01",
 		"/test-container-01",
 		"fake-image1:latest",
-		time.Now().AddDate(0, 0, -1))
+		time.Now().AddDate(0, 0, -1),
+	)
 
 	var imageInfo *image.InspectResponse
 	if withImageInfo {
@@ -52,7 +55,8 @@ func getLinkedTestData(withImageInfo bool) *TestData {
 		"fake-image2:latest",
 		time.Now(),
 		[]string{staleContainer.Name()},
-		imageInfo)
+		imageInfo,
+	)
 
 	return &TestData{
 		Staleness: map[string]bool{linkingContainer.Name(): false},
@@ -347,7 +351,8 @@ var _ = Describe("the update action", func() {
 								"test-container-01",
 								"test-container-01",
 								"fake-image1:latest",
-								time.Now()),
+								time.Now(),
+							),
 							CreateMockContainerWithConfig(
 								"test-container-02",
 								"test-container-02",
@@ -359,7 +364,8 @@ var _ = Describe("the update action", func() {
 									Labels: map[string]string{
 										"com.centurylinklabs.watchtower.monitor-only": "true",
 									},
-								}),
+								},
+							),
 						},
 					},
 					false,
@@ -383,12 +389,14 @@ var _ = Describe("the update action", func() {
 								"test-container-01",
 								"test-container-01",
 								"fake-image:latest",
-								time.Now()),
+								time.Now(),
+							),
 							CreateMockContainer(
 								"test-container-02",
 								"test-container-02",
 								"fake-image:latest",
-								time.Now()),
+								time.Now(),
+							),
 						},
 					},
 					false,
@@ -417,7 +425,8 @@ var _ = Describe("the update action", func() {
 										Labels: map[string]string{
 											"com.centurylinklabs.watchtower.monitor-only": "false",
 										},
-									}),
+									},
+								),
 							},
 						},
 						false,
@@ -443,7 +452,8 @@ var _ = Describe("the update action", func() {
 										Labels: map[string]string{
 											"com.centurylinklabs.watchtower.monitor-only": "true",
 										},
-									}),
+									},
+								),
 							},
 						},
 						false,
@@ -461,7 +471,8 @@ var _ = Describe("the update action", func() {
 									"test-container-01",
 									"test-container-01",
 									"fake-image:latest",
-									time.Now()),
+									time.Now(),
+								),
 							},
 						},
 						false,
@@ -495,7 +506,8 @@ var _ = Describe("the update action", func() {
 										"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn1.sh",
 									},
 									ExposedPorts: map[nat.Port]struct{}{},
-								}),
+								},
+							),
 						},
 					},
 					false,
@@ -527,7 +539,8 @@ var _ = Describe("the update action", func() {
 										"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn75.sh",
 									},
 									ExposedPorts: map[nat.Port]struct{}{},
-								}),
+								},
+							),
 						},
 					},
 					false,
@@ -560,7 +573,8 @@ var _ = Describe("the update action", func() {
 										"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn0.sh",
 									},
 									ExposedPorts: map[nat.Port]struct{}{},
-								}),
+								},
+							),
 						},
 					},
 					false,
@@ -584,7 +598,8 @@ var _ = Describe("the update action", func() {
 					&dockerContainer.Config{
 						Labels:       map[string]string{},
 						ExposedPorts: map[nat.Port]struct{}{},
-					})
+					},
+				)
 
 				provider.SetStale(true)
 
@@ -600,7 +615,8 @@ var _ = Describe("the update action", func() {
 							"com.centurylinklabs.watchtower.depends-on": "test-container-provider",
 						},
 						ExposedPorts: map[nat.Port]struct{}{},
-					})
+					},
+				)
 
 				containers := []types.Container{
 					provider,
@@ -638,7 +654,8 @@ var _ = Describe("the update action", func() {
 										"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn1.sh",
 									},
 									ExposedPorts: map[nat.Port]struct{}{},
-								}),
+								},
+							),
 						},
 					},
 					false,
@@ -671,7 +688,8 @@ var _ = Describe("the update action", func() {
 										"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn1.sh",
 									},
 									ExposedPorts: map[nat.Port]struct{}{},
-								}),
+								},
+							),
 						},
 					},
 					false,
@@ -802,6 +820,89 @@ var _ = Describe("watchtower self-update port conflict", func() {
 	})
 })
 
+var _ = Describe("watchtower self-update name safety net", func() {
+	// Builds the canonical "watchtower" container the self-update path
+	// operates on — labeled, no published ports (so the rename-and-respawn
+	// branch fires), and stale by default.
+	buildSelf := func(id string) types.Container {
+		return CreateMockContainerWithConfig(
+			id,
+			"/watchtower",
+			"openserbia/watchtower:latest",
+			true, false, time.Now(),
+			&dockerContainer.Config{
+				Image: "openserbia/watchtower:latest",
+				Labels: map[string]string{
+					"com.centurylinklabs.watchtower": "true",
+				},
+				ExposedPorts: map[nat.Port]struct{}{},
+			},
+		)
+	}
+
+	It("does not double-rename when the recreated self already inherits the canonical name", func() {
+		// MockClient.StartContainer returns c.ID() when NextStartContainerIDs
+		// is empty, and GetContainer with no ContainerByID override returns
+		// Containers[0]. So the safety net inspects the same /watchtower
+		// container the test set up — actual==expected, no extra rename.
+		self := buildSelf("self-id")
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{self},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Exactly one rename — the initial random one that frees the
+		// canonical name for the new container to adopt.
+		Expect(client.TestData.RenameCalls).To(HaveLen(1))
+		Expect(client.TestData.RenameCalls[0].NewName).NotTo(Equal("watchtower"))
+	})
+
+	It("renames the recreated self back to the canonical name when StartContainer returns a divergent name", func() {
+		// Drive the divergence: StartContainer returns a fresh ID for the
+		// new container, GetContainer for that ID returns a container
+		// whose Name() is a random string instead of /watchtower. This
+		// simulates the orphan-name-leakage scenario the safety net
+		// exists to recover from.
+		self := buildSelf("self-id")
+		newID := types.ContainerID("newcontainer1234567890abcdef")
+		wrongName := CreateMockContainerWithConfig(
+			string(newID),
+			"/VWhtejHFazORFJVQPmEDXTirLeVHxFAz",
+			"openserbia/watchtower:latest",
+			true, false, time.Now(),
+			&dockerContainer.Config{
+				Image: "openserbia/watchtower:latest",
+				Labels: map[string]string{
+					"com.centurylinklabs.watchtower": "true",
+				},
+				ExposedPorts: map[nat.Port]struct{}{},
+			},
+		)
+		client := CreateMockClient(&TestData{
+			Containers:            []types.Container{self},
+			NextStartContainerIDs: []types.ContainerID{newID},
+			ContainerByID: map[types.ContainerID]types.Container{
+				newID: wrongName,
+			},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Two renames expected: the initial random one freeing the
+		// canonical slot, then the safety-net restore to "watchtower".
+		Expect(client.TestData.RenameCalls).To(HaveLen(2))
+		Expect(client.TestData.RenameCalls[1].NewName).To(Equal("watchtower"))
+		Expect(client.TestData.RenameCalls[1].ContainerID).To(Equal(newID))
+		// And the OldName captured at safety-net time is the diverged one,
+		// not the original canonical — proves the check is looking at the
+		// fresh post-StartContainer state, not stale cached info.
+		Expect(client.TestData.RenameCalls[1].OldName).To(Equal("/VWhtejHFazORFJVQPmEDXTirLeVHxFAz"))
+	})
+})
+
 var _ = Describe("startup-failure log levels", func() {
 	var (
 		logBuf  *bytes.Buffer
@@ -836,7 +937,8 @@ var _ = Describe("startup-failure log levels", func() {
 								"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn1.sh",
 							},
 							ExposedPorts: map[nat.Port]struct{}{},
-						}),
+						},
+					),
 				},
 			},
 			false,

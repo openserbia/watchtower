@@ -10,6 +10,28 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+### Fixed
+- **Self-update preserves the canonical container name as a belt-and-suspenders
+  backstop.** The primary `DetectSelfContainerID` mechanism added in v1.14.0
+  matches `os.Hostname()` against watchtower-labeled containers' short IDs
+  to distinguish the real self from orphans, but the lookup goes stale on
+  the second self-update onward: `ContainerCreate` carries the previous
+  container's `Hostname` field into the new container's config (docker
+  does not reassign it to the new short ID), so `os.Hostname()` inside the
+  new self no longer matches any live container's short ID. The orphan
+  distinction then degrades to the legacy label-only `IsWatchtower` check,
+  which on a single-instance host masks the regression but on a transient
+  multi-instance window (slow stop, restart-policy fighting cleanup) can
+  let an orphan's random name be copied onto the new container — the
+  canonical `watchtower` name (typically set via compose
+  `container_name: watchtower`) is then lost until manual intervention.
+  `restartStaleContainer` now captures the original name before the
+  rename, and on success inspects the freshly-created self container and
+  renames it back when its name diverges. The check is best-effort:
+  rename failures log a warning but never abort the update, since the
+  service half of the contract (right image, healthy) is already satisfied
+  by the time the name is checked.
+
 ## [1.14.1] - 2026-05-23
 
 ### Fixed
