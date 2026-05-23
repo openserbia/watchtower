@@ -63,7 +63,7 @@ func TestGetSecretsFromFilesWithFile(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write the secret to the temporary file.
-	_, err = file.Write([]byte(value))
+	_, err = file.WriteString(value)
 	require.NoError(t, err)
 	require.NoError(t, file.Close())
 
@@ -198,7 +198,7 @@ func TestLogFormatFlag(t *testing.T) {
 	require.NoError(t, cmd.ParseFlags([]string{`--log-format`, `pretty`}))
 	require.NoError(t, SetupLogging(cmd.Flags()))
 	assert.IsType(t, &logrus.TextFormatter{}, logrus.StandardLogger().Formatter)
-	textFormatter, ok := (logrus.StandardLogger().Formatter).(*logrus.TextFormatter)
+	textFormatter, ok := logrus.StandardLogger().Formatter.(*logrus.TextFormatter)
 	assert.True(t, ok)
 	assert.True(t, textFormatter.ForceColors)
 	assert.False(t, textFormatter.FullTimestamp)
@@ -206,7 +206,7 @@ func TestLogFormatFlag(t *testing.T) {
 	// Test LogFmt format
 	require.NoError(t, cmd.ParseFlags([]string{`--log-format`, `logfmt`}))
 	require.NoError(t, SetupLogging(cmd.Flags()))
-	textFormatter, ok = (logrus.StandardLogger().Formatter).(*logrus.TextFormatter)
+	textFormatter, ok = logrus.StandardLogger().Formatter.(*logrus.TextFormatter)
 	assert.True(t, ok)
 	assert.True(t, textFormatter.DisableColors)
 	assert.True(t, textFormatter.FullTimestamp)
@@ -305,13 +305,15 @@ func TestFlagsArePrecentInDocumentation(t *testing.T) {
 		"../../docs/notifications.md",
 	}
 	allDocs := ""
+	var allDocsSb308 strings.Builder
 	for _, f := range docFiles {
 		bytes, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatalf("Could not load docs file %q: %v", f, err)
 		}
-		allDocs += string(bytes)
+		allDocsSb308.WriteString(string(bytes))
 	}
+	allDocs += allDocsSb308.String()
 
 	flags.VisitAll(func(f *pflag.Flag) {
 		if !strings.Contains(allDocs, "--"+f.Name) {

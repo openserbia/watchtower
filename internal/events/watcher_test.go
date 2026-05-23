@@ -101,7 +101,7 @@ var _ = Describe("events watcher", func() {
 	)
 
 	BeforeEach(func() {
-		ctx, cancel = context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
 		fake = &fakeClient{consumed: make(chan struct{}, 4)}
 	})
 

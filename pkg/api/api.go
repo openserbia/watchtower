@@ -4,7 +4,6 @@ package api
 
 import (
 	"crypto/subtle"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -42,7 +41,7 @@ func New(token string) *API {
 func (api *API) RequireToken(fn http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
-		want := fmt.Sprintf("Bearer %s", api.Token)
+		want := "Bearer " + api.Token
 		if subtle.ConstantTimeCompare([]byte(auth), []byte(want)) != 1 {
 			w.WriteHeader(http.StatusUnauthorized)
 			return

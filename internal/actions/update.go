@@ -877,7 +877,7 @@ func gateOnHealthCheck(client container.Client, old types.Container, newID types
 	maps.Copy(fields, healthFailureContext(client, newID))
 	log.WithError(err).WithFields(fields).Error("Health check failed after update — rolling back to the previous image")
 	if rbErr := rollback(client, old, newID, params); rbErr != nil {
-		return fmt.Errorf("rollback failed for %s: %w (original health-check error: %v)", old.Name(), rbErr, err)
+		return fmt.Errorf("rollback failed for %s: %w (original health-check error: %w)", old.Name(), rbErr, err)
 	}
 	return fmt.Errorf("update of %s rolled back after failed health check: %w", old.Name(), err)
 }

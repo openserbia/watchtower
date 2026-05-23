@@ -36,263 +36,307 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"interval",
 		"i",
 		envInt("WATCHTOWER_POLL_INTERVAL"),
-		"Poll interval (in seconds)")
+		"Poll interval (in seconds)",
+	)
 
 	flags.StringP(
 		"schedule",
 		"s",
 		envString("WATCHTOWER_SCHEDULE"),
-		"The cron expression which defines when to update")
+		"The cron expression which defines when to update",
+	)
 
 	flags.DurationP(
 		"stop-timeout",
 		"t",
 		envDuration("WATCHTOWER_TIMEOUT"),
-		"Timeout before a container is forcefully stopped")
+		"Timeout before a container is forcefully stopped",
+	)
 
 	flags.BoolP(
 		"no-pull",
 		"",
 		envBool("WATCHTOWER_NO_PULL"),
-		"Do not pull any new images")
+		"Do not pull any new images",
+	)
 
 	flags.BoolP(
 		"no-restart",
 		"",
 		envBool("WATCHTOWER_NO_RESTART"),
-		"Do not restart any containers")
+		"Do not restart any containers",
+	)
 
 	flags.BoolP(
 		"no-startup-message",
 		"",
 		envBool("WATCHTOWER_NO_STARTUP_MESSAGE"),
-		"Prevents watchtower from sending a startup message")
+		"Prevents watchtower from sending a startup message",
+	)
 
 	flags.BoolP(
 		"cleanup",
 		"c",
 		envBool("WATCHTOWER_CLEANUP"),
-		"Remove previously used images after updating")
+		"Remove previously used images after updating",
+	)
 
 	flags.BoolP(
 		"remove-volumes",
 		"",
 		envBool("WATCHTOWER_REMOVE_VOLUMES"),
-		"Remove attached volumes before updating")
+		"Remove attached volumes before updating",
+	)
 
 	flags.BoolP(
 		"label-enable",
 		"e",
 		envBool("WATCHTOWER_LABEL_ENABLE"),
-		"Watch containers where the com.centurylinklabs.watchtower.enable label is true")
+		"Watch containers where the com.centurylinklabs.watchtower.enable label is true",
+	)
 
 	flags.BoolP(
 		"audit-unmanaged",
 		"",
 		envBool("WATCHTOWER_AUDIT_UNMANAGED"),
-		"Warn about containers carrying no com.centurylinklabs.watchtower.enable label at all — silent exclusions that look identical to intentional opt-outs")
+		"Warn about containers carrying no com.centurylinklabs.watchtower.enable label at all — silent exclusions that look identical to intentional opt-outs",
+	)
 
 	flags.StringSliceP(
 		"insecure-registry",
 		"",
 		regexp.MustCompile("[, ]+").Split(envString("WATCHTOWER_INSECURE_REGISTRY"), -1),
-		"Comma-separated list of registry hosts (\"host\" or \"host:port\") for which TLS certificate verification is skipped. Opt-in per host — default is strict verification.")
+		"Comma-separated list of registry hosts (\"host\" or \"host:port\") for which TLS certificate verification is skipped. Opt-in per host — default is strict verification.",
+	)
 
 	flags.StringP(
 		"registry-ca-bundle",
 		"",
 		envString("WATCHTOWER_REGISTRY_CA_BUNDLE"),
-		"Path to a PEM file containing additional trusted CA certificates. Extends the system trust store rather than replacing it.")
+		"Path to a PEM file containing additional trusted CA certificates. Extends the system trust store rather than replacing it.",
+	)
 
 	flags.BoolP(
 		"health-check-gated",
 		"",
 		envBool("WATCHTOWER_HEALTH_CHECK_GATED"),
-		"After creating the replacement container, wait until it reports healthy before considering the update successful. If it never becomes healthy (or is reported unhealthy), roll back to the previous image.")
+		"After creating the replacement container, wait until it reports healthy before considering the update successful. If it never becomes healthy (or is reported unhealthy), roll back to the previous image.",
+	)
 
 	flags.DurationP(
 		"health-check-timeout",
 		"",
 		envDuration("WATCHTOWER_HEALTH_CHECK_TIMEOUT", defaultHealthCheckTimeout),
-		"Maximum time --health-check-gated will wait for the new container to report healthy before rolling back.")
+		"Maximum time --health-check-gated will wait for the new container to report healthy before rolling back.",
+	)
 
 	flags.DurationP(
 		"image-cooldown",
 		"",
 		envDuration("WATCHTOWER_IMAGE_COOLDOWN"),
-		"Supply-chain gate: after a new image digest is detected, defer applying it until the digest has been stable for this duration. If the author re-pushes during the window, the clock resets. Set 0 (the default) to disable — matches pre-v1.12 behavior. Per-container override via the com.centurylinklabs.watchtower.image-cooldown label.")
+		"Supply-chain gate: after a new image digest is detected, defer applying it until the digest has been stable for this duration. If the author re-pushes during the window, the clock resets. Set 0 (the default) to disable — matches pre-v1.12 behavior. Per-container override via the com.centurylinklabs.watchtower.image-cooldown label.",
+	)
 
 	flags.StringSliceP(
 		"disable-containers",
 		"x",
 		// Due to issue spf13/viper#380, can't use viper.GetStringSlice:
 		regexp.MustCompile("[, ]+").Split(envString("WATCHTOWER_DISABLE_CONTAINERS"), -1),
-		"Comma-separated list of containers to explicitly exclude from watching.")
+		"Comma-separated list of containers to explicitly exclude from watching.",
+	)
 
 	flags.StringP(
 		"log-format",
 		"l",
 		viper.GetString("WATCHTOWER_LOG_FORMAT"),
-		"Sets what logging format to use for console output. Possible values: Auto, LogFmt, Pretty, JSON")
+		"Sets what logging format to use for console output. Possible values: Auto, LogFmt, Pretty, JSON",
+	)
 
 	flags.BoolP(
 		"debug",
 		"d",
 		envBool("WATCHTOWER_DEBUG"),
-		"Enable debug mode with verbose logging")
+		"Enable debug mode with verbose logging",
+	)
 
 	flags.BoolP(
 		"trace",
 		"",
 		envBool("WATCHTOWER_TRACE"),
-		"Enable trace mode with very verbose logging - caution, exposes credentials")
+		"Enable trace mode with very verbose logging - caution, exposes credentials",
+	)
 
 	flags.BoolP(
 		"monitor-only",
 		"m",
 		envBool("WATCHTOWER_MONITOR_ONLY"),
-		"Will only monitor for new images, not update the containers")
+		"Will only monitor for new images, not update the containers",
+	)
 
 	flags.BoolP(
 		"run-once",
 		"R",
 		envBool("WATCHTOWER_RUN_ONCE"),
-		"Run once now and exit")
+		"Run once now and exit",
+	)
 
 	flags.BoolP(
 		"update-on-start",
 		"",
 		envBool("WATCHTOWER_UPDATE_ON_START"),
-		"Run an update scan immediately at startup in addition to the scheduled cadence. Useful for verifying a fresh deployment works without waiting for the first poll interval.")
+		"Run an update scan immediately at startup in addition to the scheduled cadence. Useful for verifying a fresh deployment works without waiting for the first poll interval.",
+	)
 
 	flags.BoolP(
 		"watch-docker-events",
 		"",
 		envBool("WATCHTOWER_WATCH_DOCKER_EVENTS"),
-		"Subscribe to the Docker engine event stream and trigger a targeted scan when a local image is rebuilt (tag/load events). Complements the poll loop for operators running `docker build -t foo:latest .` against already-deployed locally-built containers — the scheduler still handles registry-backed images and serves as the safety net for missed events during reconnects.")
+		"Subscribe to the Docker engine event stream and trigger a targeted scan when a local image is rebuilt (tag/load events). Complements the poll loop for operators running `docker build -t foo:latest .` against already-deployed locally-built containers — the scheduler still handles registry-backed images and serves as the safety net for missed events during reconnects.",
+	)
 
 	flags.BoolP(
 		"include-restarting",
 		"",
 		envBool("WATCHTOWER_INCLUDE_RESTARTING"),
-		"Will also include restarting containers")
+		"Will also include restarting containers",
+	)
 
 	flags.BoolP(
 		"include-stopped",
 		"S",
 		envBool("WATCHTOWER_INCLUDE_STOPPED"),
-		"Will also include created and exited containers")
+		"Will also include created and exited containers",
+	)
 
 	flags.BoolP(
 		"revive-stopped",
 		"",
 		envBool("WATCHTOWER_REVIVE_STOPPED"),
-		"Will also start stopped containers that were updated, if include-stopped is active")
+		"Will also start stopped containers that were updated, if include-stopped is active",
+	)
 
 	flags.BoolP(
 		"enable-lifecycle-hooks",
 		"",
 		envBool("WATCHTOWER_LIFECYCLE_HOOKS"),
-		"Enable the execution of commands triggered by pre- and post-update lifecycle hooks")
+		"Enable the execution of commands triggered by pre- and post-update lifecycle hooks",
+	)
 
 	flags.BoolP(
 		"rolling-restart",
 		"",
 		envBool("WATCHTOWER_ROLLING_RESTART"),
-		"Restart containers one at a time")
+		"Restart containers one at a time",
+	)
 
 	flags.BoolP(
 		"compose-depends-on",
 		"",
 		envBool("WATCHTOWER_COMPOSE_DEPENDS_ON"),
-		"Honor Docker Compose's `depends_on` declarations when ordering updates (reads the com.docker.compose.depends_on label). Opt-in because it can change stop/start ordering for Compose stacks that have been relying on Watchtower's simpler link-based graph. Incompatible with --rolling-restart — a warning fires at startup if both are set.")
+		"Honor Docker Compose's `depends_on` declarations when ordering updates (reads the com.docker.compose.depends_on label). Opt-in because it can change stop/start ordering for Compose stacks that have been relying on Watchtower's simpler link-based graph. Incompatible with --rolling-restart — a warning fires at startup if both are set.",
+	)
 
 	flags.BoolP(
 		"rerun-init-deps",
 		"",
 		envBool("WATCHTOWER_RERUN_INIT_DEPS"),
-		"Re-create Compose `service_completed_successfully` init containers against the new image before recreating the target. Restores the every-restart-runs-migrations contract for stacks whose bootstrap (goose, schema init) lives in a sibling Compose service. The old target keeps serving while the init runs, so migrations MUST be backwards-compatible with the previous image. If the init container exits non-zero, the failed digest is cached in memory and the target keeps its old image until a new digest arrives. Independent of --compose-depends-on; both can be enabled.")
+		"Re-create Compose `service_completed_successfully` init containers against the new image before recreating the target. Restores the every-restart-runs-migrations contract for stacks whose bootstrap (goose, schema init) lives in a sibling Compose service. The old target keeps serving while the init runs, so migrations MUST be backwards-compatible with the previous image. If the init container exits non-zero, the failed digest is cached in memory and the target keeps its old image until a new digest arrives. Independent of --compose-depends-on; both can be enabled.",
+	)
 
 	flags.BoolP(
 		"http-api-update",
 		"",
 		envBool("WATCHTOWER_HTTP_API_UPDATE"),
-		"Runs Watchtower in HTTP API mode, so that image updates must to be triggered by a request")
+		"Runs Watchtower in HTTP API mode, so that image updates must to be triggered by a request",
+	)
 	flags.BoolP(
 		"http-api-metrics",
 		"",
 		envBool("WATCHTOWER_HTTP_API_METRICS"),
-		"Runs Watchtower with the Prometheus metrics API enabled")
+		"Runs Watchtower with the Prometheus metrics API enabled",
+	)
 	flags.BoolP(
 		"http-api-metrics-no-auth",
 		"",
 		envBool("WATCHTOWER_HTTP_API_METRICS_NO_AUTH"),
-		"Expose /v1/metrics without token authentication. Conventional for Prometheus scraping on trusted networks — pair with a localhost bind or firewall/reverse-proxy in front of :8080.")
+		"Expose /v1/metrics without token authentication. Conventional for Prometheus scraping on trusted networks — pair with a localhost bind or firewall/reverse-proxy in front of :8080.",
+	)
 	flags.BoolP(
 		"http-api-audit",
 		"",
 		envBool("WATCHTOWER_HTTP_API_AUDIT"),
-		"Expose GET /v1/audit returning a JSON watch-status report (managed/excluded/unmanaged) for every container the Docker daemon reports. Token-gated.")
+		"Expose GET /v1/audit returning a JSON watch-status report (managed/excluded/unmanaged) for every container the Docker daemon reports. Token-gated.",
+	)
 
 	flags.StringP(
 		"http-api-token",
 		"",
 		envString("WATCHTOWER_HTTP_API_TOKEN"),
-		"Sets an authentication token to HTTP API requests.")
+		"Sets an authentication token to HTTP API requests.",
+	)
 
 	flags.StringP(
 		"http-api-host",
 		"",
 		envString("WATCHTOWER_HTTP_API_HOST"),
-		"Address the HTTP API listens on. Defaults to ':8080' (all interfaces); set to '127.0.0.1:8080' for a localhost-only bind, or '0.0.0.0:9090' to pick a different port. Takes a Go net.Listen address (host:port).")
+		"Address the HTTP API listens on. Defaults to ':8080' (all interfaces); set to '127.0.0.1:8080' for a localhost-only bind, or '0.0.0.0:9090' to pick a different port. Takes a Go net.Listen address (host:port).",
+	)
 
 	flags.BoolP(
 		"http-api-periodic-polls",
 		"",
 		envBool("WATCHTOWER_HTTP_API_PERIODIC_POLLS"),
-		"Also run periodic updates (specified with --interval and --schedule) if HTTP API is enabled")
+		"Also run periodic updates (specified with --interval and --schedule) if HTTP API is enabled",
+	)
 
 	// https://no-color.org/
 	flags.BoolP(
 		"no-color",
 		"",
 		viper.IsSet("NO_COLOR"),
-		"Disable ANSI color escape codes in log output")
+		"Disable ANSI color escape codes in log output",
+	)
 
 	flags.StringP(
 		"scope",
 		"",
 		envString("WATCHTOWER_SCOPE"),
-		"Defines a monitoring scope for the Watchtower instance.")
+		"Defines a monitoring scope for the Watchtower instance.",
+	)
 
 	flags.StringP(
 		"porcelain",
 		"P",
 		envString("WATCHTOWER_PORCELAIN"),
-		`Write session results to stdout using a stable versioned format. Supported values: "v1"`)
+		`Write session results to stdout using a stable versioned format. Supported values: "v1"`,
+	)
 
 	flags.String(
 		"log-level",
 		envString("WATCHTOWER_LOG_LEVEL"),
-		"The maximum log level that will be written to STDERR. Possible values: panic, fatal, error, warn, info, debug or trace")
+		"The maximum log level that will be written to STDERR. Possible values: panic, fatal, error, warn, info, debug or trace",
+	)
 
 	flags.BoolP(
 		"health-check",
 		"",
 		false,
-		"Do health check and exit")
+		"Do health check and exit",
+	)
 
 	flags.BoolP(
 		"label-take-precedence",
 		"",
 		envBool("WATCHTOWER_LABEL_TAKE_PRECEDENCE"),
-		"Label applied to containers take precedence over arguments")
+		"Label applied to containers take precedence over arguments",
+	)
 
 	flags.BoolP(
 		"disable-memory-swappiness",
 		"",
 		envBool("WATCHTOWER_DISABLE_MEMORY_SWAPPINESS"),
-		"Drop the container's MemorySwappiness setting before recreate. Podman with crun on cgroupv2 rejects the implicit `MemorySwappiness=0` Docker writes when the field is left unset, so a recreate that copies the inspected HostConfig back through ContainerCreate fails with `swappiness must be in the range [0, 100]`. Opt-in: leaves Docker behavior unchanged.")
+		"Drop the container's MemorySwappiness setting before recreate. Podman with crun on cgroupv2 rejects the implicit `MemorySwappiness=0` Docker writes when the field is left unset, so a recreate that copies the inspected HostConfig back through ContainerCreate fails with `swappiness must be in the range [0, 100]`. Opt-in: leaves Docker behavior unchanged.",
+	)
 }
 
 // RegisterNotificationFlags that are used by watchtower to send notifications
@@ -303,150 +347,175 @@ func RegisterNotificationFlags(rootCmd *cobra.Command) {
 		"notifications",
 		"n",
 		envStringSlice("WATCHTOWER_NOTIFICATIONS"),
-		" Notification types to send (valid: email, slack, msteams, gotify, shoutrrr)")
+		" Notification types to send (valid: email, slack, msteams, gotify, shoutrrr)",
+	)
 
 	flags.String(
 		"notifications-level",
 		envString("WATCHTOWER_NOTIFICATIONS_LEVEL"),
-		"The log level used for sending notifications. Possible values: panic, fatal, error, warn, info or debug")
+		"The log level used for sending notifications. Possible values: panic, fatal, error, warn, info or debug",
+	)
 
 	flags.IntP(
 		"notifications-delay",
 		"",
 		envInt("WATCHTOWER_NOTIFICATIONS_DELAY"),
-		"Delay before sending notifications, expressed in seconds")
+		"Delay before sending notifications, expressed in seconds",
+	)
 
 	flags.StringP(
 		"notifications-hostname",
 		"",
 		envString("WATCHTOWER_NOTIFICATIONS_HOSTNAME"),
-		"Custom hostname for notification titles")
+		"Custom hostname for notification titles",
+	)
 
 	flags.StringP(
 		"notification-email-from",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_EMAIL_FROM"),
-		"Address to send notification emails from")
+		"Address to send notification emails from",
+	)
 
 	flags.StringP(
 		"notification-email-to",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_EMAIL_TO"),
-		"Address to send notification emails to")
+		"Address to send notification emails to",
+	)
 
 	flags.IntP(
 		"notification-email-delay",
 		"",
 		envInt("WATCHTOWER_NOTIFICATION_EMAIL_DELAY"),
-		"Delay before sending notifications, expressed in seconds")
+		"Delay before sending notifications, expressed in seconds",
+	)
 
 	flags.StringP(
 		"notification-email-server",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_EMAIL_SERVER"),
-		"SMTP server to send notification emails through")
+		"SMTP server to send notification emails through",
+	)
 
 	flags.IntP(
 		"notification-email-server-port",
 		"",
 		envInt("WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT"),
-		"SMTP server port to send notification emails through")
+		"SMTP server port to send notification emails through",
+	)
 
 	flags.BoolP(
 		"notification-email-server-tls-skip-verify",
 		"",
 		envBool("WATCHTOWER_NOTIFICATION_EMAIL_SERVER_TLS_SKIP_VERIFY"),
 		`Controls whether watchtower verifies the SMTP server's certificate chain and host name.
-Should only be used for testing.`)
+Should only be used for testing.`,
+	)
 
 	flags.StringP(
 		"notification-email-server-user",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_EMAIL_SERVER_USER"),
-		"SMTP server user for sending notifications")
+		"SMTP server user for sending notifications",
+	)
 
 	flags.StringP(
 		"notification-email-server-password",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PASSWORD"),
-		"SMTP server password for sending notifications")
+		"SMTP server password for sending notifications",
+	)
 
 	flags.StringP(
 		"notification-email-subjecttag",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_EMAIL_SUBJECTTAG"),
-		"Subject prefix tag for notifications via mail")
+		"Subject prefix tag for notifications via mail",
+	)
 
 	flags.StringP(
 		"notification-slack-hook-url",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_SLACK_HOOK_URL"),
-		"The Slack Hook URL to send notifications to")
+		"The Slack Hook URL to send notifications to",
+	)
 
 	flags.StringP(
 		"notification-slack-identifier",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_SLACK_IDENTIFIER"),
-		"A string which will be used to identify the messages coming from this watchtower instance")
+		"A string which will be used to identify the messages coming from this watchtower instance",
+	)
 
 	flags.StringP(
 		"notification-slack-channel",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_SLACK_CHANNEL"),
-		"A string which overrides the webhook's default channel. Example: #my-custom-channel")
+		"A string which overrides the webhook's default channel. Example: #my-custom-channel",
+	)
 
 	flags.StringP(
 		"notification-slack-icon-emoji",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_SLACK_ICON_EMOJI"),
-		"An emoji code string to use in place of the default icon")
+		"An emoji code string to use in place of the default icon",
+	)
 
 	flags.StringP(
 		"notification-slack-icon-url",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_SLACK_ICON_URL"),
-		"An icon image URL string to use in place of the default icon")
+		"An icon image URL string to use in place of the default icon",
+	)
 
 	flags.StringP(
 		"notification-msteams-hook",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL"),
-		"The MSTeams WebHook URL to send notifications to")
+		"The MSTeams WebHook URL to send notifications to",
+	)
 
 	flags.BoolP(
 		"notification-msteams-data",
 		"",
 		envBool("WATCHTOWER_NOTIFICATION_MSTEAMS_USE_LOG_DATA"),
-		"The MSTeams notifier will try to extract log entry fields as MSTeams message facts")
+		"The MSTeams notifier will try to extract log entry fields as MSTeams message facts",
+	)
 
 	flags.StringP(
 		"notification-gotify-url",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_GOTIFY_URL"),
-		"The Gotify URL to send notifications to")
+		"The Gotify URL to send notifications to",
+	)
 
 	flags.StringP(
 		"notification-gotify-token",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_GOTIFY_TOKEN"),
-		"The Gotify Application required to query the Gotify API")
+		"The Gotify Application required to query the Gotify API",
+	)
 
 	flags.BoolP(
 		"notification-gotify-tls-skip-verify",
 		"",
 		envBool("WATCHTOWER_NOTIFICATION_GOTIFY_TLS_SKIP_VERIFY"),
 		`Controls whether watchtower verifies the Gotify server's certificate chain and host name.
-Should only be used for testing.`)
+Should only be used for testing.`,
+	)
 
 	flags.String(
 		"notification-template",
 		envString("WATCHTOWER_NOTIFICATION_TEMPLATE"),
-		"The shoutrrr text/template for the messages")
+		"The shoutrrr text/template for the messages",
+	)
 
 	flags.StringArray(
 		"notification-url",
 		envStringSlice("WATCHTOWER_NOTIFICATION_URL"),
-		"The shoutrrr URL to send notifications to")
+		"The shoutrrr URL to send notifications to",
+	)
 
 	flags.Bool("notification-report",
 		envBool("WATCHTOWER_NOTIFICATION_REPORT"),
@@ -456,7 +525,8 @@ Should only be used for testing.`)
 		"notification-title-tag",
 		"",
 		envString("WATCHTOWER_NOTIFICATION_TITLE_TAG"),
-		"Title prefix tag for notifications")
+		"Title prefix tag for notifications",
+	)
 
 	flags.Bool("notification-skip-title",
 		envBool("WATCHTOWER_NOTIFICATION_SKIP_TITLE"),
@@ -465,12 +535,14 @@ Should only be used for testing.`)
 	flags.String(
 		"warn-on-head-failure",
 		envString("WATCHTOWER_WARN_ON_HEAD_FAILURE"),
-		"When to warn about HEAD pull requests failing. Possible values: always, auto or never")
+		"When to warn about HEAD pull requests failing. Possible values: always, auto or never",
+	)
 
 	flags.Bool(
 		"notification-log-stdout",
 		envBool("WATCHTOWER_NOTIFICATION_LOG_STDOUT"),
-		"Write notification logs to stdout instead of logging (to stderr)")
+		"Write notification logs to stdout instead of logging (to stderr)",
+	)
 }
 
 func envString(key string) string {
@@ -763,7 +835,7 @@ func SetupLogging(f *pflag.FlagSet) error {
 	rawLogLevel, _ := f.GetString(`log-level`)
 	logLevel, err := log.ParseLevel(rawLogLevel)
 	if err != nil {
-		return fmt.Errorf("invalid log level: %e", err)
+		return fmt.Errorf("invalid log level: %w", err)
 	}
 	log.SetLevel(logLevel)
 

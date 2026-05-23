@@ -2,7 +2,6 @@ package metrics_test
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -32,7 +31,7 @@ func getWithToken(handler http.Handler) map[string]string {
 	respWriter := httptest.NewRecorder()
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, getURL, nil)
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token))
+	req.Header.Add("Authorization", "Bearer "+token)
 
 	handler.ServeHTTP(respWriter, req)
 
@@ -77,7 +76,7 @@ var _ = Describe("the metrics API", func() {
 			HaveKeyWithValue("watchtower_scans_skipped", "0"),
 		))
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			metrics.RegisterScan(nil)
 		}
 		Eventually(metrics.Default().QueueIsEmpty).Should(BeTrue())

@@ -122,7 +122,7 @@ func GetDigest(url, token string) (string, error) {
 		// Surface both errors so operators can tell whether the issue was
 		// HEAD-specific (recoverable, GET may have worked once) or a real
 		// registry/credential problem.
-		return "", fmt.Errorf("HEAD manifest: %w (then GET manifest: %v)", headErr, getErr)
+		return "", fmt.Errorf("HEAD manifest: %w (then GET manifest: %w)", headErr, getErr)
 	}
 	return digest, nil
 }
@@ -139,7 +139,7 @@ func fetchManifestDigest(url, token, method string) (string, error) {
 	}
 	client := transport.Client(parsed.Host)
 
-	req, err := http.NewRequestWithContext(context.Background(), method, url, nil)
+	req, err := http.NewRequestWithContext(context.Background(), method, url, http.NoBody)
 	if err != nil {
 		return "", fmt.Errorf("build %s request: %w", method, err)
 	}

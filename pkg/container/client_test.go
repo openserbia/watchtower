@@ -38,7 +38,8 @@ var _ = Describe("the client", func() {
 			// the GetContainer tests below matches real daemon behavior.
 			// Tests that want to cover the pre-v1.53 short-circuit set
 			// their own version.
-			cli.WithVersion("1.54"))
+			cli.WithVersion("1.54"),
+		)
 	})
 	AfterEach(func() {
 		mockServer.Close()
@@ -576,7 +577,8 @@ var _ = Describe("the client", func() {
 				legacyClient, _ := cli.NewClientWithOpts(
 					cli.WithHost(mockServer.URL()),
 					cli.WithHTTPClient(mockServer.HTTPTestServer.Client()),
-					cli.WithVersion("1.50"))
+					cli.WithVersion("1.50"),
+				)
 
 				rawBody := []byte(`{
 					"Id": "` + imageID + `",

@@ -48,7 +48,7 @@ var _ = Describe("API", func() {
 			handlerFunc := api.RequireToken(testHandler)
 
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/hello", nil)
+			req := httptest.NewRequest(http.MethodGet, "/hello", http.NoBody)
 
 			handlerFunc(rec, req)
 
@@ -59,7 +59,7 @@ var _ = Describe("API", func() {
 			handlerFunc := api.RequireToken(testHandler)
 
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/hello", nil)
+			req := httptest.NewRequest(http.MethodGet, "/hello", http.NoBody)
 			req.Header.Set("Authorization", "Bearer 123")
 
 			handlerFunc(rec, req)
@@ -71,7 +71,7 @@ var _ = Describe("API", func() {
 			handlerFunc := api.RequireToken(testHandler)
 
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/hello", nil)
+			req := httptest.NewRequest(http.MethodGet, "/hello", http.NoBody)
 			req.Header.Set("Authorization", "Bearer "+token)
 
 			handlerFunc(rec, req)

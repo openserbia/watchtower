@@ -55,7 +55,8 @@ func GetContainerHandlers(containerRefs ...*ContainerRef) []http.HandlerFunc {
 		}
 
 		// Also append the image request since that will be called for every container
-		handlers = append(handlers, getImageHandler(containerRef.image.id,
+		handlers = append(handlers, getImageHandler(
+			containerRef.image.id,
 			RespondWithJSONFile(containerRef.image.getFileName(), http.StatusOK),
 		))
 	}

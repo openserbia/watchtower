@@ -60,7 +60,7 @@ func TestClient_SecureTransportRejectsSelfSigned(t *testing.T) {
 	defer srv.Close()
 
 	c := Client(srv.Listener.Addr().String())
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, http.NoBody)
 	res, err := c.Do(req)
 	if err == nil {
 		_ = res.Body.Close()
@@ -90,7 +90,7 @@ func TestClient_AcceptsRegisteredCABundle(t *testing.T) {
 	}
 
 	c := Client(srv.Listener.Addr().String())
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, http.NoBody)
 	res, err := c.Do(req)
 	if err != nil {
 		t.Fatalf("expected CA-bundle trust to accept the cert, got: %v", err)

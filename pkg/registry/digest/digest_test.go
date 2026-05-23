@@ -59,12 +59,14 @@ var _ = Describe("Digests", func() {
 		mockName,
 		mockImage,
 		mockCreated,
-		mockDigest)
+		mockDigest,
+	)
 
 	mockContainerNoImage := mocks.CreateMockContainerWithImageInfoP(mockID, mockName, mockImage, mockCreated, nil)
 
 	When("a digest comparison is done", func() {
-		It("should return true if digests match",
+		It(
+			"should return true if digests match",
 			SkipIfCredentialsEmpty(GHCRCredentials, func() {
 				creds := fmt.Sprintf("%s:%s", GHCRCredentials.Username, GHCRCredentials.Password)
 				matches, err := digest.CompareDigest(mockContainer, creds)
@@ -84,12 +86,14 @@ var _ = Describe("Digests", func() {
 		})
 	})
 	When("using different registries", func() {
-		It("should work with DockerHub",
+		It(
+			"should work with DockerHub",
 			SkipIfCredentialsEmpty(DockerHubCredentials, func() {
 				fmt.Println(DockerHubCredentials != nil) // to avoid crying linters
 			}),
 		)
-		It("should work with GitHub Container Registry",
+		It(
+			"should work with GitHub Container Registry",
 			SkipIfCredentialsEmpty(GHCRCredentials, func() {
 				fmt.Println(GHCRCredentials != nil) // to avoid crying linters
 			}),

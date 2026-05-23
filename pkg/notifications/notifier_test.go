@@ -259,7 +259,7 @@ var _ = Describe("notifications", func() {
 					"--notifications",
 					"gotify",
 					"--notification-gotify-url",
-					fmt.Sprintf("https://%s", host),
+					"https://" + host,
 					"--notification-gotify-token",
 					token,
 				}

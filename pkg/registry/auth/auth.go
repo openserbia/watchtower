@@ -59,7 +59,7 @@ func GetToken(container types.Container, registryAuth string) (string, error) {
 			return "", errors.New("no credentials available")
 		}
 
-		return fmt.Sprintf("Basic %s", registryAuth), nil
+		return "Basic " + registryAuth, nil
 	}
 	if strings.HasPrefix(challenge, "bearer") {
 		return GetBearerHeader(challenge, normalizedRef, registryAuth)
@@ -70,7 +70,7 @@ func GetToken(container types.Container, registryAuth string) (string, error) {
 
 // GetChallengeRequest creates a request for getting challenge instructions
 func GetChallengeRequest(challengeURL url.URL) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, challengeURL.String(), nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, challengeURL.String(), http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) 
 	}
 	metrics.RegisterAuthCacheMiss()
 
-	r, err := http.NewRequestWithContext(context.Background(), http.MethodGet, authURLString, nil)
+	r, err := http.NewRequestWithContext(context.Background(), http.MethodGet, authURLString, http.NoBody)
 	if err != nil {
 		return "", err
 	}
@@ -105,7 +105,7 @@ func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) 
 		logrus.Debug("Credentials found.")
 		// CREDENTIAL: Uncomment to log registry credentials
 		// logrus.Tracef("Credentials: %v", registryAuth)
-		r.Header.Add("Authorization", fmt.Sprintf("Basic %s", registryAuth))
+		r.Header.Add("Authorization", "Basic "+registryAuth)
 	} else {
 		logrus.Debug("No credentials found.")
 	}
@@ -124,7 +124,7 @@ func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) 
 		return "", err
 	}
 
-	header := fmt.Sprintf("Bearer %s", tokenResponse.Token)
+	header := "Bearer " + tokenResponse.Token
 	ttl := defaultTokenTTL
 	if tokenResponse.ExpiresIn > 0 {
 		ttl = time.Duration(tokenResponse.ExpiresIn) * time.Second

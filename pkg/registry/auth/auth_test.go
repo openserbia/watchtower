@@ -54,10 +54,12 @@ var _ = Describe("the auth module", func() {
 		mockName,
 		mockImage,
 		mockCreated,
-		mockDigest)
+		mockDigest,
+	)
 
 	Describe("GetToken", func() {
-		It("should parse the token from the response",
+		It(
+			"should parse the token from the response",
 			SkipIfCredentialsEmpty(GHCRCredentials, func() {
 				creds := fmt.Sprintf("%s:%s", GHCRCredentials.Username, GHCRCredentials.Password)
 				token, err := auth.GetToken(mockContainer, creds)

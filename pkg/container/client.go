@@ -274,7 +274,7 @@ const listMaxAttempts = 3
 // errors that won't clear with a retry.
 func listContainersWithRetry(ctx context.Context, api sdkClient.APIClient, opts container.ListOptions) ([]container.Summary, error) {
 	var lastErr error
-	for attempt := 0; attempt < listMaxAttempts; attempt++ {
+	for attempt := range listMaxAttempts {
 		if attempt > 0 {
 			metrics.RegisterDockerAPIRetry("list")
 			delay := listBackoffFor(attempt)
@@ -369,7 +369,7 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 			}).Warn("Unable to resolve network container")
 		} else {
 			// Replace the container ID with a container name to allow it to reference the re-created network container
-			containerInfo.HostConfig.NetworkMode = container.NetworkMode(fmt.Sprintf("container:%s", parentContainer.Name))
+			containerInfo.HostConfig.NetworkMode = container.NetworkMode("container:" + parentContainer.Name)
 		}
 	}
 
@@ -659,7 +659,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 		return "", err
 	}
 
-	if !(hostConfig.NetworkMode.IsHost()) {
+	if !hostConfig.NetworkMode.IsHost() {
 		for k := range simpleNetworkConfig.EndpointsConfig {
 			err = client.api.NetworkDisconnect(ctx, k, createdContainer.ID, true)
 			if err != nil {
@@ -1028,7 +1028,8 @@ func (client dockerClient) RemoveImageByID(id t.ImageID) error {
 		string(id),
 		image.RemoveOptions{
 			Force: true,
-		})
+		},
+	)
 	if err != nil && cerrdefs.IsNotFound(err) {
 		// The old image was already gone (e.g. a previous --cleanup run or a
 		// manual docker rmi removed it). Treat as success — the end state

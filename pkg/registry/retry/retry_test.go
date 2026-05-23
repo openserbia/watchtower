@@ -27,7 +27,7 @@ func TestDoHTTP_SucceedsAfterTransientFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, http.NoBody)
 	res, err := DoHTTP(srv.Client(), req, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -52,7 +52,7 @@ func TestDoHTTP_GivesUpAfterBudget(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, http.NoBody)
 	res, err := DoHTTP(srv.Client(), req, "", nil)
 	if err == nil {
 		_ = res.Body.Close()
@@ -73,7 +73,7 @@ func TestDoHTTP_DoesNotRetryNonTransientStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, http.NoBody)
 	res, err := DoHTTP(srv.Client(), req, "", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

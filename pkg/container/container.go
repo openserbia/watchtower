@@ -243,7 +243,7 @@ func (c Container) ImageName() string {
 	}
 
 	if !strings.Contains(imageName, ":") {
-		imageName = fmt.Sprintf("%s:latest", imageName)
+		imageName = imageName + ":latest"
 	}
 
 	return imageName

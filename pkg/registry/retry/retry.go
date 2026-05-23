@@ -40,7 +40,7 @@ var (
 func DoHTTP(client *http.Client, req *http.Request, operation string, logger *logrus.Entry) (*http.Response, error) {
 	host := req.URL.Host
 	var lastErr error
-	for attempt := 0; attempt < maxAttempts; attempt++ {
+	for attempt := range maxAttempts {
 		if attempt > 0 {
 			delay := backoffFor(attempt)
 			if logger != nil {
