@@ -8,9 +8,14 @@
   A drop-in replacement for [`containrrr/watchtower`](https://github.com/containrrr/watchtower), which is [no longer maintained upstream](https://github.com/containrrr/watchtower/discussions/2135).
 
   [![CI](https://github.com/openserbia/watchtower/actions/workflows/pull-request.yml/badge.svg)](https://github.com/openserbia/watchtower/actions/workflows/pull-request.yml)
+  [![Release](https://github.com/openserbia/watchtower/actions/workflows/release.yml/badge.svg)](https://github.com/openserbia/watchtower/actions/workflows/release.yml)
   [![codecov](https://codecov.io/gh/openserbia/watchtower/branch/main/graph/badge.svg)](https://codecov.io/gh/openserbia/watchtower)
   [![Go Reference](https://pkg.go.dev/badge/github.com/openserbia/watchtower.svg)](https://pkg.go.dev/github.com/openserbia/watchtower)
   [![Go Report Card](https://goreportcard.com/badge/github.com/openserbia/watchtower)](https://goreportcard.com/report/github.com/openserbia/watchtower)
+  [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/openserbia/watchtower/badge)](https://scorecard.dev/viewer/?uri=github.com/openserbia/watchtower)
+  [![Known Vulnerabilities](https://snyk.io/test/github/openserbia/watchtower/badge.svg)](https://snyk.io/test/github/openserbia/watchtower)
+  <!-- Register the project at https://www.bestpractices.dev/ to get a numeric ID, then replace <ID> below and uncomment. -->
+  <!-- [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/<ID>/badge)](https://www.bestpractices.dev/projects/<ID>) -->
   [![Latest release](https://img.shields.io/github/v/release/openserbia/watchtower?sort=semver)](https://github.com/openserbia/watchtower/releases)
   [![Docker Hub](https://img.shields.io/docker/v/openserbia/watchtower?label=Docker%20Hub&logo=docker&sort=semver)](https://hub.docker.com/r/openserbia/watchtower)
   [![Docker pulls](https://img.shields.io/docker/pulls/openserbia/watchtower.svg?logo=docker)](https://hub.docker.com/r/openserbia/watchtower)
