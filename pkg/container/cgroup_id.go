@@ -8,7 +8,7 @@ import (
 	"github.com/openserbia/watchtower/pkg/types"
 )
 
-var dockerContainerPattern = regexp.MustCompile(`[0-9]+:.*:/docker/([a-f|0-9]{64})`)
+var dockerContainerPattern = regexp.MustCompile(`\d+:.*:/docker/([a-f|0-9]{64})`)
 
 // GetRunningContainerID tries to resolve the current container ID from the current process cgroup information
 func GetRunningContainerID() (cid types.ContainerID, err error) {

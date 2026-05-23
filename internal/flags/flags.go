@@ -618,13 +618,13 @@ func EnvConfig(cmd *cobra.Command) error {
 	if version, err = flags.GetString("api-version"); err != nil {
 		return err
 	}
-	if err = setEnvOptStr("DOCKER_HOST", host); err != nil {
+	if err := setEnvOptStr("DOCKER_HOST", host); err != nil {
 		return err
 	}
-	if err = setEnvOptBool("DOCKER_TLS_VERIFY", tls); err != nil {
+	if err := setEnvOptBool("DOCKER_TLS_VERIFY", tls); err != nil {
 		return err
 	}
-	if err = setEnvOptStr("DOCKER_API_VERSION", version); err != nil {
+	if err := setEnvOptStr("DOCKER_API_VERSION", version); err != nil {
 		return err
 	}
 	return nil

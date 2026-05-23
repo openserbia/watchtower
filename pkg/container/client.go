@@ -702,6 +702,12 @@ func (client dockerClient) doStartContainer(ctx context.Context, c t.Container, 
 // a fresh one against the resolved digest, unconditionally starts it (init
 // containers are normally Exited(0) so StartContainer's IsRunning gate would
 // skip them), and blocks on ContainerWait until exit or timeout.
+//
+// recreate → start → wait → translate-exit-codes. Each branch is one
+// recovery path on the docker socket and splitting it would scatter the
+// state-machine across helpers.
+//
+//nolint:cyclop // linear init-container lifecycle: stop → rebind-tag →
 func (client dockerClient) RerunInitContainer(c t.Container, timeout time.Duration) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -1161,7 +1167,7 @@ func (client dockerClient) waitForExecOrTimeout(bg context.Context, execID, exec
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		if len(execOutput) > 0 {
+		if execOutput != "" {
 			log.Infof("Command output:\n%v", execOutput)
 		}
 

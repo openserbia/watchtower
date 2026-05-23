@@ -66,7 +66,7 @@ func (e *emailTypeNotifier) GetURL(_ *cobra.Command) (string, error) {
 		ClientHost:  "localhost",
 	}
 
-	if len(e.User) > 0 {
+	if e.User != "" {
 		conf.Auth = shoutrrrSmtp.AuthTypes.Plain
 	}
 

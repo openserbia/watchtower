@@ -161,7 +161,13 @@ func PreRun(cmd *cobra.Command, _ []string) {
 	notifier.AddLogHook()
 }
 
-// Run is the main execution flow of the command
+// Run is the main execution flow of the command.
+//
+// gates (notifications, API, metrics, one-shot vs schedule). Extracting
+// each branch into a helper would split orchestration across files
+// without improving readability.
+//
+//nolint:cyclop // CLI dispatcher: linear sequence of flag-driven feature
 func Run(c *cobra.Command, names []string) {
 	filter, filterDesc := filters.BuildFilter(names, disableContainers, enableLabel, scope)
 	runOnce, _ = c.PersistentFlags().GetBool("run-once")

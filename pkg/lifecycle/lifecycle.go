@@ -36,7 +36,7 @@ func ExecutePostChecks(client container.Client, params types.UpdateParams) {
 func ExecutePreCheckCommand(client container.Client, container types.Container) {
 	clog := log.WithField("container", container.Name())
 	command := container.GetLifecyclePreCheckCommand()
-	if len(command) == 0 {
+	if command == "" {
 		clog.Debug("No pre-check command supplied. Skipping")
 		return
 	}
@@ -52,7 +52,7 @@ func ExecutePreCheckCommand(client container.Client, container types.Container) 
 func ExecutePostCheckCommand(client container.Client, container types.Container) {
 	clog := log.WithField("container", container.Name())
 	command := container.GetLifecyclePostCheckCommand()
-	if len(command) == 0 {
+	if command == "" {
 		clog.Debug("No post-check command supplied. Skipping")
 		return
 	}
@@ -70,7 +70,7 @@ func ExecutePreUpdateCommand(client container.Client, container types.Container)
 	command := container.GetLifecyclePreUpdateCommand()
 	clog := log.WithField("container", container.Name())
 
-	if len(command) == 0 {
+	if command == "" {
 		clog.Debug("No pre-update command supplied. Skipping")
 		return false, nil
 	}
@@ -96,7 +96,7 @@ func ExecutePostUpdateCommand(client container.Client, newContainerID types.Cont
 	clog := log.WithField("container", newContainer.Name())
 
 	command := newContainer.GetLifecyclePostUpdateCommand()
-	if len(command) == 0 {
+	if command == "" {
 		clog.Debug("No post-update command supplied. Skipping")
 		return
 	}

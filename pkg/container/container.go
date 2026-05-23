@@ -27,6 +27,14 @@ func NewContainer(containerInfo *dockercontainer.InspectResponse, imageInfo *ima
 }
 
 // Container represents a running Docker container.
+//
+// The Container type intentionally mixes pointer and value receivers:
+// setters mutate state so they must be pointer-receivers, while pure
+// getters traditionally take the value form. Changing this would force
+// every caller to take the address of an interface value. The interface
+// in pkg/types/container.go pins both forms; the mix is intentional.
+//
+//nolint:recvcheck // mixed receivers documented above are part of the public API.
 type Container struct {
 	LinkedToRestarting bool
 	Stale              bool
@@ -243,7 +251,7 @@ func (c Container) ImageName() string {
 	}
 
 	if !strings.Contains(imageName, ":") {
-		imageName = imageName + ":latest"
+		imageName += ":latest"
 	}
 
 	return imageName
@@ -496,6 +504,12 @@ func (c Container) StopTimeout() time.Duration {
 // running container with the ContainerConfig from the image that container was
 // started from. This function returns a ContainerConfig which contains just
 // the options overridden at runtime.
+//
+// one field when it matches the image's default (WorkingDir, User,
+// NetworkMode, Hostname-on-recreate, Entrypoint+Cmd, each Healthcheck
+// sub-field). Linear and order-sensitive — splitting harms locality.
+//
+//nolint:cyclop // diff-against-image-defaults loop: each branch zeroes
 func (c Container) GetCreateConfig() *dockercontainer.Config {
 	config := c.containerInfo.Config
 	hostConfig := c.containerInfo.HostConfig

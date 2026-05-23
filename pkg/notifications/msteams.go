@@ -23,7 +23,7 @@ func newMsTeamsNotifier(cmd *cobra.Command) t.ConvertibleNotifier {
 	flags := cmd.Flags()
 
 	webHookURL, _ := flags.GetString("notification-msteams-hook")
-	if len(webHookURL) == 0 {
+	if webHookURL == "" {
 		log.Fatal("Required argument --notification-msteams-hook(cli) or WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL(env) is empty.")
 	}
 

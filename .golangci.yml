@@ -160,6 +160,84 @@ linters:
       - path: pkg/session/container_status\.go
         linters: [errname]
 
+      # Non-crypto random generators — backoff jitter, random container
+      # names, event-test seeds. Not security relevant; math/rand is the
+      # appropriate choice.
+      - path: (internal/util/rand_name|internal/events/watcher|pkg/container/client|pkg/registry/retry/retry)\.go
+        linters: [gosec]
+        text: "G404"
+
+      # Operator-controlled file paths surfaced through CLI flags
+      # (--registry-ca-bundle, --secrets-path, --tls-ca-cert). These come
+      # from a privileged operator's command line, not untrusted input.
+      - path: (internal/flags/flags|internal/flags/flags_test|pkg/registry/transport/transport)\.go
+        linters: [gosec]
+        text: "G304|G703"
+
+      # HTTP API binding without a per-handler timeout: timeouts are
+      # configured at the listener level via --http-api-timeout, which the
+      # surrounding wrapper code applies before reaching this Serve call.
+      - path: pkg/api/api\.go
+        linters: [gosec]
+        text: "G114"
+
+      # tokenMissingMsg is a log message, not a credential. The G101 flag
+      # triggers on the variable name pattern but the value is empty-token
+      # error text.
+      - path: pkg/api/api\.go
+        linters: [gosec]
+        text: "G101"
+
+      # Email server port is a uint16 by SMTP protocol; the int→uint16
+      # conversion is bounds-checked at config-parse time.
+      - path: pkg/notifications/email\.go
+        linters: [gosec]
+        text: "G115"
+
+      # Registry retry deliberately re-dials user-supplied registry hosts
+      # — that is the function's entire purpose. SSRF taint is a feature.
+      - path: pkg/registry/retry/retry\.go
+        linters: [gosec]
+        text: "G704"
+
+      # watchtower_scans_skipped is a long-published metric name; appending
+      # _total now would break every consumer's existing Grafana panel and
+      # Prometheus alert. Tracked separately for a future major.
+      - path: pkg/metrics/metrics\.go
+        linters: [promlinter]
+
+      # sort.Interface implementations conventionally use pointer slices
+      # to avoid copying large Container structs on every comparison.
+      - path: pkg/sorter/sort\.go
+        linters: [gocritic]
+        text: "ptrToRefParam"
+
+      # 240-byte EndpointSettings struct iteration is on a cold network-setup
+      # path; rewriting as index access for one comparison harms readability.
+      - path: pkg/container/client\.go
+        linters: [gocritic]
+        text: "rangeValCopy"
+
+      # importShadow: many call sites in pkg/container and call sites of it
+      # name local container variables `container`, which shadows the docker
+      # `container` package alias / our pkg/container import. The fix is
+      # invasive (rename every local) and the shadow is harmless when all
+      # references in scope are unambiguous.
+      - linters: [gocritic]
+        text: "importShadow"
+
+      # unnamedResult: stylistic preference for named returns. Many of our
+      # signatures return (T, error) where the types are self-explanatory;
+      # adding names harms readability more than it helps.
+      - linters: [gocritic]
+        text: "unnamedResult"
+
+      # Ginkgo BeforeEach is a func literal by design; assigning to outer
+      # ctx/cancel from inside it is the standard pattern, not a real
+      # "nested context" smell.
+      - path: _test\.go
+        linters: [fatcontext]
+
 formatters:
   enable:
     - gci
@@ -170,6 +248,11 @@ formatters:
         - standard
         - default
         - prefix(github.com/openserbia)
+  exclusions:
+    generated: lax
+    paths:
+      - vendor
+      - "(^|/)mocks/"
 
 issues:
   max-same-issues: 5

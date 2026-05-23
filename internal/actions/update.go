@@ -265,6 +265,12 @@ var errNoHealthcheck = errors.New("container has no HEALTHCHECK; gating skipped"
 // used to start those containers have been updated. If a change is detected in
 // any of the images, the associated containers are stopped and restarted with
 // the new image.
+//
+// rejected-init-digest cache, pre-update hooks, health-gating, lifecycle
+// hooks, rollback, and self-update interleave intentionally. A refactor
+// here is tracked separately and risks behavior drift on the hot path.
+//
+//nolint:cyclop // central update orchestration: image-cooldown checks,
 func Update(client container.Client, params types.UpdateParams) (types.Report, error) {
 	log.Debug("Checking containers for updated images")
 	start := time.Now()

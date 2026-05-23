@@ -39,7 +39,11 @@ var manifestAccept = []string{
 	"application/vnd.oci.image.index.v1+json",
 }
 
-// CompareDigest ...
+// CompareDigest reports whether the running container's image digest still
+// matches the registry's current digest for the same tag. Returns
+// (true, nil) when up-to-date, (false, nil) when the registry has a newer
+// digest, or (false, err) when the comparison itself failed (network,
+// auth, parse).
 func CompareDigest(container types.Container, registryAuth string) (bool, error) {
 	if !container.HasImageInfo() {
 		return false, errors.New("container image info missing")
