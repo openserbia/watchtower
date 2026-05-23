@@ -19,7 +19,7 @@ env:
 jobs:
   analysis:
     name: Scorecard analysis
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       security-events: write   # SARIF upload to code-scanning
       id-token: write          # OIDC for publish_results
