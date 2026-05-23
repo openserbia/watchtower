@@ -78,3 +78,12 @@ func WithImageHealthcheck(healthConfig dockerContainer.HealthConfig) MockContain
 		img.Config.Healthcheck = &healthConfig
 	}
 }
+
+// WithHostname sets containerInfo.Config.Hostname so tests can exercise the
+// hostname-clear path on GetCreateConfig (used by the self-update branch in
+// restartStaleContainer to break os.Hostname() drift across self-updates).
+func WithHostname(hostname string) MockContainerUpdate {
+	return func(c *dockerContainer.InspectResponse, _ *image.InspectResponse) {
+		c.Config.Hostname = hostname
+	}
+}

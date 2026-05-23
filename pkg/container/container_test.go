@@ -559,4 +559,21 @@ var _ = Describe("the container", func() {
 			})
 		})
 	})
+	Describe("ClearHostnameOnRecreate", func() {
+		When("the flag is set via SetClearHostnameOnRecreate(true)", func() {
+			It("makes GetCreateConfig return a config with empty Hostname so docker assigns a fresh short-ID-equal value on recreate", func() {
+				c := MockContainer(WithHostname("b8dea4427ab1"))
+				c.SetClearHostnameOnRecreate(true)
+				Expect(c.ClearHostnameOnRecreate()).To(BeTrue())
+				Expect(c.GetCreateConfig().Hostname).To(BeEmpty())
+			})
+		})
+		When("the flag is unset (default)", func() {
+			It("preserves the inherited Hostname so non-self recreates carry through (regression guard for the existing rerun path)", func() {
+				c := MockContainer(WithHostname("b8dea4427ab1"))
+				Expect(c.ClearHostnameOnRecreate()).To(BeFalse())
+				Expect(c.GetCreateConfig().Hostname).To(Equal("b8dea4427ab1"))
+			})
+		})
+	})
 })

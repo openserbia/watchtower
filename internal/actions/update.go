@@ -690,6 +690,13 @@ func restartStaleContainer(container types.Container, client container.Client, p
 			)
 			return nil
 		}
+		// Break the os.Hostname()-drift chain that otherwise propagates the
+		// founding container's short ID into every subsequent self-update
+		// and silently degrades DetectSelfContainerID + the startup-time
+		// CheckForMultipleWatchtowerInstances to label-only matching. With
+		// Hostname cleared on this recreate, the new container's hostname
+		// equals its own short ID and self-detection stays accurate.
+		container.SetClearHostnameOnRecreate(true)
 		if err := client.RenameContainer(container, util.RandName()); err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"container": originalName,

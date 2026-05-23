@@ -47,6 +47,26 @@ type Container struct {
 	// tag here and would surface "No such image" if the tag moved mid-scan,
 	// leaving the old container already removed and the service down.
 	targetImageID wt.ImageID
+	// clearHostnameOnRecreate, when true, makes GetCreateConfig return a
+	// config with an empty Hostname so the next ContainerCreate forces
+	// docker to assign a fresh short-ID-equal hostname instead of
+	// inheriting the cached one from the previous container.
+	//
+	// Set by restartStaleContainer's self-update branch.
+	// DetectSelfContainerID and the startup-time
+	// CheckForMultipleWatchtowerInstances both look up "self" by matching
+	// os.Hostname() against watchtower-labeled containers' short IDs; that
+	// only works while docker keeps Hostname==short_id, which it does only
+	// on the initial container creation. Subsequent self-updates carry the
+	// inherited Hostname through ContainerCreate, freezing it at the
+	// founding container's short ID forever — and after the first
+	// self-update os.Hostname() no longer matches the running container's
+	// own short ID, so self-detection degrades to the legacy label-only
+	// path. On multi-watchtower-labeled hosts the cleanup then picks the
+	// wrong survivor and SIGTERMs the canonical "watchtower" instead of
+	// the orphan. Clearing Hostname on each self-recreate breaks that
+	// chain at its root.
+	clearHostnameOnRecreate bool
 }
 
 // ImageIdentity captures the Docker engine's per-image provenance record as
@@ -97,6 +117,22 @@ func (c *Container) SetTargetImageID(id wt.ImageID) {
 // container's tag is used).
 func (c Container) TargetImageID() wt.ImageID {
 	return c.targetImageID
+}
+
+// SetClearHostnameOnRecreate marks the container so the next GetCreateConfig
+// invocation returns a config with Hostname="", forcing docker to assign a
+// fresh short-ID-equal hostname on ContainerCreate. Used by
+// restartStaleContainer's self-update branch to keep
+// DetectSelfContainerID's os.Hostname()-based lookup accurate across
+// rename-and-respawn cycles. See the field comment for the failure mode.
+func (c *Container) SetClearHostnameOnRecreate(v bool) {
+	c.clearHostnameOnRecreate = v
+}
+
+// ClearHostnameOnRecreate returns whether the next recreate should drop the
+// inherited Hostname so docker assigns a fresh short-ID-equal value.
+func (c Container) ClearHostnameOnRecreate() bool {
+	return c.clearHostnameOnRecreate
 }
 
 // ImageIdentity returns the per-image provenance record, or nil if the daemon
@@ -474,6 +510,13 @@ func (c Container) GetCreateConfig() *dockercontainer.Config {
 	}
 
 	if hostConfig.NetworkMode.IsContainer() {
+		config.Hostname = ""
+	}
+
+	// Watchtower self-update opts into this to break the os.Hostname()-drift
+	// chain that otherwise propagates the founding container's short ID
+	// through every subsequent self-update — see clearHostnameOnRecreate.
+	if c.clearHostnameOnRecreate {
 		config.Hostname = ""
 	}
 

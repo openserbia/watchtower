@@ -859,6 +859,28 @@ var _ = Describe("watchtower self-update name safety net", func() {
 		Expect(client.TestData.RenameCalls[0].NewName).NotTo(Equal("watchtower"))
 	})
 
+	It("marks the container for Hostname-clear before StartContainer so DetectSelfContainerID stays accurate across self-update chains", func() {
+		// Root-cause fix for the os.Hostname()-drift bug: when the self-update
+		// path fires, restartStaleContainer must call
+		// SetClearHostnameOnRecreate(true) before StartContainer so the new
+		// container's Hostname is empty (forcing docker to assign a fresh
+		// short-ID-equal value) instead of inheriting the founding container's
+		// stale short ID. Without this flag, every subsequent self-update on
+		// the same host carries Hostname forward, and DetectSelfContainerID
+		// /CheckForMultipleWatchtowerInstances silently degrade to label-only
+		// matching.
+		self := buildSelf("self-id")
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{self},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(client.TestData.StartedContainers).To(HaveLen(1))
+		Expect(client.TestData.StartedContainers[0].ClearHostnameOnRecreate()).To(BeTrue())
+	})
+
 	It("renames the recreated self back to the canonical name when StartContainer returns a divergent name", func() {
 		// Drive the divergence: StartContainer returns a fresh ID for the
 		// new container, GetContainer for that ID returns a container

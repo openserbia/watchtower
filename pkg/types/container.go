@@ -107,4 +107,6 @@ type Container interface {
 	GetCreateHostConfig() *dc.HostConfig
 	SetTargetImageID(ImageID)
 	TargetImageID() ImageID
+	SetClearHostnameOnRecreate(bool)
+	ClearHostnameOnRecreate() bool
 }
