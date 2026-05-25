@@ -393,6 +393,12 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 				}).Warn("Container image missing locally; falling back to configured ref")
 				c := &Container{containerInfo: &containerInfo, imageInfo: &fallbackInfo}
 				c.SetImageIdentity(fallbackIdentity)
+				// imageInfo is the target image (the configured ref now points at
+				// the freshly-pulled digest), not the source the container was
+				// created from. Flag it so GetCreateConfig doesn't treat an
+				// inherited USER that the target image lacks as a runtime override
+				// — that would carry a stale user forward and fail the recreate.
+				c.SetImageInfoFallback(true)
 				return c, nil
 			}
 		}

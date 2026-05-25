@@ -198,6 +198,28 @@ var _ = Describe("the container", func() {
 				}))
 			})
 		})
+		When("container User equals the image User", func() {
+			It("clears User so the new image's default applies", func() {
+				c := MockContainer(WithUser("app", "app"))
+				Expect(c.GetCreateConfig().User).To(BeEmpty())
+			})
+		})
+		When("container User differs from the image User", func() {
+			It("preserves it as a runtime override in the normal (source-image) path", func() {
+				c := MockContainer(WithUser("1000", "app"))
+				Expect(c.GetCreateConfig().User).To(Equal("1000"))
+			})
+			It("clears it when imageInfo is the fallback (target) image", func() {
+				// Repro of the distroless base-image switch: the source image
+				// (USER app) was GC'd, so GetContainer fell back to the target
+				// image (USER 65532). The inherited "app" must be dropped, not
+				// carried forward — keeping it fails ContainerCreate with
+				// "unable to find user app: no matching entries in passwd file".
+				c := MockContainer(WithUser("app", "65532"))
+				c.SetImageInfoFallback(true)
+				Expect(c.GetCreateConfig().User).To(BeEmpty())
+			})
+		})
 		When("a target image ID has been recorded", func() {
 			It("keeps config.Image as the human-readable tag", func() {
 				// The race against a CI rebuild that may have untagged

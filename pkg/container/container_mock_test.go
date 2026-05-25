@@ -87,3 +87,14 @@ func WithHostname(hostname string) MockContainerUpdate {
 		c.Config.Hostname = hostname
 	}
 }
+
+// WithUser sets the container's effective User (as docker materializes an
+// image's USER directive into Config.User) and the image's own USER, so tests
+// can exercise the User-clear paths in GetCreateConfig — including the distroless
+// base-image switch (USER app -> numeric nonroot) that motivated the fallback fix.
+func WithUser(containerUser, imageUser string) MockContainerUpdate {
+	return func(c *dockerContainer.InspectResponse, i *image.InspectResponse) {
+		c.Config.User = containerUser
+		i.Config.User = imageUser
+	}
+}

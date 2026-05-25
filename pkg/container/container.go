@@ -85,6 +85,14 @@ type Container struct {
 	// the orphan. Clearing Hostname on each self-recreate breaks that
 	// chain at its root.
 	clearHostnameOnRecreate bool
+	// imageInfoIsFallback is set by GetContainer when it could not inspect the
+	// image the container was *created from* (its digest was GC'd off disk —
+	// e.g. a locally-built tag rebuilt and the old digest pruned) and fell back
+	// to inspecting the configured image reference, which now resolves to the
+	// freshly-pulled target image. In that state imageInfo is NOT the source
+	// image, so the "subtract image defaults" diff in GetCreateConfig runs
+	// against the target image — see the User handling there.
+	imageInfoIsFallback bool
 }
 
 // ImageIdentity captures the Docker engine's per-image provenance record as
@@ -151,6 +159,21 @@ func (c *Container) SetClearHostnameOnRecreate(v bool) {
 // inherited Hostname so docker assigns a fresh short-ID-equal value.
 func (c Container) ClearHostnameOnRecreate() bool {
 	return c.clearHostnameOnRecreate
+}
+
+// SetImageInfoFallback marks that imageInfo was resolved via GetContainer's
+// fallback path (the source image's digest was unavailable, so the configured
+// image reference — now the freshly-pulled target — was inspected instead).
+// GetCreateConfig uses this to avoid diffing the container's User against the
+// wrong image baseline. See the imageInfoIsFallback field comment.
+func (c *Container) SetImageInfoFallback(v bool) {
+	c.imageInfoIsFallback = v
+}
+
+// ImageInfoIsFallback reports whether imageInfo is the fallback (target) image
+// rather than the source image the container was created from.
+func (c Container) ImageInfoIsFallback() bool {
+	return c.imageInfoIsFallback
 }
 
 // SetCreateName overrides the name StartContainer passes to ContainerCreate
@@ -549,6 +572,17 @@ func (c Container) GetCreateConfig() *dockercontainer.Config {
 	}
 
 	if config.User == imageConfig.User {
+		config.User = ""
+	} else if c.imageInfoIsFallback {
+		// imageConfig here is the freshly-pulled TARGET image, not the source
+		// the container was created from (its digest was GC'd — see
+		// imageInfoIsFallback), so we cannot tell an inherited image USER (safe
+		// to drop) from a deliberate runtime override. A User the target image
+		// lacks hard-fails ContainerCreate with "unable to find user <name>: no
+		// matching entries in passwd file" — exactly what a base-image switch to
+		// distroless (USER app -> a numeric nonroot UID) triggers. Prefer the
+		// target image's own USER over a possibly-stale inherited one so the
+		// recreate can start.
 		config.User = ""
 	}
 
