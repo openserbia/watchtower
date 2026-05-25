@@ -9,9 +9,11 @@ FROM --platform=$BUILDPLATFORM golang:alpine AS builder
 
 # use version (for example "v0.3.3") or "main"
 ARG WATCHTOWER_VERSION=main
-# Supplied automatically by buildx for each target platform.
+# Supplied automatically by buildx for each target platform. TARGETVARIANT
+# carries the arm sub-arch ("v6"/"v7") and is empty for non-arm targets.
 ARG TARGETOS
 ARG TARGETARCH
+ARG TARGETVARIANT
 
 RUN apk add --no-cache \
     alpine-sdk \
@@ -27,7 +29,7 @@ RUN git clone --branch "${WATCHTOWER_VERSION}" https://github.com/openserbia/wat
 RUN \
   cd watchtower && \
   \
-  GO111MODULE=on CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+  GO111MODULE=on CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \
   go build -a -ldflags "-extldflags '-static' -X github.com/openserbia/watchtower/internal/meta.Version=$(git describe --tags)" .
 
 
