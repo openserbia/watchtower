@@ -10,6 +10,44 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+### Fixed
+- **Recreate no longer carries a stale `User` forward when the source image
+  was garbage-collected (e.g. a distroless base-image switch).** Docker
+  materializes an image's `USER` directive into the container's `Config.User`,
+  and `GetCreateConfig` strips it as an image default by diffing `config.User`
+  against the image's `User`. But when the image the container was created from
+  has been GC'd off disk — routine for locally-built tags that get rebuilt and
+  the old digest pruned — `GetContainer` falls back to inspecting the configured
+  image *reference*, which now resolves to the freshly-pulled **target** image.
+  The diff then runs against the target, not the source, so a `USER` inherited
+  from the old image no longer matches and is mistaken for a runtime override
+  and preserved. When the new image changes `USER` (e.g. a switch to a distroless
+  base, `USER app` → a numeric nonroot UID) the carried-forward user is absent
+  from the new image's passwd and `ContainerCreate` hard-fails with
+  `unable to find user app: no matching entries in passwd file`, leaving the
+  service down (observed migrating a service to distroless, 2026-05-25).
+  Fix: `GetContainer` flags the fallback state (`imageInfoIsFallback`), and
+  `GetCreateConfig` clears a mismatched `User` in that state so the target
+  image's own `USER` applies. Mirrors the existing `clearHostnameOnRecreate`
+  pattern — a narrowly-scoped recreate-time adjustment, not a change to the
+  global image-default diff. `Entrypoint`/`Cmd`/`WorkingDir`/`Healthcheck` share
+  the same fallback-baseline flaw but only silently preserve stale values; only
+  `User` hard-fails `ContainerCreate`, so it is the one addressed here.
+
+### Added
+- **`:latest-dev` images are now multi-arch, matching the goreleaser release
+  set.** The dev pipeline previously published `linux/amd64` only: the
+  `Dockerfile.self-contained` builder ran natively with no `GOARCH`, and the
+  publish step set no `platforms`. It now cross-compiles — builder pinned to
+  `$BUILDPLATFORM`, `GOOS`/`GOARCH`/`GOARM` taken from buildx's
+  `TARGETOS`/`TARGETARCH`/`TARGETVARIANT`, CGO disabled so no QEMU is needed —
+  and publishes a manifest list for
+  `linux/amd64,linux/386,linux/arm/v6,linux/arm/v7,linux/arm64,linux/riscv64`,
+  identical to `dockers_v2` in `goreleaser.yml`. `:latest-dev` now runs anywhere
+  a tagged release does. The in-Dockerfile `go test` was dropped: a cross-arch
+  binary can't execute on the build host, and the workflow's dedicated `test`
+  job already gates publish.
+
 ## [1.14.3] - 2026-05-23
 
 ### Fixed
