@@ -2,10 +2,16 @@
 # Builder
 #
 
-FROM golang:alpine AS builder
+# Pin the builder to the native BUILDPLATFORM so multi-arch builds cross-compile
+# instead of running the toolchain under QEMU emulation (CGO is disabled, so a
+# plain GOOS/GOARCH cross build is sufficient).
+FROM --platform=$BUILDPLATFORM golang:alpine AS builder
 
 # use version (for example "v0.3.3") or "main"
 ARG WATCHTOWER_VERSION=main
+# Supplied automatically by buildx for each target platform.
+ARG TARGETOS
+ARG TARGETARCH
 
 RUN apk add --no-cache \
     alpine-sdk \
@@ -15,11 +21,14 @@ RUN apk add --no-cache \
 
 RUN git clone --branch "${WATCHTOWER_VERSION}" https://github.com/openserbia/watchtower.git
 
+# Cross-compile for the requested target. Tests are NOT run here: a cross-arch
+# binary can't execute on the build host, and the workflow's dedicated `test`
+# job already runs the suite on the native arch before publish.
 RUN \
   cd watchtower && \
   \
-  GO111MODULE=on CGO_ENABLED=0 GOOS=linux go build -a -ldflags "-extldflags '-static' -X github.com/openserbia/watchtower/internal/meta.Version=$(git describe --tags)" . && \
-  GO111MODULE=on go test ./... -v
+  GO111MODULE=on CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+  go build -a -ldflags "-extldflags '-static' -X github.com/openserbia/watchtower/internal/meta.Version=$(git describe --tags)" .
 
 
 #

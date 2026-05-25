@@ -64,6 +64,10 @@ jobs:
           context: .
           file: dockerfiles/Dockerfile.self-contained
           push: true
+          # Multi-arch manifest list so the fleet's arm64 hosts (e.g. the rpi)
+          # can run :latest-dev. The builder cross-compiles (BUILDPLATFORM-pinned
+          # builder + GOOS/GOARCH in the Dockerfile), so no QEMU is required.
+          platforms: linux/amd64,linux/arm64
           tags: |
             openserbia/watchtower:latest-dev
             ghcr.io/openserbia/watchtower:latest-dev
