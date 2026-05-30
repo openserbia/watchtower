@@ -17,6 +17,15 @@ const (
 	StrategyBlueGreen UpdateStrategy = "blue-green"
 )
 
+// IsRollingOrBlueGreen reports whether the strategy replaces containers
+// incrementally (rolling-restart) or with an overlap (blue-green) rather than
+// the default stop-then-recreate. Both are incompatible with the global
+// monitor-only flag and with legacy container links, so the two startup guards
+// share this predicate instead of repeating the comparison.
+func (s UpdateStrategy) IsRollingOrBlueGreen() bool {
+	return s == StrategyRollingRestart || s == StrategyBlueGreen
+}
+
 // UpdateParams contains all different options available to alter the behavior of the Update func
 type UpdateParams struct {
 	Filter             Filter

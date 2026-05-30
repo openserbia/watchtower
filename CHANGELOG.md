@@ -84,6 +84,14 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   job already gates publish.
 
 ### Changed
+- **Container-update failure alerts now name the image in the message itself.**
+  Notifications render only the log message (not its structured fields), so a
+  failed update previously surfaced as a bare `Failed to start container` with no
+  hint at which image broke — the image was visible only in JSON logs. The failed
+  start/stop/rename alerts, the `--health-check-gated` rollback alert, and the
+  blue-green cutover failures now interpolate the container and image into the
+  text, e.g. `Failed to start container web (image nginx:latest)`. The structured
+  `image` field is retained for log processors.
 - **Dependency refresh.** Routine bump of Go module dependencies (direct and
   indirect) via `go get -u ./...`, then tidy + re-vendor. Direct: `shoutrrr`
   v0.14.3 → v0.15.1 (the notification backend; a minor bump, no API changes
