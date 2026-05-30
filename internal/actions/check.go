@@ -19,11 +19,14 @@ import (
 	"github.com/openserbia/watchtower/pkg/types"
 )
 
-// CheckForSanity makes sure everything is sane before starting
-func CheckForSanity(client container.Client, filter types.Filter, rollingRestarts bool) error {
+// CheckForSanity makes sure everything is sane before starting. When
+// requireNoLinks is set (the rolling-restart and blue-green strategies, which
+// update containers one at a time and cannot honor inter-container links),
+// it rejects any configuration that declares container links.
+func CheckForSanity(client container.Client, filter types.Filter, requireNoLinks bool) error {
 	log.Debug("Making sure everything is sane before starting")
 
-	if rollingRestarts {
+	if requireNoLinks {
 		containers, err := client.ListContainers(filter)
 		if err != nil {
 			return err
@@ -31,7 +34,7 @@ func CheckForSanity(client container.Client, filter types.Filter, rollingRestart
 		for _, c := range containers {
 			if len(c.Links()) > 0 {
 				return fmt.Errorf(
-					"%q is depending on at least one other container. This is not compatible with rolling restarts",
+					"%q depends on at least one other container; this is not compatible with --update-strategy=rolling-restart or blue-green",
 					c.Name(),
 				)
 			}

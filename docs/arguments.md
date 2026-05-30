@@ -580,9 +580,74 @@ Environment Variable: WATCHTOWER_SCHEDULE
              Default: -
 ```
 
+## Update strategy
+Selects how Watchtower applies an update to a stale container:
+
+- **`recreate`** (default) — stop the old container, then create and start a new one with the same
+  config on the new image. This is Watchtower's historical behavior; leaving the flag at its default
+  keeps everything byte-for-byte unchanged.
+- **`rolling-restart`** — update containers one at a time instead of stopping and starting the whole
+  batch at once. Useful together with lifecycle hooks to soften the downtime window.
+- **`blue-green`** — start the new ("green") container *alongside* the running ("blue") one, wait
+  until green reports `healthy`, let a drain window elapse so a dynamic reverse proxy registers green
+  and in-flight requests on blue finish, then stop blue and rename green to blue's name. This is the
+  only true zero-downtime strategy. It has hard requirements — see the note below — so it is opt-in
+  per container.
+
+The flag sets the **global default**. Override it per container with the
+`com.centurylinklabs.watchtower.update-strategy` label (value `recreate`, `rolling-restart`, or
+`blue-green`), so e.g. a stateless web service can run `blue-green` while a database in the same
+fleet stays on `recreate`.
+
+!!! warning "blue-green requirements"
+    Blue-green only works for a container that:
+
+    - sits behind a **dynamic, label-based reverse proxy** (e.g. Traefik) on the Docker network —
+      it cannot publish host ports, because two copies cannot bind the same host port (such
+      containers fall back to `recreate` with a warning);
+    - uses **explicit** `traefik.http.routers.<name>` / `traefik.http.services.<name>` labels rather
+      than Traefik's name-derived `defaultRule`, so the proxy treats blue and green as one service
+      with two backends and the final rename is transparent to routing;
+    - defines a **`HEALTHCHECK`** so readiness can actually be verified (without one, Watchtower can
+      only rely on the drain window and warns);
+    - is **stateless / idempotent**. During the drain window both copies receive traffic, so
+      blue-green is unsafe for databases, queues, and other stateful services. Keep those on
+      `recreate`.
+
+    See [Container selection → Update strategy label](container-selection.md#update-strategy-blue-green)
+    for a worked Docker Compose + Traefik example.
+
+```text
+            Argument: --update-strategy
+Environment Variable: WATCHTOWER_UPDATE_STRATEGY
+     Possible values: recreate, rolling-restart, blue-green
+             Default: recreate
+```
+
+## Blue-green drain window
+For `--update-strategy=blue-green`: how long to keep the old (blue) and new (green) containers running
+together after green reports healthy, so a dynamic reverse proxy registers green and in-flight requests
+on blue drain, before blue is removed. Durations accept Go format (`5s`, `30s`, `2m`). Set `0` to skip
+the drain window entirely (green is retired the instant it is healthy).
+
+Per-container override via the `com.centurylinklabs.watchtower.blue-green.drain` label.
+
+```text
+            Argument: --blue-green-drain
+Environment Variable: WATCHTOWER_BLUE_GREEN_DRAIN
+                Type: Duration
+             Default: 10s
+```
+
 ## Rolling restart
 Restart one image at time instead of stopping and starting all at once.  Useful in conjunction with lifecycle hooks
 to implement zero-downtime deploy.
+
+!!! warning "Deprecated"
+    `--rolling-restart` is a deprecated alias for `--update-strategy=rolling-restart`. It still works
+    and maps to the rolling-restart strategy (logging a deprecation warning at startup), but prefer
+    `--update-strategy`. Setting `--rolling-restart` together with a conflicting `--update-strategy`
+    is a startup error.
 
 ```text
             Argument: --rolling-restart

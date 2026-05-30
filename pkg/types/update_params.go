@@ -4,6 +4,19 @@ import (
 	"time"
 )
 
+// UpdateStrategy selects how Watchtower replaces a stale container.
+type UpdateStrategy string
+
+const (
+	// StrategyRecreate stops the old container, then creates and starts a replacement.
+	StrategyRecreate UpdateStrategy = "recreate"
+	// StrategyRollingRestart updates eligible containers one at a time.
+	StrategyRollingRestart UpdateStrategy = "rolling-restart"
+	// StrategyBlueGreen starts the new container alongside the old one, waits until
+	// it is healthy, drains, then retires the old container for zero-downtime updates.
+	StrategyBlueGreen UpdateStrategy = "blue-green"
+)
+
 // UpdateParams contains all different options available to alter the behavior of the Update func
 type UpdateParams struct {
 	Filter             Filter
@@ -19,6 +32,12 @@ type UpdateParams struct {
 	HealthCheckTimeout time.Duration
 	ImageCooldown      time.Duration
 	ComposeDependsOn   bool
+	// Strategy is the global default update strategy applied when a container does
+	// not declare its own via the update-strategy label.
+	Strategy UpdateStrategy
+	// BlueGreenDrain is the global default drain window kept between the new and old
+	// container after the new one reports healthy, when using the blue-green strategy.
+	BlueGreenDrain time.Duration
 	// RerunInitDeps re-creates compose `service_completed_successfully`
 	// init containers against the new image before recreating the target.
 	// Restores the every-restart-runs-migrations contract that an entrypoint.sh

@@ -3,331 +3,185 @@ package filters
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	. "github.com/onsi/gomega"
 
 	"github.com/openserbia/watchtower/pkg/container/mocks"
 )
 
 func TestWatchtowerContainersFilter(t *testing.T) {
-	container := new(mocks.FilterableContainer)
+	g := NewWithT(t)
+	container := &mocks.FilterableContainer{IsWatchtowerVal: true}
 
-	container.On("IsWatchtower").Return(true)
-
-	assert.True(t, WatchtowerContainersFilter(container))
-
-	container.AssertExpectations(t)
+	g.Expect(WatchtowerContainersFilter(container)).To(BeTrue())
 }
 
 func TestNoFilter(t *testing.T) {
-	container := new(mocks.FilterableContainer)
+	g := NewWithT(t)
+	container := &mocks.FilterableContainer{}
 
-	assert.True(t, NoFilter(container))
-
-	container.AssertExpectations(t)
+	g.Expect(NoFilter(container)).To(BeTrue())
 }
 
 func TestFilterByNames(t *testing.T) {
+	g := NewWithT(t)
+
 	var names []string
 
 	filter := FilterByNames(names, nil)
-	assert.Nil(t, filter)
+	g.Expect(filter).To(BeNil())
 
 	names = append(names, "test")
 
 	filter = FilterByNames(names, NoFilter)
-	assert.NotNil(t, filter)
+	g.Expect(filter).ToNot(BeNil())
 
-	container := new(mocks.FilterableContainer)
-	container.On("Name").Return("test")
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("NoTest")
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "test"})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "NoTest"})).To(BeFalse())
 }
 
 func TestFilterByNamesRegex(t *testing.T) {
+	g := NewWithT(t)
 	names := []string{`ba(b|ll)oon`}
 
 	filter := FilterByNames(names, NoFilter)
-	assert.NotNil(t, filter)
+	g.Expect(filter).ToNot(BeNil())
 
-	container := new(mocks.FilterableContainer)
-	container.On("Name").Return("balloon")
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("spoon")
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("baboonious")
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "balloon"})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "spoon"})).To(BeFalse())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "baboonious"})).To(BeFalse())
 }
 
 func TestFilterByEnableLabel(t *testing.T) {
+	g := NewWithT(t)
 	filter := FilterByEnableLabel(NoFilter)
-	assert.NotNil(t, filter)
+	g.Expect(filter).ToNot(BeNil())
 
-	container := new(mocks.FilterableContainer)
-	container.On("Enabled").Return(true, true)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Enabled").Return(false, true)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Enabled").Return(false, false)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
+	g.Expect(filter(&mocks.FilterableContainer{EnabledVal: true, EnabledSet: true})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{EnabledVal: false, EnabledSet: true})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{EnabledVal: false, EnabledSet: false})).To(BeFalse())
 }
 
 func TestFilterByScope(t *testing.T) {
+	g := NewWithT(t)
 	scope := "testscope"
 
 	filter := FilterByScope(scope, NoFilter)
-	assert.NotNil(t, filter)
+	g.Expect(filter).ToNot(BeNil())
 
-	container := new(mocks.FilterableContainer)
-	container.On("Scope").Return("testscope", true)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Scope").Return("nottestscope", true)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Scope").Return("", false)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
+	g.Expect(filter(&mocks.FilterableContainer{ScopeVal: "testscope", ScopeSet: true})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{ScopeVal: "nottestscope", ScopeSet: true})).To(BeFalse())
+	g.Expect(filter(&mocks.FilterableContainer{ScopeVal: "", ScopeSet: false})).To(BeFalse())
 }
 
 func TestFilterByNoneScope(t *testing.T) {
+	g := NewWithT(t)
 	scope := "none"
 
 	filter := FilterByScope(scope, NoFilter)
-	assert.NotNil(t, filter)
+	g.Expect(filter).ToNot(BeNil())
 
-	container := new(mocks.FilterableContainer)
-	container.On("Scope").Return("anyscope", true)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Scope").Return("", false)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Scope").Return("", true)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Scope").Return("none", true)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
+	g.Expect(filter(&mocks.FilterableContainer{ScopeVal: "anyscope", ScopeSet: true})).To(BeFalse())
+	g.Expect(filter(&mocks.FilterableContainer{ScopeVal: "", ScopeSet: false})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{ScopeVal: "", ScopeSet: true})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{ScopeVal: "none", ScopeSet: true})).To(BeTrue())
 }
 
 func TestBuildFilterNoneScope(t *testing.T) {
+	g := NewWithT(t)
 	filter, desc := BuildFilter(nil, nil, false, "none")
 
-	assert.Contains(t, desc, "without a scope")
+	g.Expect(desc).To(ContainSubstring("without a scope"))
 
-	scoped := new(mocks.FilterableContainer)
-	scoped.On("Enabled").Return(false, false)
-	scoped.On("Scope").Return("anyscope", true)
+	scoped := &mocks.FilterableContainer{ScopeVal: "anyscope", ScopeSet: true}
+	unscoped := &mocks.FilterableContainer{ScopeVal: "", ScopeSet: false}
 
-	unscoped := new(mocks.FilterableContainer)
-	unscoped.On("Enabled").Return(false, false)
-	unscoped.On("Scope").Return("", false)
-
-	assert.False(t, filter(scoped))
-	assert.True(t, filter(unscoped))
-
-	scoped.AssertExpectations(t)
-	unscoped.AssertExpectations(t)
+	g.Expect(filter(scoped)).To(BeFalse())
+	g.Expect(filter(unscoped)).To(BeTrue())
 }
 
 func TestFilterByDisabledLabel(t *testing.T) {
+	g := NewWithT(t)
 	filter := FilterByDisabledLabel(NoFilter)
-	assert.NotNil(t, filter)
+	g.Expect(filter).ToNot(BeNil())
 
-	container := new(mocks.FilterableContainer)
-	container.On("Enabled").Return(true, true)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Enabled").Return(false, true)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Enabled").Return(false, false)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
+	g.Expect(filter(&mocks.FilterableContainer{EnabledVal: true, EnabledSet: true})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{EnabledVal: false, EnabledSet: true})).To(BeFalse())
+	g.Expect(filter(&mocks.FilterableContainer{EnabledVal: false, EnabledSet: false})).To(BeTrue())
 }
 
 func TestFilterByImage(t *testing.T) {
+	g := NewWithT(t)
 	filterEmpty := FilterByImage(nil, NoFilter)
 	filterSingle := FilterByImage([]string{"registry"}, NoFilter)
 	filterMultiple := FilterByImage([]string{"registry", "bla"}, NoFilter)
-	assert.NotNil(t, filterSingle)
-	assert.NotNil(t, filterMultiple)
+	g.Expect(filterSingle).ToNot(BeNil())
+	g.Expect(filterMultiple).ToNot(BeNil())
 
-	container := new(mocks.FilterableContainer)
-	container.On("ImageName").Return("registry:2")
-	assert.True(t, filterEmpty(container))
-	assert.True(t, filterSingle(container))
-	assert.True(t, filterMultiple(container))
-	container.AssertExpectations(t)
+	container := &mocks.FilterableContainer{ImageNameVal: "registry:2"}
+	g.Expect(filterEmpty(container)).To(BeTrue())
+	g.Expect(filterSingle(container)).To(BeTrue())
+	g.Expect(filterMultiple(container)).To(BeTrue())
 
-	container = new(mocks.FilterableContainer)
-	container.On("ImageName").Return("registry:latest")
-	assert.True(t, filterEmpty(container))
-	assert.True(t, filterSingle(container))
-	assert.True(t, filterMultiple(container))
-	container.AssertExpectations(t)
+	container = &mocks.FilterableContainer{ImageNameVal: "registry:latest"}
+	g.Expect(filterEmpty(container)).To(BeTrue())
+	g.Expect(filterSingle(container)).To(BeTrue())
+	g.Expect(filterMultiple(container)).To(BeTrue())
 
-	container = new(mocks.FilterableContainer)
-	container.On("ImageName").Return("abcdef1234")
-	assert.True(t, filterEmpty(container))
-	assert.False(t, filterSingle(container))
-	assert.False(t, filterMultiple(container))
-	container.AssertExpectations(t)
+	container = &mocks.FilterableContainer{ImageNameVal: "abcdef1234"}
+	g.Expect(filterEmpty(container)).To(BeTrue())
+	g.Expect(filterSingle(container)).To(BeFalse())
+	g.Expect(filterMultiple(container)).To(BeFalse())
 
-	container = new(mocks.FilterableContainer)
-	container.On("ImageName").Return("bla:latest")
-	assert.True(t, filterEmpty(container))
-	assert.False(t, filterSingle(container))
-	assert.True(t, filterMultiple(container))
-	container.AssertExpectations(t)
+	container = &mocks.FilterableContainer{ImageNameVal: "bla:latest"}
+	g.Expect(filterEmpty(container)).To(BeTrue())
+	g.Expect(filterSingle(container)).To(BeFalse())
+	g.Expect(filterMultiple(container)).To(BeTrue())
 }
 
 func TestBuildFilter(t *testing.T) {
+	g := NewWithT(t)
 	names := []string{"test", "valid"}
 
 	filter, desc := BuildFilter(names, []string{}, false, "")
-	assert.Contains(t, desc, "test")
-	assert.Contains(t, desc, "or")
-	assert.Contains(t, desc, "valid")
+	g.Expect(desc).To(ContainSubstring("test"))
+	g.Expect(desc).To(ContainSubstring("or"))
+	g.Expect(desc).To(ContainSubstring("valid"))
 
-	container := new(mocks.FilterableContainer)
-	container.On("Name").Return("Invalid")
-	container.On("Enabled").Return(false, false)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("test")
-	container.On("Enabled").Return(false, false)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("Invalid")
-	container.On("Enabled").Return(true, true)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("test")
-	container.On("Enabled").Return(true, true)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Enabled").Return(false, true)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "Invalid"})).To(BeFalse())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "test"})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "Invalid", EnabledVal: true, EnabledSet: true})).To(BeFalse())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "test", EnabledVal: true, EnabledSet: true})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{EnabledVal: false, EnabledSet: true})).To(BeFalse())
 }
 
 func TestBuildFilterEnableLabel(t *testing.T) {
+	g := NewWithT(t)
+
 	var names []string
 	names = append(names, "test")
 
 	filter, desc := BuildFilter(names, []string{}, true, "")
-	assert.Contains(t, desc, "using enable label")
+	g.Expect(desc).To(ContainSubstring("using enable label"))
 
-	container := new(mocks.FilterableContainer)
-	container.On("Enabled").Return(false, false)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("Invalid")
-	container.On("Enabled").Twice().Return(true, true)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("test")
-	container.On("Enabled").Twice().Return(true, true)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Enabled").Return(false, true)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
+	g.Expect(filter(&mocks.FilterableContainer{EnabledVal: false, EnabledSet: false})).To(BeFalse())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "Invalid", EnabledVal: true, EnabledSet: true})).To(BeFalse())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "test", EnabledVal: true, EnabledSet: true})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{EnabledVal: false, EnabledSet: true})).To(BeFalse())
 }
 
 func TestBuildFilterDisableContainer(t *testing.T) {
+	g := NewWithT(t)
 	filter, desc := BuildFilter([]string{}, []string{"excluded", "notfound"}, false, "")
-	assert.Contains(t, desc, "not named")
-	assert.Contains(t, desc, "excluded")
-	assert.Contains(t, desc, "or")
-	assert.Contains(t, desc, "notfound")
+	g.Expect(desc).To(ContainSubstring("not named"))
+	g.Expect(desc).To(ContainSubstring("excluded"))
+	g.Expect(desc).To(ContainSubstring("or"))
+	g.Expect(desc).To(ContainSubstring("notfound"))
 
-	container := new(mocks.FilterableContainer)
-	container.On("Name").Return("Another")
-	container.On("Enabled").Return(false, false)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("AnotherOne")
-	container.On("Enabled").Return(true, true)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("test")
-	container.On("Enabled").Return(false, false)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("excluded")
-	container.On("Enabled").Return(true, true)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("excludedAsSubstring")
-	container.On("Enabled").Return(true, true)
-	assert.True(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Name").Return("notfound")
-	container.On("Enabled").Return(true, true)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
-
-	container = new(mocks.FilterableContainer)
-	container.On("Enabled").Return(false, true)
-	assert.False(t, filter(container))
-	container.AssertExpectations(t)
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "Another"})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "AnotherOne", EnabledVal: true, EnabledSet: true})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "test"})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "excluded", EnabledVal: true, EnabledSet: true})).To(BeFalse())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "excludedAsSubstring", EnabledVal: true, EnabledSet: true})).To(BeTrue())
+	g.Expect(filter(&mocks.FilterableContainer{NameVal: "notfound", EnabledVal: true, EnabledSet: true})).To(BeFalse())
+	g.Expect(filter(&mocks.FilterableContainer{EnabledVal: false, EnabledSet: true})).To(BeFalse())
 }

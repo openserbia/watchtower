@@ -22,10 +22,6 @@ import (
 )
 
 const (
-	// healthPollInterval is how often the gating loop re-checks a container's
-	// health status. Short enough that a 30-second startup doesn't get flagged
-	// late; long enough that we don't hammer the Docker socket.
-	healthPollInterval = 2 * time.Second
 	// defaultHealthCheckTimeout mirrors the default on --health-check-timeout
 	// in internal/flags. Only used as a belt-and-braces fallback if the param
 	// arrives zero (e.g. old callers constructing UpdateParams by hand).
@@ -34,7 +30,17 @@ const (
 	// Prevents the poll → stop → start → fail → rollback loop from thrashing
 	// every poll when an image author has pushed a broken version.
 	rollbackCooldown = 1 * time.Hour
+	// defaultBlueGreenDrain is the fallback drain window kept between the new
+	// and old container after the new one reports healthy, when neither the
+	// container label nor the global flag specifies one.
+	defaultBlueGreenDrain = 10 * time.Second
 )
+
+// healthPollInterval is how often the gating loop re-checks a container's
+// health status. Short enough that a 30-second startup doesn't get flagged
+// late; long enough that we don't hammer the Docker socket. It is a var (not
+// a const) so tests can lower it.
+var healthPollInterval = 2 * time.Second
 
 var (
 	failedRollbacksMu sync.Mutex
@@ -146,6 +152,32 @@ func resolveImageCooldown(c types.Container, params types.UpdateParams) time.Dur
 		return override
 	}
 	return params.ImageCooldown
+}
+
+// resolveStrategy picks the effective update strategy for a container: the
+// per-container label override if present, otherwise the global default,
+// falling back to recreate.
+func resolveStrategy(c types.Container, params types.UpdateParams) types.UpdateStrategy {
+	if v, ok := c.UpdateStrategyLabel(); ok {
+		return types.UpdateStrategy(v)
+	}
+	if params.Strategy != "" {
+		return params.Strategy
+	}
+	return types.StrategyRecreate
+}
+
+// resolveBlueGreenDrain picks the effective blue-green drain window for a
+// container: the per-container label override if present, otherwise the global
+// default, falling back to defaultBlueGreenDrain.
+func resolveBlueGreenDrain(c types.Container, params types.UpdateParams) time.Duration {
+	if d, ok := c.BlueGreenDrain(); ok {
+		return d
+	}
+	if params.BlueGreenDrain > 0 {
+		return params.BlueGreenDrain
+	}
+	return defaultBlueGreenDrain
 }
 
 // evaluateImageCooldown is the single decision point for "should this digest
@@ -443,19 +475,178 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 		}
 	}
 
-	if params.RollingRestart {
-		progress.UpdateFailed(performRollingRestart(containersToUpdate, containers, client, params, progress))
-	} else {
-		failedStop, stoppedImages := stopContainersInReversedOrder(containersToUpdate, client, params, progress)
+	recreateSet, rollingSet, blueGreenSet := partitionByStrategy(containersToUpdate, params)
+
+	for _, c := range blueGreenSet {
+		if err := performBlueGreenUpdate(c, containers, client, params); err != nil {
+			progress.UpdateFailed(map[types.ContainerID]error{c.ID(): err})
+		}
+	}
+
+	if len(rollingSet) > 0 {
+		progress.UpdateFailed(performRollingRestart(rollingSet, containers, client, params, progress))
+	}
+
+	if len(recreateSet) > 0 {
+		failedStop, stoppedImages := stopContainersInReversedOrder(recreateSet, client, params, progress)
 		progress.UpdateFailed(failedStop)
-		failedStart := restartContainersInSortedOrder(containersToUpdate, containers, client, params, stoppedImages)
-		progress.UpdateFailed(failedStart)
+		progress.UpdateFailed(restartContainersInSortedOrder(recreateSet, containers, client, params, stoppedImages))
 	}
 
 	if params.LifecycleHooks {
 		lifecycle.ExecutePostChecks(client, params)
 	}
 	return progress.Report(), nil
+}
+
+// partitionByStrategy splits the containers slated for update into the
+// recreate, rolling-restart, and blue-green buckets according to each
+// container's resolved strategy. Watchtower's own container, structurally
+// ineligible blue-green candidates, and containers that publish host ports
+// always fall back to recreate so default behavior is unchanged.
+func partitionByStrategy(containersToUpdate []types.Container, params types.UpdateParams) (recreateSet, rollingSet, blueGreenSet []types.Container) {
+	for _, c := range containersToUpdate {
+		if isRunningSelf(c, params) {
+			recreateSet = append(recreateSet, c)
+
+			continue
+		}
+
+		switch resolveStrategy(c, params) {
+		case types.StrategyBlueGreen:
+			switch {
+			case !c.ToRestart() || !c.IsStale() || len(c.Links()) > 0:
+				recreateSet = append(recreateSet, c) // structural ineligibility; no warning
+			case c.HasPublishedPorts():
+				log.WithField("container", c.Name()).Warn("blue-green is not possible for a container that publishes host ports (two copies cannot bind the same port) — falling back to recreate. Route through a dynamic reverse proxy on the docker network instead of host ports to enable blue-green.")
+				recreateSet = append(recreateSet, c)
+			default:
+				blueGreenSet = append(blueGreenSet, c)
+			}
+		case types.StrategyRollingRestart:
+			rollingSet = append(rollingSet, c)
+		default:
+			recreateSet = append(recreateSet, c)
+		}
+	}
+
+	return recreateSet, rollingSet, blueGreenSet
+}
+
+// performBlueGreenUpdate brings up a new "green" container alongside the running
+// "blue" one, waits for green to report healthy, lets a drain window elapse so a
+// dynamic label-based reverse proxy (e.g. Traefik) can register green and in-flight
+// requests on blue can finish, then retires blue and renames green to blue's
+// canonical name. On a failed health check it removes green and leaves blue serving.
+// The caller guarantees the container has no published host ports and is not self.
+func performBlueGreenUpdate(blue types.Container, scanView []types.Container, client container.Client, params types.UpdateParams) error {
+	if params.LifecycleHooks {
+		if err := runBlueGreenPreUpdate(client, blue); err != nil {
+			return err
+		}
+	}
+
+	canonical := blue.CreateName()
+	bareName := strings.TrimPrefix(canonical, "/")
+	greenName := bareName + "-wt-bluegreen-" + util.RandName()[:8]
+
+	// Start green from blue's config under a temporary unique name so both run
+	// side by side. StartContainer honors SetCreateName and the TargetImageID
+	// retag, so green comes up on the new image carrying blue's labels (the proxy
+	// treats them as one service with two backends).
+	blue.SetCreateName(greenName)
+	greenID, err := client.StartContainer(blue)
+	blue.SetCreateName(canonical) // restore so later log lines use the real name
+	if err != nil {
+		log.WithError(err).WithFields(log.Fields{"container": bareName, "image": blue.ImageName()}).Error("blue-green: failed to start green container; old container left untouched")
+
+		return err
+	}
+	log.WithFields(log.Fields{"container": bareName, "green": greenName}).Info("blue-green: started green container, waiting for it to become healthy")
+
+	if err := awaitBlueGreenHealthy(client, blue, greenID, greenName, bareName, params); err != nil {
+		return err
+	}
+
+	if drain := resolveBlueGreenDrain(blue, params); drain > 0 {
+		log.WithFields(log.Fields{"container": bareName, "drain": drain}).Debug("blue-green: draining before retiring the old container")
+		time.Sleep(drain)
+	}
+
+	if err := client.StopContainer(blue, params.Timeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
+		log.WithError(err).WithFields(log.Fields{"container": bareName, "green": greenName}).Error("blue-green: failed to stop the old container; green is live but the old one remains and green keeps its temporary name")
+
+		return err
+	}
+
+	if greenSnap, gerr := client.GetContainer(greenID); gerr == nil {
+		if rerr := client.RenameContainer(greenSnap, bareName); rerr != nil {
+			log.WithError(rerr).WithFields(log.Fields{"from": greenName, "to": bareName}).Warn("blue-green: failed to rename green to the canonical name; it keeps its temporary name until the next update")
+		}
+	}
+
+	if params.LifecycleHooks {
+		lifecycle.ExecutePostUpdateCommand(client, greenID)
+	}
+
+	if params.Cleanup {
+		if prior := rotatePreviousImage(blue.Name(), blue.SourceImageID()); prior != "" {
+			cleanupImages(client, map[types.ImageID]bool{prior: true}, scanView)
+		}
+	}
+
+	log.WithFields(log.Fields{"container": bareName, "image": blue.ImageName()}).Info("blue-green: cutover complete")
+
+	return nil
+}
+
+// runBlueGreenPreUpdate runs the pre-update lifecycle command before a
+// blue-green cutover. It returns a non-nil error to abort the update when the
+// command failed or signaled EX_TEMPFAIL (exit 75).
+func runBlueGreenPreUpdate(client container.Client, blue types.Container) error {
+	skipUpdate, err := lifecycle.ExecutePreUpdateCommand(client, blue)
+	if err != nil {
+		log.WithError(err).WithFields(log.Fields{"container": blue.Name(), "image": blue.ImageName()}).Warn("Skipping blue-green update: pre-update lifecycle command failed")
+
+		return err
+	}
+	if skipUpdate {
+		log.Debug("Skipping blue-green update: pre-update command returned exit code 75 (EX_TEMPFAIL)")
+
+		return errors.New("skipping container as the pre-update command returned exit code 75 (EX_TEMPFAIL)")
+	}
+
+	return nil
+}
+
+// awaitBlueGreenHealthy waits for the green container to report healthy. A
+// missing HEALTHCHECK is a warning (the drain window is the only gate). A real
+// health failure removes green, arms the rollback cooldown, and returns an
+// error so blue keeps serving.
+func awaitBlueGreenHealthy(client container.Client, blue types.Container, greenID types.ContainerID, greenName, bareName string, params types.UpdateParams) error {
+	timeout := resolveHealthCheckTimeout(blue, params)
+	werr := waitForHealthy(client, greenID, timeout)
+	switch {
+	case errors.Is(werr, errNoHealthcheck):
+		log.WithField("container", bareName).Warn("blue-green: green container has no HEALTHCHECK — readiness cannot be verified; relying on the drain window only. Add a HEALTHCHECK for a real readiness gate.")
+
+		return nil
+	case werr == nil:
+		return nil
+	}
+
+	fields := log.Fields{"container": bareName, "image": blue.ImageName(), "green": greenName}
+	maps.Copy(fields, healthFailureContext(client, greenID))
+	log.WithError(werr).WithFields(fields).Error("blue-green: green container failed health check — removing green and keeping the old container")
+	if greenSnap, gerr := client.GetContainer(greenID); gerr == nil {
+		if serr := client.StopContainer(greenSnap, params.Timeout); serr != nil && !errors.Is(serr, container.ErrContainerNotFound) {
+			log.WithError(serr).WithField("green", greenName).Error("blue-green: failed to remove the failed green container")
+		}
+	}
+	recordRollback(blue.Name())
+	metrics.RegisterRollback()
+
+	return fmt.Errorf("blue-green update of %s aborted after failed health check: %w", blue.Name(), werr)
 }
 
 func performRollingRestart(containers, scanView []types.Container, client container.Client, params types.UpdateParams, progress *session.Progress) map[types.ContainerID]error {

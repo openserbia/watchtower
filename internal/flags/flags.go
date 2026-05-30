@@ -1,5 +1,5 @@
-// Package flags defines watchtower's CLI flag set and the viper-backed
-// environment-variable bindings that accompany it.
+// Package flags defines watchtower's CLI flag set and the environment-variable
+// bindings that accompany it (see env.go).
 package flags
 
 import (
@@ -8,16 +8,28 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/spf13/viper"
 )
 
 const hoursPerDay = 24
+
+// Update-strategy enum values, shared between flag registration and alias
+// resolution so the literals live in exactly one place.
+const (
+	strategyRecreate       = "recreate"
+	strategyRollingRestart = "rolling-restart"
+	strategyBlueGreen      = "blue-green"
+)
+
+// defaultBlueGreenDrain is the fallback --blue-green-drain window when neither
+// the flag nor WATCHTOWER_BLUE_GREEN_DRAIN is set.
+const defaultBlueGreenDrain = 10 * time.Second
 
 var defaultInterval = int((time.Hour * hoursPerDay).Seconds())
 
@@ -140,7 +152,8 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 	flags.StringSliceP(
 		"disable-containers",
 		"x",
-		// Due to issue spf13/viper#380, can't use viper.GetStringSlice:
+		// envStringSlice splits only on whitespace (see env.go), so split the
+		// comma/space-separated container list explicitly here instead:
 		regexp.MustCompile("[, ]+").Split(envString("WATCHTOWER_DISABLE_CONTAINERS"), -1),
 		"Comma-separated list of containers to explicitly exclude from watching.",
 	)
@@ -148,7 +161,7 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 	flags.StringP(
 		"log-format",
 		"l",
-		viper.GetString("WATCHTOWER_LOG_FORMAT"),
+		envString("WATCHTOWER_LOG_FORMAT"),
 		"Sets what logging format to use for console output. Possible values: Auto, LogFmt, Pretty, JSON",
 	)
 
@@ -226,7 +239,23 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"rolling-restart",
 		"",
 		envBool("WATCHTOWER_ROLLING_RESTART"),
-		"Restart containers one at a time",
+		"Restart containers one at a time. DEPRECATED: use --update-strategy=rolling-restart instead.",
+	)
+
+	usDefault := envString("WATCHTOWER_UPDATE_STRATEGY")
+	if usDefault == "" {
+		usDefault = strategyRecreate
+	}
+	flags.String(
+		"update-strategy",
+		usDefault,
+		"Container update strategy: recreate (default; stop then recreate), rolling-restart (one container at a time), or blue-green (start the new container alongside the old, wait until it is healthy, drain, then retire the old). Override per-container with the com.centurylinklabs.watchtower.update-strategy label. (Env WATCHTOWER_UPDATE_STRATEGY)",
+	)
+
+	flags.Duration(
+		"blue-green-drain",
+		envDuration("WATCHTOWER_BLUE_GREEN_DRAIN", defaultBlueGreenDrain),
+		"For --update-strategy=blue-green: how long to keep the old and new containers running together after the new one reports healthy, so a dynamic reverse proxy (e.g. Traefik) registers the new container and in-flight requests on the old one drain, before the old container is removed. Per-container override: com.centurylinklabs.watchtower.blue-green.drain. (Env WATCHTOWER_BLUE_GREEN_DRAIN)",
 	)
 
 	flags.BoolP(
@@ -293,7 +322,7 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 	flags.BoolP(
 		"no-color",
 		"",
-		viper.IsSet("NO_COLOR"),
+		envIsSet("NO_COLOR"),
 		"Disable ANSI color escape codes in log output",
 	)
 
@@ -545,58 +574,40 @@ Should only be used for testing.`,
 	)
 }
 
-func envString(key string) string {
-	viper.MustBindEnv(key)
-	return viper.GetString(key)
-}
-
-func envStringSlice(key string) []string {
-	viper.MustBindEnv(key)
-	return viper.GetStringSlice(key)
-}
-
-func envInt(key string) int {
-	viper.MustBindEnv(key)
-	return viper.GetInt(key)
-}
-
-func envBool(key string) bool {
-	viper.MustBindEnv(key)
-	return viper.GetBool(key)
-}
-
-func envDuration(key string, fallback ...time.Duration) time.Duration {
-	viper.MustBindEnv(key)
-	v := viper.GetDuration(key)
-	if v == 0 && len(fallback) > 0 {
-		return fallback[0]
-	}
-	return v
-}
-
 const (
 	defaultStopTimeoutSeconds = 10
 	defaultSMTPPort           = 25
 	defaultHealthCheckTimeout = 60 * time.Second
 )
 
-// SetDefaults provides default values for environment variables
+// SetDefaults provides default values for environment variables. It resets the
+// env layer (see env.go) and seeds the defaults and key registry, so it must
+// run before the Register*Flags functions read any value.
 func SetDefaults() {
-	viper.AutomaticEnv()
-	viper.SetDefault("DOCKER_HOST", "unix:///var/run/docker.sock")
-	// Intentionally not defaulting DOCKER_API_VERSION: when set, the Docker client
-	// skips version negotiation and pins to the env value. Leaving it unset lets
-	// WithAPIVersionNegotiation() downgrade to the daemon's reported version,
-	// which is required to work with Docker Engine 29+ (minimum API floor 1.44).
-	viper.SetDefault("WATCHTOWER_POLL_INTERVAL", defaultInterval)
-	viper.SetDefault("WATCHTOWER_TIMEOUT", time.Second*defaultStopTimeoutSeconds)
-	viper.SetDefault("WATCHTOWER_NOTIFICATIONS", []string{})
-	viper.SetDefault("WATCHTOWER_NOTIFICATIONS_LEVEL", "info")
-	viper.SetDefault("WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT", defaultSMTPPort)
-	viper.SetDefault("WATCHTOWER_NOTIFICATION_EMAIL_SUBJECTTAG", "")
-	viper.SetDefault("WATCHTOWER_NOTIFICATION_SLACK_IDENTIFIER", "watchtower")
-	viper.SetDefault("WATCHTOWER_LOG_LEVEL", "info")
-	viper.SetDefault("WATCHTOWER_LOG_FORMAT", "auto")
+	envKeys = map[string]struct{}{}
+	envDefaults = map[string]string{
+		"DOCKER_HOST":              "unix:///var/run/docker.sock",
+		"WATCHTOWER_POLL_INTERVAL": strconv.Itoa(defaultInterval),
+		"WATCHTOWER_TIMEOUT":       (time.Second * defaultStopTimeoutSeconds).String(),
+		// Intentionally not defaulting DOCKER_API_VERSION: when set, the Docker
+		// client skips version negotiation and pins to the env value. Leaving it
+		// unset lets WithAPIVersionNegotiation() downgrade to the daemon's
+		// reported version, which is required to work with Docker Engine 29+
+		// (minimum API floor 1.44).
+		"WATCHTOWER_NOTIFICATIONS_LEVEL":            "info",
+		"WATCHTOWER_NOTIFICATION_EMAIL_SERVER_PORT": strconv.Itoa(defaultSMTPPort),
+		"WATCHTOWER_NOTIFICATION_EMAIL_SUBJECTTAG":  "",
+		"WATCHTOWER_NOTIFICATION_SLACK_IDENTIFIER":  "watchtower",
+		"WATCHTOWER_LOG_LEVEL":                      "info",
+		"WATCHTOWER_LOG_FORMAT":                     "auto",
+	}
+
+	for key := range envDefaults {
+		registerEnvKey(key)
+	}
+	// WATCHTOWER_NOTIFICATIONS defaults to the empty slice — represented by the
+	// absence of a string default — but is still a known key for AllEnvKeys.
+	registerEnvKey("WATCHTOWER_NOTIFICATIONS")
 }
 
 // EnvConfig translates the command-line options into environment variables
@@ -793,6 +804,8 @@ func ProcessFlagAliases(flags *pflag.FlagSet) {
 		_ = flags.Set(`schedule`, fmt.Sprintf(`@every %ds`, interval))
 	}
 
+	resolveUpdateStrategy(flags)
+
 	if flagIsEnabled(flags, `debug`) {
 		_ = flags.Set(`log-level`, `debug`)
 	}
@@ -840,6 +853,37 @@ func SetupLogging(f *pflag.FlagSet) error {
 	log.SetLevel(logLevel)
 
 	return nil
+}
+
+// resolveUpdateStrategy normalizes the --update-strategy flag, folds the
+// deprecated --rolling-restart alias into it, validates the result against the
+// supported enum, and writes the canonical value back. Extracted from
+// ProcessFlagAliases to keep that function within the cyclomatic-complexity
+// budget.
+func resolveUpdateStrategy(flags *pflag.FlagSet) {
+	us, _ := flags.GetString("update-strategy")
+	us = strings.ToLower(strings.TrimSpace(us))
+	if us == "" {
+		us = strategyRecreate
+	}
+	if flagIsEnabled(flags, "rolling-restart") {
+		switch us {
+		case strategyRecreate:
+			_ = flags.Set("update-strategy", strategyRollingRestart)
+			log.Warn("--rolling-restart is deprecated; use --update-strategy=rolling-restart")
+			us = strategyRollingRestart
+		case strategyRollingRestart:
+			// already aligned
+		default:
+			log.Fatalf("--rolling-restart conflicts with --update-strategy=%s; set only --update-strategy", us)
+		}
+	}
+	switch us {
+	case strategyRecreate, strategyRollingRestart, strategyBlueGreen:
+	default:
+		log.Fatalf("Unknown --update-strategy %q. Supported: recreate, rolling-restart, blue-green", us)
+	}
+	_ = flags.Set("update-strategy", us)
 }
 
 func flagIsEnabled(flags *pflag.FlagSet, name string) bool {

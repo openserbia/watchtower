@@ -38,6 +38,8 @@ No config migration. No flag rename. No label rewrite.
 
 |                                   | `containrrr/watchtower`              | **`openserbia/watchtower`**                                                                 |
 | --------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| Update strategy                   | Global `--rolling-restart` boolean only | **`--update-strategy`** enum (`recreate` / `rolling-restart` / `blue-green`), per-container override via the `com.centurylinklabs.watchtower.update-strategy` label; `--rolling-restart` kept as a deprecated alias |
+| Zero-downtime deploys             | —                                    | **`--update-strategy=blue-green`** brings the new container up alongside the old, waits for `HEALTHCHECK` healthy, drains, then retires the old (behind a dynamic label-based reverse proxy, no host ports) |
 | Health-check gating               | —                                    | **`--health-check-gated`** with auto-rollback; per-container label override; cooldown        |
 | Registry retry                    | None — single request, then bail     | **Bounded exp backoff** (3 tries, 500 ms → 4 s + jitter) on network / 5xx / 429 / oauth flake |
 | Docker daemon retry               | None — single request, then abort the scan | **Bounded exp backoff** on `ListContainers` for transient daemon errors (restart, socket blip, engine 5xx) |
@@ -130,6 +132,37 @@ Not upstream-bug repairs — additions that harden the same feature set.
     - Same-image init containers (the common `migrate` service using the same image tag as the target) inherit the target's freshly-resolved digest so both run against identical bits; different-image inits (e.g. `pg-ready: postgres:18`) keep their own pinning untouched.
     - Migrations must be backwards-compatible with the previous image — the old container keeps serving while the init runs, so the schema in between must be readable by both versions. Standard expand-then-contract practice; warn in the flag's help text.
     - Independent of `--compose-depends-on`; both can be enabled together. New package `internal/initrerun`, new client method `RerunInitContainer` (unconditional start that bypasses the `IsRunning()` gate so `Exited(0)` init containers actually run again), new parser `Container.ComposeInitDependencies()` (preserves the `service_completed_successfully` filter that `ComposeDependencies()` intentionally strips for the sorter).
+
+### Zero-downtime blue-green deploys (v1.15)
+
+- **`--update-strategy=blue-green` brings up the new container alongside the old, then cuts over.**
+  Upstream's only update model is stop-then-recreate — there is always a gap between stopping the old
+  container and the new one being ready, so the service is down for that window. `--rolling-restart`
+  softens batch updates and `--health-check-gated` rolls back a broken image, but neither gives true
+  zero-downtime for a single service. The new `--update-strategy` flag adds a **blue-green** strategy
+  (alongside the existing `recreate` default and `rolling-restart`, which the deprecated
+  `--rolling-restart` boolean now aliases). For a stale container marked blue-green it:
+    - Starts a "green" copy from the old container's config + labels under a temporary unique name, so
+      both run side by side on the new image. With explicit `traefik.http.routers.*` /
+      `traefik.http.services.*` labels, the reverse proxy treats blue and green as one service with two
+      backends.
+    - Waits for green's Docker `HEALTHCHECK` to report `healthy` (reusing `--health-check-timeout` and
+      its per-container label). No `HEALTHCHECK` ⇒ warns and relies on the drain window only.
+    - Lets a drain window elapse (`--blue-green-drain`, default `10s`; per-container override
+      `com.centurylinklabs.watchtower.blue-green.drain`) so the proxy registers green and in-flight
+      requests on blue finish.
+    - Stops blue, renames green to blue's canonical name, runs the post-update hook, and rotates the
+      old image out under `--cleanup`.
+    - On a failed health check: removes green, leaves blue serving, records the rollback
+      (`watchtower_rollbacks_total`) and the post-rollback cooldown.
+  - Opt in per container via `com.centurylinklabs.watchtower.update-strategy=blue-green`. It requires a
+    dynamic label-based reverse proxy (Traefik) on the Docker network with explicit (not name-derived)
+    router/service labels and **no published host ports** (two copies can't bind the same host port —
+    such containers fall back to `recreate` with a warning), and is unsafe for stateful services
+    (DBs, queues) because both copies receive traffic during the drain. Default stays `recreate`, so
+    nothing changes for existing users. See
+    [Container selection → Update strategy](container-selection.md#update-strategy-blue-green) for a
+    worked Compose + Traefik example.
 
 ## Known rough edges (fork roadmap)
 

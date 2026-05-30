@@ -35,6 +35,41 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   `User` hard-fails `ContainerCreate`, so it is the one addressed here.
 
 ### Added
+- **`--update-strategy` flag (env `WATCHTOWER_UPDATE_STRATEGY`) with a new
+  blue-green zero-downtime strategy.** Replaces the single global
+  `--rolling-restart` boolean with an extensible enum — `recreate` (default;
+  stop then recreate, byte-for-byte the historical behavior),
+  `rolling-restart` (one container at a time), or `blue-green` (start the new
+  container alongside the old, wait until it reports healthy, drain, then retire
+  the old). Default stays `recreate`, so a drop-in fork upgrade changes nothing
+  for existing users.
+  - **Blue-green deploys** bring up a "green" container from the stale "blue"
+    container's config under a temporary unique name so both run side by side,
+    wait for green's Docker `HEALTHCHECK` to report `healthy` (reusing
+    `--health-check-timeout` and its per-container label), let a drain window
+    elapse so a dynamic label-based reverse proxy (e.g. Traefik) registers green
+    and in-flight requests on blue finish, then stop blue and rename green to
+    blue's canonical name. A failed health check removes green and leaves blue
+    serving, recording the rollback (`watchtower_rollbacks_total`) and the
+    post-rollback cooldown. Intended for stateless services behind a dynamic
+    reverse proxy with explicit (not name-derived) router/service labels and **no
+    published host ports** (two copies can't bind the same port — such
+    containers fall back to `recreate` with a warning). Opt in per container; do
+    not use it for stateful services (databases, queues).
+  - **`--blue-green-drain`** (env `WATCHTOWER_BLUE_GREEN_DRAIN`, default `10s`) —
+    how long to keep blue and green running together after green reports healthy,
+    before blue is removed. Per-container override via the
+    `com.centurylinklabs.watchtower.blue-green.drain` label (`0` disables the
+    drain window).
+  - **`com.centurylinklabs.watchtower.update-strategy`** label — per-container
+    override for the global strategy (`recreate` / `rolling-restart` /
+    `blue-green`), so stateless web services get blue-green while databases stay
+    on the safe recreate path under the same fleet-wide default.
+  - **`--rolling-restart` is now a deprecated alias** for
+    `--update-strategy=rolling-restart`. Setting it still works (it maps to the
+    rolling-restart strategy and logs a deprecation warning); setting both it and
+    a conflicting `--update-strategy` is a startup error. An unknown
+    `--update-strategy` value also fails fast at startup.
 - **`:latest-dev` images are now multi-arch, matching the goreleaser release
   set.** The dev pipeline previously published `linux/amd64` only: the
   `Dockerfile.self-contained` builder ran natively with no `GOARCH`, and the
@@ -60,6 +95,18 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   v0.9.6 → v0.9.7, `mattn/go-colorable` v0.1.14 → v0.1.15, and the
   `golang.org/x/{net,sys,mod,term,tools}` set. Build, tests (`-race`), and lint
   all pass; no source changes required.
+- **Dependency footprint reduction: dropped `spf13/viper` and
+  `stretchr/testify`** (−10 modules from `go.mod`). `viper` was used only in
+  `internal/flags` as an environment-variable reader (no config files, no pflag
+  binding) — it is replaced by a small stdlib layer in `internal/flags/env.go`
+  (`os.LookupEnv` + `strconv`, with a `parseDuration` that preserves the prior
+  `cast.ToDuration` semantics and an `AllEnvKeys` that replaces `viper.AllKeys`
+  for the docs-completeness test). Removing it also drops its satellites
+  `go-viper/mapstructure/v2`, `spf13/cast`, `spf13/afero`,
+  `sagikazarmark/locafero`, `subosito/gotenv`, `pelletier/go-toml/v2`, and
+  `fsnotify/fsnotify`. `testify` (and `objx`) are gone now that the few
+  `assert`/`require` test files and the `FilterableContainer` mock use Gomega
+  and a hand-written stub, matching the project's Ginkgo/Gomega convention.
 
 ## [1.14.3] - 2026-05-23
 

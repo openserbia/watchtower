@@ -49,7 +49,8 @@ var (
 	notifier           t.Notifier
 	timeout            time.Duration
 	lifecycleHooks     bool
-	rollingRestart     bool
+	updateStrategy     string
+	blueGreenDrain     time.Duration
 	composeDependsOn   bool
 	rerunInitDeps      bool
 	scope              string
@@ -120,7 +121,8 @@ func PreRun(cmd *cobra.Command, _ []string) {
 		log.Fatalf("Failed to configure registry transport: %s", err)
 	}
 	lifecycleHooks, _ = f.GetBool("enable-lifecycle-hooks")
-	rollingRestart, _ = f.GetBool("rolling-restart")
+	updateStrategy, _ = f.GetString("update-strategy")
+	blueGreenDrain, _ = f.GetDuration("blue-green-drain")
 	composeDependsOn, _ = f.GetBool("compose-depends-on")
 	rerunInitDeps, _ = f.GetBool("rerun-init-deps")
 	scope, _ = f.GetString("scope")
@@ -186,11 +188,11 @@ func Run(c *cobra.Command, names []string) {
 		os.Exit(0)
 	}
 
-	if rollingRestart && monitorOnly {
-		log.Fatal("Rolling restarts is not compatible with the global monitor only flag")
+	if (updateStrategy == string(t.StrategyRollingRestart) || updateStrategy == string(t.StrategyBlueGreen)) && monitorOnly {
+		log.Fatal("--update-strategy rolling-restart/blue-green is not compatible with the global monitor-only flag")
 	}
 
-	if rollingRestart && composeDependsOn {
+	if updateStrategy == string(t.StrategyRollingRestart) && composeDependsOn {
 		log.Warn("--rolling-restart is typically incompatible with --compose-depends-on: rolling restarts update containers one at a time without coordinating dependency chains, so a depends_on graph won't be respected. Pick one of the two for Compose stacks with meaningful dependencies.")
 	}
 
@@ -202,7 +204,7 @@ func Run(c *cobra.Command, names []string) {
 	// no respawn). Empty result falls back to the IsWatchtower label check.
 	selfContainerID = actions.DetectSelfContainerID(client)
 
-	if err := actions.CheckForSanity(client, filter, rollingRestart); err != nil {
+	if err := actions.CheckForSanity(client, filter, updateStrategy == string(t.StrategyRollingRestart) || updateStrategy == string(t.StrategyBlueGreen)); err != nil {
 		logNotifyExit(err)
 	}
 
@@ -503,7 +505,9 @@ func runUpdatesWithNotifications(filter t.Filter) *metrics.Metric {
 		Timeout:            timeout,
 		MonitorOnly:        monitorOnly,
 		LifecycleHooks:     lifecycleHooks,
-		RollingRestart:     rollingRestart,
+		Strategy:           t.UpdateStrategy(updateStrategy),
+		BlueGreenDrain:     blueGreenDrain,
+		RollingRestart:     updateStrategy == string(t.StrategyRollingRestart),
 		LabelPrecedence:    labelPrecedence,
 		NoPull:             noPull,
 		HealthCheckGated:   healthCheckGated,

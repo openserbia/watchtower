@@ -23,6 +23,8 @@ const (
 	postUpdateTimeoutLabel  = "com.centurylinklabs.watchtower.lifecycle.post-update-timeout"
 	healthCheckTimeoutLabel = "com.centurylinklabs.watchtower.health-check-timeout"
 	imageCooldownLabel      = "com.centurylinklabs.watchtower.image-cooldown"
+	updateStrategyLabel     = "com.centurylinklabs.watchtower.update-strategy"
+	blueGreenDrainLabel     = "com.centurylinklabs.watchtower.blue-green.drain"
 
 	// composeProjectLabel / composeServiceLabel / composeDependsOnLabel are
 	// written by `docker compose` (and Docker Desktop) on every container it
@@ -231,6 +233,35 @@ func (c Container) ImageCooldown() (time.Duration, bool) {
 	}
 	d, err := time.ParseDuration(raw)
 	if err != nil || d <= 0 {
+		return 0, false
+	}
+	return d, true
+}
+
+// UpdateStrategyLabel returns the per-container update strategy override declared
+// via the com.centurylinklabs.watchtower.update-strategy label. The second return
+// value reports whether the label held a recognised strategy value.
+func (c Container) UpdateStrategyLabel() (string, bool) {
+	raw := c.getLabelValueOrEmpty(updateStrategyLabel)
+	v := strings.ToLower(strings.TrimSpace(raw))
+	switch v {
+	case "recreate", "rolling-restart", "blue-green":
+		return v, true
+	}
+	return "", false
+}
+
+// BlueGreenDrain returns the per-container blue-green drain window declared via
+// the com.centurylinklabs.watchtower.blue-green.drain label. The second return
+// value reports whether the label held a valid, non-negative duration; a value
+// of 0 is allowed and means "no drain window".
+func (c Container) BlueGreenDrain() (time.Duration, bool) {
+	raw, ok := c.getLabelValue(blueGreenDrainLabel)
+	if !ok || raw == "" {
+		return 0, false
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d < 0 {
 		return 0, false
 	}
 	return d, true

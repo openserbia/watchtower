@@ -85,6 +85,14 @@ type Container interface {
 	ImageInfo() *image.InspectResponse
 	HealthCheckTimeout() (time.Duration, bool)
 	ImageCooldown() (time.Duration, bool)
+
+	// UpdateStrategyLabel returns the per-container update strategy override and
+	// whether the container declared a recognised value via its label.
+	UpdateStrategyLabel() (string, bool)
+
+	// BlueGreenDrain returns the per-container blue-green drain window and whether
+	// the container declared a valid value via its label.
+	BlueGreenDrain() (time.Duration, bool)
 	IsInfrastructure() bool
 	ComposeProject() string
 	ComposeService() string
