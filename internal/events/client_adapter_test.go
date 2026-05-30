@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/openserbia/watchtower/pkg/container"
 	t "github.com/openserbia/watchtower/pkg/types"
 )
 
@@ -51,6 +52,10 @@ func (c *clientAdapter) RemoveImageByID(_ t.ImageID) error {
 
 func (c *clientAdapter) WarnOnHeadPullFailed(_ t.Container) bool {
 	panic("unexpected call: WarnOnHeadPullFailed")
+}
+
+func (c *clientAdapter) ProbeCapabilities(_ context.Context, _ []container.CapabilityID) []container.ProbeResult {
+	panic("unexpected call: ProbeCapabilities")
 }
 
 func (c *clientAdapter) WatchImageEvents(ctx context.Context) (<-chan t.ImageEvent, <-chan error) {

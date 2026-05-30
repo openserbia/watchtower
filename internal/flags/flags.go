@@ -273,6 +273,13 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 	)
 
 	flags.BoolP(
+		"preflight",
+		"",
+		envBool("WATCHTOWER_PREFLIGHT"),
+		"Probe the Docker API capabilities Watchtower needs before scheduling, and abort with an actionable error if a required endpoint is blocked (e.g. filtered out by a socket proxy) or unreachable. Each probe is a side-effect-free request against a bogus target — nothing is created, started, or removed. The required set is derived from the active flags (e.g. image pull is skipped under --no-pull, the write set under --monitor-only, image removal only with --cleanup); the event stream is treated as optional and only warns. Opt-in. (Env WATCHTOWER_PREFLIGHT)",
+	)
+
+	flags.BoolP(
 		"http-api-update",
 		"",
 		envBool("WATCHTOWER_HTTP_API_UPDATE"),

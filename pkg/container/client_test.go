@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
@@ -83,6 +85,34 @@ var _ = Describe("the client", func() {
 				// existing notification templates and operator log greps keep working.
 				Expect(err).To(MatchError(`container uses a pinned image, and cannot be updated by watchtower`))
 			})
+		})
+	})
+	Describe("ProbeCapabilities image_pull classification", func() {
+		// Regression: a bare-name pull probe hits Docker Hub, which answers a
+		// nonexistent docker.io/library/<name> repo with 401. That 401 proves the
+		// request traversed the proxy and the daemon attempted the pull, so the
+		// capability is Present — classifying it Unreachable would log.Fatal a
+		// healthy daemon at startup under --preflight.
+		It("treats a registry 401 as Present, not Unreachable", func() {
+			mockServer.AppendHandlers(ghttp.CombineHandlers(
+				ghttp.VerifyRequest("POST", HaveSuffix("/images/create")),
+				ghttp.RespondWithJSONEncoded(http.StatusUnauthorized, struct{ Message string }{Message: "pull access denied"}),
+			))
+			c := dockerClient{api: docker}
+			results := c.ProbeCapabilities(context.Background(), []CapabilityID{CapImagePull})
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].ID).To(Equal(CapImagePull))
+			Expect(results[0].Status).To(Equal(StatusPresent))
+		})
+		It("treats a proxy 403 as Blocked", func() {
+			mockServer.AppendHandlers(ghttp.CombineHandlers(
+				ghttp.VerifyRequest("POST", HaveSuffix("/images/create")),
+				ghttp.RespondWithJSONEncoded(http.StatusForbidden, struct{ Message string }{Message: "forbidden"}),
+			))
+			c := dockerClient{api: docker}
+			results := c.ProbeCapabilities(context.Background(), []CapabilityID{CapImagePull})
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Status).To(Equal(StatusBlocked))
 		})
 	})
 	When("removing a running container", func() {
@@ -407,6 +437,58 @@ var _ = Describe("the client", func() {
 			})
 		})
 	})
+	Describe(`StartContainer`, func() {
+		// runningHostNetContainer is a started container on host networking, so
+		// StartContainer skips the network disconnect/connect loop and goes
+		// straight from ContainerCreate to ContainerStart — the shortest path
+		// to exercise the post-create failure cleanup.
+		runningHostNetContainer := func() *Container {
+			ctr := MockContainer(
+				WithImageName("openserbia/watchtower:latest"),
+				WithContainerState(container.State{Running: true}),
+			)
+			ctr.containerInfo.HostConfig.NetworkMode = "host"
+			ctr.containerInfo.NetworkSettings = &container.NetworkSettings{
+				Networks: map[string]*network.EndpointSettings{},
+			}
+			return ctr
+		}
+
+		When(`ContainerStart fails after ContainerCreate succeeded`, func() {
+			It(`force-removes the just-created container so no orphan is left behind`, func() {
+				const createdID = "created-orphan-id"
+				removed := false
+
+				mockServer.AppendHandlers(
+					// ContainerCreate succeeds, handing back the new container ID.
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("POST", HaveSuffix("/containers/create")),
+						ghttp.RespondWithJSONEncoded(http.StatusCreated, container.CreateResponse{ID: createdID}),
+					),
+					// ContainerStart fails — the daemon rejected the start.
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("POST", HaveSuffix("/containers/%s/start", createdID)),
+						ghttp.RespondWithJSONEncoded(http.StatusInternalServerError, struct{ Message string }{Message: "driver failed programming external connectivity"}),
+					),
+					// The cleanup force-remove of exactly the created container.
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("DELETE", HaveSuffix("/containers/%s", createdID)),
+						func(w http.ResponseWriter, r *http.Request) {
+							removed = true
+							ghttp.RespondWith(http.StatusNoContent, nil)(w, r)
+						},
+					),
+				)
+
+				_, err := dockerClient{api: docker}.StartContainer(runningHostNetContainer())
+				Expect(err).To(HaveOccurred())
+				Expect(removed).To(BeTrue(), "expected the partially-created container to be force-removed")
+				// All three handlers must have been consumed in order.
+				Expect(mockServer.ReceivedRequests()).To(HaveLen(3))
+			})
+		})
+	})
+
 	Describe(`GetNetworkConfig`, func() {
 		When(`providing a container with network aliases`, func() {
 			It(`should omit the container ID alias`, func() {
@@ -747,6 +829,150 @@ var _ = Describe("the client", func() {
 			// the local-build safeguard must keep firing on bare-name refs.
 			wrapped := classifyPullError("tg-antispam:latest", notFoundErr)
 			Expect(pullFailureLooksLocal("tg-antispam:latest", wrapped)).To(BeTrue())
+		})
+		It(`treats a Hub 401 / "pull access denied" on a bare name as local`, func() {
+			// Docker Hub answers a non-existent docker.io/library/<bare-name>
+			// repo with a 401, not a 404 — exactly what a locally-built
+			// bare-name image hits on the containerd image store.
+			Expect(pullFailureLooksLocal("tg-antispam:latest", cerrdefs.ErrUnauthenticated)).To(BeTrue())
+			Expect(pullFailureLooksLocal("myorg/app:latest",
+				errors.New(`pull access denied for myorg/app, repository does not exist or may require 'docker login': denied: requested access to the resource is denied`))).To(BeTrue())
+			Expect(pullFailureLooksLocal("tg-antispam:latest",
+				errors.New(`errorDetail: insufficient_scope: authorization failed`))).To(BeTrue())
+		})
+		It(`still fails loudly on a 401 for a hostname-qualified reference`, func() {
+			// A real private-registry auth failure must surface, never be
+			// masked as a local build.
+			Expect(pullFailureLooksLocal("ghcr.io/foo/bar:latest", cerrdefs.ErrUnauthenticated)).To(BeFalse())
+			Expect(pullFailureLooksLocal("registry.local:5000/app",
+				errors.New(`pull access denied, repository does not exist or may require 'docker login'`))).To(BeFalse())
+		})
+	})
+
+	Describe(`pullErrorLooksUnauthorized`, func() {
+		It(`matches the cerrdefs unauthorized classification`, func() {
+			Expect(pullErrorLooksUnauthorized(cerrdefs.ErrUnauthenticated)).To(BeTrue())
+		})
+		It(`matches the human-readable Hub strings case-insensitively`, func() {
+			Expect(pullErrorLooksUnauthorized(errors.New("PULL ACCESS DENIED"))).To(BeTrue())
+			Expect(pullErrorLooksUnauthorized(errors.New("insufficient_scope: authorization failed"))).To(BeTrue())
+			Expect(pullErrorLooksUnauthorized(errors.New("repository does not exist or may require 'docker login'"))).To(BeTrue())
+			Expect(pullErrorLooksUnauthorized(errors.New("unauthorized: authentication required"))).To(BeTrue())
+		})
+		It(`does not match unrelated failures`, func() {
+			Expect(pullErrorLooksUnauthorized(errors.New("connection reset"))).To(BeFalse())
+			Expect(pullErrorLooksUnauthorized(cerrdefs.ErrNotFound)).To(BeFalse())
+		})
+	})
+
+	Describe(`PullImage in-stream errors`, func() {
+		// Docker reports manifest/layer pull failures as newline-delimited
+		// JSONMessages carrying an errorDetail, NOT as the immediate error
+		// from ImagePull. PullImage must decode the stream and surface those.
+		newDockerFor := func(srv *ghttp.Server) *cli.Client {
+			c, _ := cli.NewClientWithOpts(
+				cli.WithHost(srv.URL()),
+				cli.WithHTTPClient(srv.HTTPTestServer.Client()),
+				cli.WithVersion("1.54"),
+			)
+			return c
+		}
+
+		// localImageContainer builds a container whose registry equals the mock
+		// server, so the digest pre-check and the daemon pull both stay on the
+		// hermetic server. RepoDigests is populated so the pre-check has
+		// something to (fail to) match and PullImage falls through to the pull.
+		localImageContainer := func(host string) *Container {
+			ref := host + "/library/app"
+			c := MockContainer(WithImageName(ref + ":latest"))
+			c.imageInfo.RepoDigests = []string{ref + "@sha256:1819191d2b49b6b6f21d3179cfcae0228390728031eccee76b9e21e7e65490c5"}
+			return c
+		}
+
+		It(`surfaces an in-stream errorDetail as an error`, func() {
+			srv := ghttp.NewServer()
+			defer srv.Close()
+			host := strings.TrimPrefix(srv.URL(), "http://")
+			// Registry token-challenge probe and manifest HEAD/GET — answer so
+			// the digest pre-check resolves without matching, then falls through.
+			srv.RouteToHandler("GET", "/v2/", ghttp.RespondWith(http.StatusOK, ""))
+			srv.RouteToHandler("HEAD", regexp.MustCompile(`/manifests/`), ghttp.RespondWith(http.StatusNotFound, ""))
+			srv.RouteToHandler("GET", regexp.MustCompile(`/manifests/`), ghttp.RespondWith(http.StatusNotFound, ""))
+			// Daemon pull: HTTP 200 but the stream carries a failure.
+			srv.RouteToHandler("POST", "/v1.54/images/create", ghttp.RespondWith(
+				http.StatusOK,
+				`{"status":"Pulling from library/app"}`+"\n"+
+					`{"errorDetail":{"message":"manifest unknown: manifest unknown"},"error":"manifest unknown: manifest unknown"}`+"\n",
+			))
+
+			err := dockerClient{api: newDockerFor(srv)}.PullImage(context.Background(), localImageContainer(host))
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("manifest unknown")))
+		})
+	})
+
+	Describe(`IsContainerStale pull-failure handling`, func() {
+		newDockerFor := func(srv *ghttp.Server) *cli.Client {
+			c, _ := cli.NewClientWithOpts(
+				cli.WithHost(srv.URL()),
+				cli.WithHTTPClient(srv.HTTPTestServer.Client()),
+				cli.WithVersion("1.54"),
+			)
+			return c
+		}
+
+		// staleContainer returns a container with a RepoDigest set so
+		// ImageIsLocal() is false and IsContainerStale takes the pull path.
+		staleContainer := func(imageRef string) *Container {
+			c := MockContainer(WithImageName(imageRef))
+			c.containerInfo.Image = "sha256:current00000000000000000000000000000000000000000000000000000000"
+			c.imageInfo.RepoDigests = []string{strings.SplitN(imageRef, ":", 2)[0] + "@sha256:1819191d2b49b6b6f21d3179cfcae0228390728031eccee76b9e21e7e65490c5"}
+			return c
+		}
+
+		// accessDeniedPull routes the daemon pull to a Hub-style 401 delivered
+		// in-stream (the realistic shape: HTTP 200 + an errorDetail), then
+		// serves HasNewImage's image inspect so the fall-through can complete.
+		accessDeniedPull := func(srv *ghttp.Server, imageRef, newID string) {
+			srv.RouteToHandler("GET", "/v2/", ghttp.RespondWith(http.StatusOK, ""))
+			srv.RouteToHandler("HEAD", regexp.MustCompile(`/manifests/`), ghttp.RespondWith(http.StatusNotFound, ""))
+			srv.RouteToHandler("GET", regexp.MustCompile(`/manifests/`), ghttp.RespondWith(http.StatusNotFound, ""))
+			srv.RouteToHandler("POST", "/v1.54/images/create", ghttp.RespondWith(
+				http.StatusOK,
+				`{"errorDetail":{"message":"pull access denied for `+imageRef+`, repository does not exist or may require 'docker login': denied: requested access to the resource is denied"},"error":"pull access denied"}`+"\n",
+			))
+			srv.RouteToHandler("GET", regexp.MustCompile(`/v1.54/images/.+/json`),
+				ghttp.RespondWithJSONEncoded(http.StatusOK, image.InspectResponse{ID: newID, RepoTags: []string{imageRef}}))
+		}
+
+		It(`treats a bare-name 401 as locally built and falls through to HasNewImage`, func() {
+			srv := ghttp.NewServer()
+			defer srv.Close()
+			const newID = "sha256:new00000000000000000000000000000000000000000000000000000000000"
+			accessDeniedPull(srv, "tg-antispam", newID)
+
+			stale, latest, err := dockerClient{api: newDockerFor(srv)}.
+				IsContainerStale(staleContainer("tg-antispam:latest"), t.UpdateParams{})
+			// The 401 must NOT propagate: it falls through to HasNewImage,
+			// which finds a different image ID and reports stale.
+			Expect(err).NotTo(HaveOccurred())
+			Expect(stale).To(BeTrue())
+			Expect(string(latest)).To(Equal(newID))
+		})
+
+		It(`still returns the 401 error for a hostname-qualified reference`, func() {
+			srv := ghttp.NewServer()
+			defer srv.Close()
+			host := strings.TrimPrefix(srv.URL(), "http://")
+			imageRef := host + "/foo/app:latest"
+			accessDeniedPull(srv, host+"/foo/app", "sha256:irrelevant")
+
+			stale, _, err := dockerClient{api: newDockerFor(srv)}.
+				IsContainerStale(staleContainer(imageRef), t.UpdateParams{})
+			// Hostname-qualified: a real auth failure must surface loudly.
+			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(ContainSubstring("pull access denied")))
+			Expect(stale).To(BeFalse())
 		})
 	})
 })

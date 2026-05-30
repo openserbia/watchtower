@@ -80,7 +80,25 @@ var (
 	// restart, which is intentional: a restart represents an operator
 	// touch-point that should trigger one retry.
 	rejectedInitDigests = make(map[types.ImageID]rejectionReason)
+
+	selfStartFailMu sync.Mutex
+	// selfStartFailures tracks the last time we *notified* about a self-update
+	// start failure, keyed by container name + a short signature of the error.
+	// A wedged self-update re-logs the same start failure every poll (default
+	// 60s); promoting each repeat to an Error turns logrus's notification hook
+	// into a per-poll storm. We notify on the first occurrence (and on any
+	// genuinely different failure) and suppress identical repeats within
+	// selfStartFailCooldown, logging them at Debug instead. In-memory only —
+	// resets on restart, which is the right behavior: a restart is an operator
+	// touch-point that should surface the next failure loudly. Mirrors the
+	// knownUnmanaged + auditMu dedup pattern in check.go.
+	selfStartFailures = make(map[string]time.Time)
 )
+
+// selfStartFailCooldown is the window during which an identical self-update
+// start failure is suppressed (logged at Debug) after it has already notified
+// once. A var so tests can shrink it.
+var selfStartFailCooldown = 1 * time.Hour
 
 type pendingImage struct {
 	digest    types.ImageID
@@ -142,6 +160,49 @@ func ResetRejectedInitDigestsForTest() {
 	rejectedInitDigestsMu.Lock()
 	defer rejectedInitDigestsMu.Unlock()
 	rejectedInitDigests = make(map[types.ImageID]rejectionReason)
+}
+
+// shouldNotifySelfStartFailure reports whether a self-update start failure for
+// the given container name and error should be logged at Error (which the
+// logrus notification hook turns into a notification) or suppressed to Debug.
+// It returns true — notify — on the first sighting of a (name, error-signature)
+// pair and again once selfStartFailCooldown has elapsed, recording the
+// notification time when it does. A genuinely different failure has a different
+// signature and so always notifies. Identical repeats inside the cooldown
+// return false. Mirrors the knownUnmanaged dedup in check.go.
+func shouldNotifySelfStartFailure(containerName string, err error) bool {
+	key := containerName + "\x00" + selfStartFailSignature(err)
+	now := time.Now()
+
+	selfStartFailMu.Lock()
+	defer selfStartFailMu.Unlock()
+
+	if last, seen := selfStartFailures[key]; seen && now.Sub(last) < selfStartFailCooldown {
+		return false
+	}
+	selfStartFailures[key] = now
+	return true
+}
+
+// selfStartFailSignature reduces an error to a short, stable key so that
+// repeated identical failures dedup but a different failure mode still
+// notifies. The full error string already varies little poll-to-poll for the
+// same root cause (e.g. a fixed "address already in use" bind), so we key on
+// it directly; an empty error never occurs on this path but maps to a constant
+// for safety.
+func selfStartFailSignature(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+// ResetSelfStartFailuresForTest clears the in-memory self-update start-failure
+// dedup cache. Test-only helper, parallel to ResetAuditStateForTest.
+func ResetSelfStartFailuresForTest() {
+	selfStartFailMu.Lock()
+	defer selfStartFailMu.Unlock()
+	selfStartFailures = make(map[string]time.Time)
 }
 
 // resolveImageCooldown picks the effective cooldown for a container:
@@ -938,10 +999,21 @@ func restartStaleContainer(container types.Container, client container.Client, p
 	if !params.NoRestart {
 		newContainerID, err := client.StartContainer(container)
 		if err != nil {
-			log.WithError(err).WithFields(log.Fields{
+			entry := log.WithError(err).WithFields(log.Fields{
 				"container": originalName,
 				"image":     container.ImageName(),
-			}).Errorf("Failed to start container %s (image %s): %v", originalName, container.ImageName(), err)
+			})
+			// A self-update that keeps failing re-enters this branch every poll
+			// (default 60s) with the same error, and each Error becomes a
+			// notification via the logrus hook. Dedup the self path so only the
+			// first occurrence — and any genuinely different failure — notifies;
+			// identical repeats inside the cooldown drop to Debug. Non-self
+			// failures are unaffected and always log at Error.
+			if wasRunningSelf && !shouldNotifySelfStartFailure(originalName, err) {
+				entry.Debugf("Failed to start container %s (image %s) again; suppressing repeat notification: %v", originalName, container.ImageName(), err)
+				return err
+			}
+			entry.Errorf("Failed to start container %s (image %s): %v", originalName, container.ImageName(), err)
 			return err
 		}
 		if wasRunningSelf {

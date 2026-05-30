@@ -19,6 +19,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/versions"
 	sdkClient "github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/jsonmessage"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/openserbia/watchtower/pkg/metrics"
@@ -54,6 +55,15 @@ type Client interface {
 	// the error channel emits once and is closed when the stream terminates.
 	// Reconnection is the caller's responsibility.
 	WatchImageEvents(ctx context.Context) (<-chan t.ImageEvent, <-chan error)
+	// ProbeCapabilities checks, for each requested capability, whether the
+	// Docker API endpoint it depends on is reachable and permitted. Each probe
+	// is a side-effect-free request against a deliberately bogus target, so a
+	// permitting daemon answers with a logical error (not-found / bad-request /
+	// conflict), a socket proxy answers 403, and an unreachable daemon yields a
+	// transport error — the three signals encoded in ProbeResult.Status.
+	// Nothing is created, started, removed, or otherwise mutated. Results are
+	// returned in the same order as the requested ids.
+	ProbeCapabilities(ctx context.Context, ids []CapabilityID) []ProbeResult
 }
 
 // NewClient returns a new Client instance which can be used to interact with
@@ -673,6 +683,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 			err = client.api.NetworkDisconnect(ctx, k, createdContainer.ID, true)
 			if err != nil {
 				metrics.RegisterDockerAPIError("network_disconnect")
+				client.cleanupPartialCreate(ctx, createdContainer.ID, name)
 				return "", err
 			}
 		}
@@ -681,6 +692,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 			err = client.api.NetworkConnect(ctx, k, createdContainer.ID, v)
 			if err != nil {
 				metrics.RegisterDockerAPIError("network_connect")
+				client.cleanupPartialCreate(ctx, createdContainer.ID, name)
 				return "", err
 			}
 		}
@@ -691,7 +703,35 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 		return createdContainerID, nil
 	}
 
-	return createdContainerID, client.doStartContainer(ctx, c, createdContainer)
+	if err := client.doStartContainer(ctx, c, createdContainer); err != nil {
+		client.cleanupPartialCreate(ctx, createdContainer.ID, name)
+		return "", err
+	}
+
+	return createdContainerID, nil
+}
+
+// cleanupPartialCreate force-removes a container that ContainerCreate just
+// produced when a later step (network attach or start) failed, so the recreate
+// doesn't leave an orphan behind. The orphan matters most on a watchtower
+// self-update: it would occupy the /watchtower name and wedge every subsequent
+// poll with a name conflict on ContainerCreate. Strictly scoped to the ID this
+// StartContainer call created — never touches any other container. Best-effort:
+// a NotFound means the daemon already tore it down (the create may not have
+// fully materialized), and any other removal failure is logged at Debug because
+// the caller is already returning the original, more actionable error.
+func (client dockerClient) cleanupPartialCreate(ctx context.Context, createdID, name string) {
+	log.WithField("container", name).Debug("Recreate failed after create; removing the just-created container to avoid leaving an orphan")
+	if err := client.api.ContainerRemove(ctx, createdID, container.RemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
+		if cerrdefs.IsNotFound(err) {
+			return
+		}
+		metrics.RegisterDockerAPIError("remove")
+		log.WithError(err).WithFields(log.Fields{
+			"container": name,
+			"id":        t.ContainerID(createdID).ShortID(),
+		}).Debug("Failed to remove the partially-created container; it may need manual cleanup")
+	}
 }
 
 func (client dockerClient) doStartContainer(ctx context.Context, c t.Container, creation container.CreateResponse) error {
@@ -882,17 +922,59 @@ func classifyPullError(imageName string, err error) error {
 // pullFailureLooksLocal reports whether a PullImage error for the given
 // image reference should be treated as a locally-built image rather than a
 // real failure. It fires only when the image reference lacks a registry
-// hostname AND the daemon's error classifies as a not-found, which scopes
-// the silent-skip to the exact case the containerd image store creates for
-// `docker build -t app:latest .` on modern engines.
+// hostname (a bare name the daemon normalizes to docker.io/library/ or
+// docker.io/<user>/) AND the daemon's error is one a non-existent Hub repo
+// produces for such a name:
+//
+//   - a 404 not-found, which the classic docker-image-store path returns for
+//     `docker build -t app:latest .` on modern engines; and
+//   - a 401 unauthorized / "pull access denied" / "insufficient_scope" /
+//     "requires 'docker login'", which Docker Hub returns *instead* of a 404
+//     for a non-existent docker.io/library/<bare-name> repo — exactly what a
+//     locally-built bare-name image hits on the containerd image store.
+//
+// Hostname-qualified references (ghcr.io/foo/bar, registry:5000/x) never reach
+// the broadened branch, so typos and broken private-registry creds still fail
+// loudly instead of being silently masked. The unauthorized signal is matched
+// both via cerrdefs (when the daemon error survived as a typed error) and via a
+// case-insensitive substring check, because the A1 in-stream pull error arrives
+// as a jsonmessage error string that carries no cerrdefs classification.
 func pullFailureLooksLocal(imageRef string, pullErr error) bool {
 	if pullErr == nil {
 		return false
 	}
-	if !cerrdefs.IsNotFound(pullErr) {
+	if imageRefHasRegistryHost(imageRef) {
 		return false
 	}
-	return !imageRefHasRegistryHost(imageRef)
+	if cerrdefs.IsNotFound(pullErr) {
+		return true
+	}
+	return pullErrorLooksUnauthorized(pullErr)
+}
+
+// pullErrorLooksUnauthorized reports whether a pull error is a Docker Hub
+// authorization rejection — the response Hub returns for a non-existent
+// docker.io/library/<bare-name> repo (a 401, not a 404). Matches both the
+// typed cerrdefs classification and the human-readable strings the daemon and
+// in-stream JSONErrors carry, since the latter lose the cerrdefs class.
+func pullErrorLooksUnauthorized(pullErr error) bool {
+	if cerrdefs.IsUnauthorized(pullErr) {
+		return true
+	}
+	msg := strings.ToLower(pullErr.Error())
+	for _, marker := range []string{
+		"pull access denied",
+		"insufficient_scope",
+		// Matches both "requires 'docker login'" and the actual Hub wording
+		// "may require 'docker login'".
+		"docker login",
+		"unauthorized",
+	} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // imageRefHasRegistryHost reports whether an image reference includes an
@@ -1024,10 +1106,23 @@ func (client dockerClient) PullImage(ctx context.Context, container t.Container)
 	}
 
 	defer func() { _ = response.Close() }()
-	// the pull request will be aborted prematurely unless the response is read
-	if _, err = io.ReadAll(response); err != nil {
-		log.WithError(err).WithFields(fields).Error("Failed to read image pull response")
-		return err
+
+	// Docker delivers pull *progress* and pull *failures* over the same
+	// newline-delimited JSON stream that ImagePull returns — a 401/404 on the
+	// manifest, a layer that 500s mid-download, or a partial-content abort all
+	// arrive as a JSONMessage carrying an Error/errorDetail field, not as the
+	// immediate err from ImagePull above. The old code read the body with
+	// io.ReadAll purely to keep the daemon from aborting the pull, then
+	// returned nil regardless of content, silently swallowing those failures.
+	// DisplayJSONMessagesStream both drains the stream (so the pull completes)
+	// and returns a *jsonmessage.JSONError when the stream reported one.
+	if streamErr := jsonmessage.DisplayJSONMessagesStream(response, io.Discard, 0, false, nil); streamErr != nil {
+		log.WithError(streamErr).WithFields(fields).Debug("Image pull stream reported an error")
+		// Route through classifyPullError so cerrdefs classification still
+		// applies where the error survives as a typed daemon error; in-stream
+		// JSONErrors arrive as plain strings, which classifyPullError returns
+		// untouched for the substring-based safeguard to inspect.
+		return classifyPullError(imageName, streamErr)
 	}
 	return nil
 }

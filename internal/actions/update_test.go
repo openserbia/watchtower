@@ -3,6 +3,7 @@ package actions_test
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"time"
 
 	dockerContainer "github.com/docker/docker/api/types/container"
@@ -981,6 +982,100 @@ var _ = Describe("watchtower self-update name safety net", func() {
 		// not the original canonical — proves the check is looking at the
 		// fresh post-StartContainer state, not stale cached info.
 		Expect(client.TestData.RenameCalls[1].OldName).To(Equal("/VWhtejHFazORFJVQPmEDXTirLeVHxFAz"))
+	})
+})
+
+var _ = Describe("watchtower self-update start-failure notification dedup", func() {
+	var (
+		logBuf  *bytes.Buffer
+		origLev logrus.Level
+	)
+
+	// buildSelf returns the canonical watchtower container the self-update path
+	// operates on: labeled, no published ports (so the rename-and-respawn branch
+	// fires), stale by default.
+	buildSelf := func() types.Container {
+		return CreateMockContainerWithConfig(
+			"self-id",
+			"/watchtower",
+			"openserbia/watchtower:latest",
+			true, false, time.Now(),
+			&dockerContainer.Config{
+				Image: "openserbia/watchtower:latest",
+				Labels: map[string]string{
+					"com.centurylinklabs.watchtower": "true",
+				},
+				ExposedPorts: map[nat.Port]struct{}{},
+			},
+		)
+	}
+
+	BeforeEach(func() {
+		// The dedup cache is process-global; clear it so each spec starts from
+		// "never notified".
+		actions.ResetSelfStartFailuresForTest()
+		logBuf = &bytes.Buffer{}
+		logrus.SetOutput(logBuf)
+		origLev = logrus.GetLevel()
+		logrus.SetLevel(logrus.DebugLevel)
+	})
+
+	AfterEach(func() {
+		logrus.SetOutput(GinkgoWriter)
+		logrus.SetLevel(origLev)
+		actions.ResetSelfStartFailuresForTest()
+	})
+
+	countErrorStartFailures := func(out string) int {
+		count := 0
+		for _, line := range strings.Split(out, "\n") {
+			if strings.Contains(line, "level=error") && strings.Contains(line, "Failed to start container") {
+				count++
+			}
+		}
+		return count
+	}
+
+	It("notifies once for a repeated identical self-update start failure within the cooldown", func() {
+		startErr := errors.New("Error response from daemon: driver failed programming external connectivity")
+		newClient := func() MockClient {
+			return CreateMockClient(&TestData{
+				Containers:           []types.Container{buildSelf()},
+				StartContainerErrors: map[string]error{"/watchtower": startErr},
+			}, false, false)
+		}
+
+		// First poll: the failure is new, so it must log at error (→ notify).
+		_, err := actions.Update(newClient(), types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+		// Second poll, identical failure within the cooldown: suppressed to debug.
+		_, err = actions.Update(newClient(), types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		out := logBuf.String()
+		Expect(countErrorStartFailures(out)).To(Equal(1), "identical self-update start failure must notify only once within the cooldown")
+		// The suppressed repeat still leaves a debug breadcrumb.
+		Expect(out).To(MatchRegexp(`level=debug[^\n]*suppressing repeat notification`))
+	})
+
+	It("notifies again when the self-update start failure differs", func() {
+		firstErr := errors.New("Error response from daemon: address already in use")
+		secondErr := errors.New("Error response from daemon: no such image")
+
+		_, err := actions.Update(CreateMockClient(&TestData{
+			Containers:           []types.Container{buildSelf()},
+			StartContainerErrors: map[string]error{"/watchtower": firstErr},
+		}, false, false), types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = actions.Update(CreateMockClient(&TestData{
+			Containers:           []types.Container{buildSelf()},
+			StartContainerErrors: map[string]error{"/watchtower": secondErr},
+		}, false, false), types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Two distinct failure signatures → two error-level notifications.
+		Expect(countErrorStartFailures(logBuf.String())).To(Equal(2), "a genuinely different self-update start failure must still notify")
 	})
 })
 

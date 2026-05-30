@@ -209,6 +209,29 @@ func Run(c *cobra.Command, names []string) {
 		logNotifyExit(err)
 	}
 
+	if preflight, _ := c.PersistentFlags().GetBool("preflight"); preflight {
+		// List the watched containers so the required set can include the
+		// exec capability only when a watched container declares a lifecycle
+		// label. A list error here is non-fatal to preflight itself — fall
+		// back to probing without exec; the next list call surfaces it loudly.
+		var watched []t.Container
+		if containers, err := client.ListContainers(filter); err == nil {
+			watched = containers
+		}
+		watchEvents, _ := c.PersistentFlags().GetBool("watch-docker-events")
+		required := actions.RequiredCapabilities(actions.PreflightConfig{
+			MonitorOnly:       monitorOnly,
+			NoPull:            noPull,
+			Cleanup:           cleanup,
+			RerunInitDeps:     rerunInitDeps,
+			LifecycleHooks:    lifecycleHooks,
+			WatchDockerEvents: watchEvents,
+		}, watched)
+		if err := actions.Preflight(client, required); err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	if runOnce {
 		writeStartupMessage(c, time.Time{}, filterDesc)
 		runUpdatesWithNotifications(filter)

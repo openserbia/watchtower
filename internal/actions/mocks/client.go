@@ -62,6 +62,15 @@ type TestData struct {
 	// wrong-named container from GetContainer(newContainerID) to drive the
 	// post-recreate name-divergence safety net in restartStaleContainer.
 	ContainerByID map[t.ContainerID]t.Container
+	// StartContainerErrors lets tests force StartContainer to fail for a named
+	// container, exercising the self-update start-failure dedup/backoff path in
+	// restartStaleContainer.
+	StartContainerErrors map[string]error
+	// ProbeStatuses lets preflight tests force a specific ProbeStatus per
+	// capability. Capabilities absent from the map default to
+	// container.StatusPresent, so a test only has to enumerate the ones it
+	// wants Blocked or Unreachable.
+	ProbeStatuses map[container.CapabilityID]container.ProbeStatus
 }
 
 // RenameCall captures one invocation of MockClient.RenameContainer so tests
@@ -110,6 +119,9 @@ func (client MockClient) StopContainer(c t.Container, _ time.Duration) error {
 // containers can be addressed separately.
 func (client MockClient) StartContainer(c t.Container) (t.ContainerID, error) {
 	client.TestData.StartedContainers = append(client.TestData.StartedContainers, c)
+	if err, ok := client.TestData.StartContainerErrors[c.Name()]; ok {
+		return "", err
+	}
 	if len(client.TestData.NextStartContainerIDs) > 0 {
 		id := client.TestData.NextStartContainerIDs[0]
 		client.TestData.NextStartContainerIDs = client.TestData.NextStartContainerIDs[1:]
@@ -202,6 +214,22 @@ func (client MockClient) IsContainerStale(cont t.Container, _ t.UpdateParams) (b
 // WarnOnHeadPullFailed is always true for the mock client
 func (client MockClient) WarnOnHeadPullFailed(_ t.Container) bool {
 	return true
+}
+
+// ProbeCapabilities is a mock method. It returns one ProbeResult per requested
+// capability, defaulting to container.StatusPresent and overriding from
+// TestData.ProbeStatuses so preflight tests can drive Blocked/Unreachable per
+// capability. Results preserve the requested order.
+func (client MockClient) ProbeCapabilities(_ context.Context, ids []container.CapabilityID) []container.ProbeResult {
+	results := make([]container.ProbeResult, 0, len(ids))
+	for _, id := range ids {
+		status := container.StatusPresent
+		if s, ok := client.TestData.ProbeStatuses[id]; ok {
+			status = s
+		}
+		results = append(results, container.ProbeResult{ID: id, Status: status})
+	}
+	return results
 }
 
 // WatchImageEvents is a mock method. Returns a closed message channel and an

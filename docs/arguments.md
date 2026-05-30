@@ -293,6 +293,34 @@ Environment Variable: WATCHTOWER_AUDIT_UNMANAGED
              Default: false
 ```
 
+## Preflight Docker capability check
+Probe the Docker API capabilities Watchtower needs *before* scheduling any polls, and abort with an
+actionable error if a required endpoint is blocked (e.g. filtered out by a socket proxy) or unreachable —
+instead of failing mid-update after the old container is already gone. Useful when running behind a
+[socket proxy](required-capabilities.md): a too-tight allow-list is caught at startup rather than the
+first recreate.
+
+Each probe is a side-effect-free request against a deliberately bogus target — nothing is created, started,
+or removed. A permitting daemon answers with a logical error (not-found / bad-request / conflict) → *present*;
+a socket proxy answers 403 → *blocked*; an unreachable daemon yields a transport error → *unreachable*. The
+abort message names both the Docker endpoint and the socket-proxy variable for the first failing capability.
+
+The required set is derived from the active flags, so the probe never demands more than the run will use:
+image pull is skipped under `--no-pull`, the whole recreate write set under `--monitor-only`, image removal
+only with `--cleanup`, the init-wait only with `--rerun-init-deps`, and the container-exec capability only
+when a watched container declares a lifecycle label. The `/events` stream (`--watch-docker-events`) is treated
+as an optional accelerator: a missing `/events` only warns and falls back to scheduled polling.
+
+Opt-in: disabled by default. See [Required capabilities](required-capabilities.md) for the full catalog and a
+ready-to-paste socket-proxy environment block.
+
+```text
+            Argument: --preflight
+Environment Variable: WATCHTOWER_PREFLIGHT
+                Type: Boolean
+             Default: false
+```
+
 ## Insecure registries
 Skip TLS certificate verification for specific registry hosts. Opt-in per host — the default is strict
 verification (TLS 1.2+, system trust store). Accepts a comma-separated list of `host` or `host:port` entries

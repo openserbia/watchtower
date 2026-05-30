@@ -11,6 +11,54 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 ## [Unreleased]
 
 ### Fixed
+- **Pull-stream errors are no longer silently swallowed.** Docker delivers pull
+  *progress* and pull *failures* over the same newline-delimited JSON stream
+  that `ImagePull` returns: a 401/404 on the manifest, a layer that 500s
+  mid-download, or a partial-content abort all arrive as a `JSONMessage`
+  carrying an `Error`/`errorDetail` field, not as the immediate error from the
+  `ImagePull` call. `PullImage` previously drained that stream with
+  `io.ReadAll` purely to keep the daemon from aborting the pull, then returned
+  `nil` regardless of content — so a mid-stream failure was reported as a
+  successful pull, and the stale container was either recreated against a
+  half-pulled image or, with no new digest, looked "up to date" forever. The
+  stream is now drained through `jsonmessage.DisplayJSONMessagesStream`, which
+  both completes the pull and surfaces a `*jsonmessage.JSONError` when the
+  stream reported one; the error is routed through `classifyPullError` so the
+  existing `cerrdefs` classification and the bare-name local-build safeguard
+  still apply.
+- **Locally-built bare-name images whose registry returns 401 are now correctly
+  treated as local.** On the containerd image store, `docker build -t app:latest .`
+  produces an image with a `docker.io/library/app` RepoDigest, so a pull
+  attempt hits Docker Hub for a repository that does not exist. Hub answers a
+  non-existent `docker.io/library/<bare-name>` repo with a **401 unauthorized**
+  (`pull access denied` / `insufficient_scope` / "requires `docker login`"),
+  *not* a 404 — but `pullFailureLooksLocal` only recognized the 404 not-found
+  case, so the 401 fell through as a real auth failure and the locally-built
+  container churned a `pull access denied` error on every poll. The
+  local-build heuristic now also matches the unauthorized signal (via both the
+  `cerrdefs` classification and a case-insensitive substring check, since the
+  in-stream `JSONError` carries no `cerrdefs` class) for references that lack a
+  registry hostname. Hostname-qualified references (`ghcr.io/foo/bar`,
+  `registry:5000/x`) never reach the broadened branch, so typos and genuinely
+  broken private-registry credentials still fail loudly instead of being masked.
+- **Self-update no longer leaks a half-created container or storms
+  notifications on repeated failure.** Two distinct failure modes are
+  addressed: (1) When a recreate failed *after* `ContainerCreate` had already
+  produced the new container — a network attach error or a `start` failure —
+  the orphaned container was left behind. On a Watchtower self-update that
+  orphan occupies the `/watchtower` name and wedges every subsequent poll with
+  a name conflict on `ContainerCreate`. `StartContainer` now force-removes the
+  container it just created when a later step fails (best-effort, strictly
+  scoped to that one ID; a `NotFound` means the daemon already tore it down).
+  (2) A wedged self-update re-enters the failed-start branch every poll
+  (default 60s) with the same error, and each `Error` becomes a notification
+  via the logrus hook — turning a single broken self-update into a per-poll
+  notification storm. The self-update path now dedups identical
+  `(container, error-signature)` start failures: the first occurrence (and any
+  genuinely different failure) notifies, identical repeats inside a one-hour
+  cooldown drop to `Debug`. The cache is in-memory and resets on restart, so a
+  `docker restart watchtower` surfaces the next failure loudly. Non-self
+  failures are unaffected and always log at `Error`.
 - **Recreate no longer carries a stale `User` forward when the source image
   was garbage-collected (e.g. a distroless base-image switch).** Docker
   materializes an image's `USER` directive into the container's `Config.User`,
@@ -35,6 +83,28 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   `User` hard-fails `ContainerCreate`, so it is the one addressed here.
 
 ### Added
+- **`--preflight` flag (env `WATCHTOWER_PREFLIGHT`, default `false`) — a Docker
+  API capability check at startup.** Before scheduling any polls, Watchtower
+  probes each Docker endpoint it needs and aborts with an actionable error if a
+  required one is blocked (e.g. filtered out by a socket proxy) or unreachable,
+  instead of failing mid-update after the old container is already gone. Every
+  probe is side-effect-free — a request against a deliberately bogus target, so
+  nothing is created, started, or removed — and the three outcomes are
+  distinguished: a permitting daemon answers with a logical error
+  (not-found / bad-request / conflict) → **present**, a socket proxy answers
+  403 → **blocked**, an unreachable daemon yields a transport error →
+  **unreachable**. The required set is derived from the active flags so the
+  probe never demands more than the run will use: image pull is skipped under
+  `--no-pull`, the whole recreate write set under `--monitor-only`, image
+  removal only with `--cleanup`, the init-wait only with `--rerun-init-deps`,
+  and the exec capability only when a watched container actually declares a
+  lifecycle label. The error names both the Docker endpoint and the
+  socket-proxy variable for the first failing capability, so the fix is a
+  one-shot allow-list edit. The event stream (`--watch-docker-events`) is
+  treated as an optional accelerator: a missing `/events` only warns and falls
+  back to scheduled polling. Opt-in; off by default. See
+  [Required capabilities](required-capabilities.md) for the full catalog and a
+  ready-to-paste socket-proxy environment block.
 - **`--update-strategy` flag (env `WATCHTOWER_UPDATE_STRATEGY`) with a new
   blue-green zero-downtime strategy.** Replaces the single global
   `--rolling-restart` boolean with an extensible enum — `recreate` (default;
