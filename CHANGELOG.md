@@ -48,6 +48,19 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   binary can't execute on the build host, and the workflow's dedicated `test`
   job already gates publish.
 
+### Changed
+- **Dependency refresh.** Routine bump of Go module dependencies (direct and
+  indirect) via `go get -u ./...`, then tidy + re-vendor. Direct: `shoutrrr`
+  v0.14.3 → v0.15.1 (the notification backend; a minor bump, no API changes
+  needed in `pkg/notifications`), `docker/cli` v29.4.2 → v29.5.2,
+  `onsi/ginkgo/v2` v2.28.3 → v2.29.0, `onsi/gomega` v1.40.0 → v1.41.0,
+  `golang.org/x/text` v0.36.0 → v0.37.0. Notable indirect:
+  `go.opentelemetry.io/otel` (+ `metric`/`trace`/`otelhttp`) v1.43.0 → v1.44.0,
+  `prometheus/common` v0.67.5 → v0.68.0, `docker/docker-credential-helpers`
+  v0.9.6 → v0.9.7, `mattn/go-colorable` v0.1.14 → v0.1.15, and the
+  `golang.org/x/{net,sys,mod,term,tools}` set. Build, tests (`-race`), and lint
+  all pass; no source changes required.
+
 ## [1.14.3] - 2026-05-23
 
 ### Fixed
