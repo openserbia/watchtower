@@ -15,7 +15,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: [self-hosted, x64]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -23,7 +23,7 @@ jobs:
       - name: Build
         run: devbox run -- task build
   test:
-    runs-on: self-hosted
+    runs-on: [self-hosted, x64]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -39,7 +39,7 @@ jobs:
     needs:
       - build
       - test
-    runs-on: self-hosted
+    runs-on: [self-hosted, x64]
     permissions:
       contents: read
       packages: write

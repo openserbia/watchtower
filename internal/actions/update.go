@@ -558,7 +558,7 @@ func performBlueGreenUpdate(blue types.Container, scanView []types.Container, cl
 	greenID, err := client.StartContainer(blue)
 	blue.SetCreateName(canonical) // restore so later log lines use the real name
 	if err != nil {
-		log.WithError(err).WithFields(log.Fields{"container": bareName, "image": blue.ImageName()}).Errorf("blue-green: failed to start green container %s (image %s); old container left untouched", bareName, blue.ImageName())
+		log.WithError(err).WithFields(log.Fields{"container": bareName, "image": blue.ImageName()}).Errorf("blue-green: failed to start green container %s (image %s): %v; old container left untouched", bareName, blue.ImageName(), err)
 
 		return err
 	}
@@ -574,14 +574,14 @@ func performBlueGreenUpdate(blue types.Container, scanView []types.Container, cl
 	}
 
 	if err := client.StopContainer(blue, params.Timeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
-		log.WithError(err).WithFields(log.Fields{"container": bareName, "image": blue.ImageName(), "green": greenName}).Errorf("blue-green: failed to stop the old container %s (image %s); green is live but the old one remains and green keeps its temporary name", bareName, blue.ImageName())
+		log.WithError(err).WithFields(log.Fields{"container": bareName, "image": blue.ImageName(), "green": greenName}).Errorf("blue-green: failed to stop the old container %s (image %s): %v; green is live but the old one remains and green keeps its temporary name", bareName, blue.ImageName(), err)
 
 		return err
 	}
 
 	if greenSnap, gerr := client.GetContainer(greenID); gerr == nil {
 		if rerr := client.RenameContainer(greenSnap, bareName); rerr != nil {
-			log.WithError(rerr).WithFields(log.Fields{"from": greenName, "to": bareName, "image": blue.ImageName()}).Warnf("blue-green: failed to rename green to the canonical name %s (image %s); it keeps its temporary name until the next update", bareName, blue.ImageName())
+			log.WithError(rerr).WithFields(log.Fields{"from": greenName, "to": bareName, "image": blue.ImageName()}).Warnf("blue-green: failed to rename green to the canonical name %s (image %s): %v; it keeps its temporary name until the next update", bareName, blue.ImageName(), rerr)
 		}
 	}
 
@@ -637,10 +637,10 @@ func awaitBlueGreenHealthy(client container.Client, blue types.Container, greenI
 
 	fields := log.Fields{"container": bareName, "image": blue.ImageName(), "green": greenName}
 	maps.Copy(fields, healthFailureContext(client, greenID))
-	log.WithError(werr).WithFields(fields).Errorf("blue-green: green container %s (image %s) failed health check — removing green and keeping the old container", bareName, blue.ImageName())
+	log.WithError(werr).WithFields(fields).Errorf("blue-green: green container %s (image %s) failed health check (%v) — removing green and keeping the old container", bareName, blue.ImageName(), werr)
 	if greenSnap, gerr := client.GetContainer(greenID); gerr == nil {
 		if serr := client.StopContainer(greenSnap, params.Timeout); serr != nil && !errors.Is(serr, container.ErrContainerNotFound) {
-			log.WithError(serr).WithFields(log.Fields{"green": greenName, "image": blue.ImageName()}).Errorf("blue-green: failed to remove the failed green container %s (image %s)", greenName, blue.ImageName())
+			log.WithError(serr).WithFields(log.Fields{"green": greenName, "image": blue.ImageName()}).Errorf("blue-green: failed to remove the failed green container %s (image %s): %v", greenName, blue.ImageName(), serr)
 		}
 	}
 	recordRollback(blue.Name())
@@ -778,7 +778,7 @@ func stopStaleContainer(cont types.Container, client container.Client, params ty
 		log.WithError(err).WithFields(log.Fields{
 			"container": cont.Name(),
 			"image":     cont.ImageName(),
-		}).Errorf("Failed to stop container %s (image %s)", cont.Name(), cont.ImageName())
+		}).Errorf("Failed to stop container %s (image %s): %v", cont.Name(), cont.ImageName(), err)
 		return err
 	}
 	return nil
@@ -930,7 +930,7 @@ func restartStaleContainer(container types.Container, client container.Client, p
 			log.WithError(err).WithFields(log.Fields{
 				"container": originalName,
 				"image":     container.ImageName(),
-			}).Errorf("Failed to rename container %s (image %s)", originalName, container.ImageName())
+			}).Errorf("Failed to rename container %s (image %s): %v", originalName, container.ImageName(), err)
 			return nil
 		}
 	}
@@ -941,7 +941,7 @@ func restartStaleContainer(container types.Container, client container.Client, p
 			log.WithError(err).WithFields(log.Fields{
 				"container": originalName,
 				"image":     container.ImageName(),
-			}).Errorf("Failed to start container %s (image %s)", originalName, container.ImageName())
+			}).Errorf("Failed to start container %s (image %s): %v", originalName, container.ImageName(), err)
 			return err
 		}
 		if wasRunningSelf {
@@ -1104,7 +1104,7 @@ func gateOnHealthCheck(client container.Client, old types.Container, newID types
 	// the last failing probe. Without this an operator only sees "rolling
 	// back" and has to reproduce locally to find the cause.
 	maps.Copy(fields, healthFailureContext(client, newID))
-	log.WithError(err).WithFields(fields).Errorf("Health check failed after updating %s (image %s) — rolling back to the previous image", old.Name(), old.ImageName())
+	log.WithError(err).WithFields(fields).Errorf("Health check failed after updating %s (image %s): %v — rolling back to the previous image", old.Name(), old.ImageName(), err)
 	if rbErr := rollback(client, old, newID, params); rbErr != nil {
 		return fmt.Errorf("rollback failed for %s: %w (original health-check error: %w)", old.Name(), rbErr, err)
 	}

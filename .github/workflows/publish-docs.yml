@@ -17,7 +17,7 @@ env:
 jobs:
   publish-docs:
     name: Publish Docs
-    runs-on: self-hosted
+    runs-on: [self-hosted, x64]
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write

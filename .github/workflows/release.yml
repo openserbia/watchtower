@@ -13,7 +13,7 @@ env:
 jobs:
   lint:
     name: Lint
-    runs-on: self-hosted
+    runs-on: [self-hosted, x64]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -24,7 +24,7 @@ jobs:
 
   test:
     name: Test
-    runs-on: self-hosted
+    runs-on: [self-hosted, x64]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -35,7 +35,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: self-hosted
+    runs-on: [self-hosted, x64]
     needs:
       - test
       - lint
