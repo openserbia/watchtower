@@ -209,6 +209,15 @@ func Run(c *cobra.Command, names []string) {
 		logNotifyExit(err)
 	}
 
+	if updateStrategy == t.StrategyBlueGreen {
+		// Reconcile any "green" containers stranded by an interrupted cutover
+		// (a failed blue stop or a crash before the rename) before scheduling.
+		// Non-fatal: a sweep failure must not block startup.
+		if err := actions.CleanupOrphanBlueGreen(client, scope); err != nil {
+			log.WithError(err).Warn("blue-green: orphan-green cleanup sweep failed; continuing startup")
+		}
+	}
+
 	if preflight, _ := c.PersistentFlags().GetBool("preflight"); preflight {
 		// List the watched containers so the required set can include the
 		// exec capability only when a watched container declares a lifecycle

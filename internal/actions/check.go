@@ -6,7 +6,9 @@ package actions
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -18,6 +20,12 @@ import (
 	"github.com/openserbia/watchtower/pkg/sorter"
 	"github.com/openserbia/watchtower/pkg/types"
 )
+
+// blueGreenTempName matches the temporary name performBlueGreenUpdate gives a
+// green container: "<canonical>-wt-bluegreen-XXXXXXXX", where the suffix is the
+// first 8 characters of util.RandName() (the [A-Za-z] alphabet). The capture
+// group is the canonical bare name the green was cloned from.
+var blueGreenTempName = regexp.MustCompile(`^(.+)-wt-bluegreen-[A-Za-z]{8}$`)
 
 // CheckForSanity makes sure everything is sane before starting. When
 // requireNoLinks is set (the rolling-restart and blue-green strategies, which
@@ -133,6 +141,69 @@ func AuditUnmanaged(client container.Client, scope string, logWarnings bool) err
 	knownUnmanaged = make(map[string]struct{}, len(unmanagedNow))
 	for name := range unmanagedNow {
 		knownUnmanaged[name] = struct{}{}
+	}
+
+	return nil
+}
+
+// CleanupOrphanBlueGreen reconciles "green" containers left behind by an
+// interrupted blue-green cutover — either a blue stop that failed (green is
+// live under its temporary name while the old container still runs) or a
+// watchtower crash between stopping blue and renaming green. It runs once at
+// startup, before any update is scheduled, so it never races a live cutover:
+// the update lock serializes runs and none is in flight yet.
+//
+// For each "<name>-wt-bluegreen-XXXXXXXX" container:
+//   - if a container with the canonical "<name>" still exists, the green is a
+//     leftover from a cutover whose blue refused to stop — remove it. Blue keeps
+//     serving and the next eligible poll retries the cutover cleanly.
+//   - if no canonical sibling exists, the green IS the live service that never
+//     got renamed — promote it by renaming to the canonical name.
+//
+// Failures are logged and skipped rather than returned, so one stuck container
+// can't block startup; the function only returns an error if the initial list
+// fails.
+func CleanupOrphanBlueGreen(client container.Client, scope string) error {
+	filter := filters.NoFilter
+	if scope != "" {
+		filter = filters.FilterByScope(scope, filter)
+	}
+	containers, err := client.ListContainers(filter)
+	if err != nil {
+		return err
+	}
+
+	present := make(map[string]struct{}, len(containers))
+	for _, c := range containers {
+		present[strings.TrimPrefix(c.Name(), "/")] = struct{}{}
+	}
+
+	for _, c := range containers {
+		bare := strings.TrimPrefix(c.Name(), "/")
+		match := blueGreenTempName.FindStringSubmatch(bare)
+		if match == nil {
+			continue
+		}
+		canonical := match[1]
+		clog := log.WithFields(log.Fields{"green": bare, "canonical": canonical})
+
+		if _, ok := present[canonical]; ok {
+			clog.Info("blue-green: removing orphan green container left by an interrupted cutover; the canonical container is still present")
+			if err := client.StopContainer(c, stopTimeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
+				clog.WithError(err).Warn("blue-green: failed to remove orphan green container; it will be retried on the next startup")
+			}
+			continue
+		}
+
+		clog.Info("blue-green: promoting orphan green to its canonical name; an earlier cutover stopped the old container but did not finish the rename")
+		if err := client.RenameContainer(c, canonical); err != nil {
+			clog.WithError(err).Warn("blue-green: failed to rename orphan green to its canonical name; it keeps the temporary name until the next update")
+			continue
+		}
+		// Treat the promoted name as present so a second leftover green for the
+		// same canonical name (rare: two interrupted cutovers) takes the remove
+		// branch instead of colliding on another rename.
+		present[canonical] = struct{}{}
 	}
 
 	return nil

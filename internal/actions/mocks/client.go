@@ -66,6 +66,13 @@ type TestData struct {
 	// container, exercising the self-update start-failure dedup/backoff path in
 	// restartStaleContainer.
 	StartContainerErrors map[string]error
+	// StopContainerErrors lets tests force StopContainer to fail for a named
+	// container, exercising the blue-green stop-failure backoff and the
+	// orphan-green cleanup sweep.
+	StopContainerErrors map[string]error
+	// StoppedContainers records every StopContainer invocation in order — used
+	// to assert that the orphan-green cleanup sweep removed the leftover green.
+	StoppedContainers []t.Container
 	// ProbeStatuses lets preflight tests force a specific ProbeStatus per
 	// capability. Capabilities absent from the map default to
 	// container.StatusPresent, so a test only has to enumerate the ones it
@@ -104,8 +111,12 @@ func (client MockClient) ListContainers(_ t.Filter) ([]t.Container, error) {
 
 // StopContainer is a mock method
 func (client MockClient) StopContainer(c t.Container, _ time.Duration) error {
+	client.TestData.StoppedContainers = append(client.TestData.StoppedContainers, c)
 	if client.TestData.VanishedContainers[c.Name()] {
 		return container.ErrContainerNotFound
+	}
+	if err, ok := client.TestData.StopContainerErrors[c.Name()]; ok {
+		return err
 	}
 	if c.Name() == client.TestData.NameOfContainerToKeep {
 		return errors.New("tried to stop the instance we want to keep")

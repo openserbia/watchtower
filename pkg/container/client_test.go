@@ -115,6 +115,61 @@ var _ = Describe("the client", func() {
 			Expect(results[0].Status).To(Equal(StatusBlocked))
 		})
 	})
+	Describe("ProbeCapabilities container_create classification", func() {
+		// Regression: the probe must pass a non-nil *container.Config. The SDK
+		// writes config.MacAddress unconditionally on API >= 1.44, so a nil
+		// config is a client-side nil-pointer panic before any request — which
+		// crash-looped a production container under --preflight.
+		It("does not panic and treats a daemon 404 (no such image) as Present", func() {
+			mockServer.AppendHandlers(ghttp.CombineHandlers(
+				ghttp.VerifyRequest("POST", HaveSuffix("/containers/create")),
+				ghttp.RespondWithJSONEncoded(http.StatusNotFound, struct{ Message string }{Message: "no such image: probe"}),
+			))
+			c := dockerClient{api: docker}
+			var results []ProbeResult
+			Expect(func() {
+				results = c.ProbeCapabilities(context.Background(), []CapabilityID{CapContainerCreate})
+			}).NotTo(Panic())
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].ID).To(Equal(CapContainerCreate))
+			Expect(results[0].Status).To(Equal(StatusPresent))
+		})
+		It("treats a proxy 403 as Blocked", func() {
+			mockServer.AppendHandlers(ghttp.CombineHandlers(
+				ghttp.VerifyRequest("POST", HaveSuffix("/containers/create")),
+				ghttp.RespondWithJSONEncoded(http.StatusForbidden, struct{ Message string }{Message: "forbidden"}),
+			))
+			c := dockerClient{api: docker}
+			results := c.ProbeCapabilities(context.Background(), []CapabilityID{CapContainerCreate})
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Status).To(Equal(StatusBlocked))
+		})
+	})
+	Describe("ProbeCapabilities over every capability", func() {
+		// Regression guard for the nil-config SIGSEGV: exercise the REAL probe
+		// for every capability (not just via the mock Client) so a probe that
+		// hands the SDK a nil pointer it dereferences client-side is caught here
+		// instead of crash-looping in production under --preflight.
+		It("never panics, regardless of what the daemon returns", func() {
+			mockServer.SetAllowUnhandledRequests(true)
+			mockServer.SetUnhandledRequestStatusCode(http.StatusNotFound)
+
+			ids := make([]CapabilityID, 0, len(AllCapabilities()))
+			for _, capb := range AllCapabilities() {
+				ids = append(ids, capb.ID)
+			}
+
+			c := dockerClient{api: docker}
+			var results []ProbeResult
+			Expect(func() {
+				results = c.ProbeCapabilities(context.Background(), ids)
+			}).NotTo(Panic())
+			Expect(results).To(HaveLen(len(ids)))
+			for _, r := range results {
+				Expect(r.Status).NotTo(BeEmpty())
+			}
+		})
+	})
 	When("removing a running container", func() {
 		When("the container still exist after stopping", func() {
 			It("should attempt to remove the container", func() {

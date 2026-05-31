@@ -601,6 +601,17 @@ func partitionByStrategy(containersToUpdate []types.Container, params types.Upda
 // canonical name. On a failed health check it removes green and leaves blue serving.
 // The caller guarantees the container has no published host ports and is not self.
 func performBlueGreenUpdate(blue types.Container, scanView []types.Container, client container.Client, params types.UpdateParams) error {
+	if params.NoRestart {
+		// --no-restart means "update images but never start containers". A
+		// blue-green cutover exists only to start green, so there is nothing to
+		// do. Mirrors the !params.NoRestart gate in restartStaleContainer; the
+		// main loop already filters these out, so this is a defensive guard that
+		// keeps the two strategies consistent.
+		log.WithField("container", blue.Name()).Debug("blue-green: skipping cutover because --no-restart is set")
+
+		return nil
+	}
+
 	if params.LifecycleHooks {
 		if err := runBlueGreenPreUpdate(client, blue); err != nil {
 			return err
@@ -635,7 +646,14 @@ func performBlueGreenUpdate(blue types.Container, scanView []types.Container, cl
 	}
 
 	if err := client.StopContainer(blue, params.Timeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
-		log.WithError(err).WithFields(log.Fields{"container": bareName, "image": blue.ImageName(), "green": greenName}).Errorf("blue-green: failed to stop the old container %s (image %s): %v; green is live but the old one remains and green keeps its temporary name", bareName, blue.ImageName(), err)
+		// Green is live and healthy but blue refuses to stop. Without arming the
+		// cooldown here the next poll re-runs the entire cutover — starting yet
+		// another green — and orphan greens pile up. Back this container off like
+		// a failed rollback so the poll loop skips it for rollbackCooldown; the
+		// startup CleanupOrphanBlueGreen sweep reconciles the leftover green.
+		recordRollback(blue.Name())
+		metrics.RegisterRollback()
+		log.WithError(err).WithFields(log.Fields{"container": bareName, "image": blue.ImageName(), "green": greenName}).Errorf("blue-green: failed to stop the old container %s (image %s): %v; green is live but the old one remains and green keeps its temporary name — backing off for %s", bareName, blue.ImageName(), err, rollbackCooldown)
 
 		return err
 	}

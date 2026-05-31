@@ -1,6 +1,7 @@
 package actions_test
 
 import (
+	"errors"
 	"time"
 
 	dockerContainer "github.com/docker/docker/api/types/container"
@@ -232,6 +233,86 @@ var _ = Describe("the blue-green update strategy", func() {
 			Expect(client.TestData.RenameCalls).To(HaveLen(1))
 			Expect(client.TestData.RenameCalls[0].NewName).NotTo(Equal("watchtower"))
 			Expect(report.Failed()).To(BeEmpty())
+		})
+	})
+
+	When("green is healthy but the old container refuses to stop", func() {
+		It("arms the rollback cooldown so the next poll does not re-run the cutover", func() {
+			blue := buildBlueGreenContainer("blue-stopfail-id", "web-stopfail", nil)
+			data := &TestData{
+				Containers:            []types.Container{blue},
+				NextStartContainerIDs: []types.ContainerID{greenID},
+				HealthStatusByID:      map[types.ContainerID]string{greenID: dockerContainer.Healthy},
+				StopContainerErrors:   map[string]error{"web-stopfail": errors.New("daemon refused to stop the old container")},
+			}
+			client := CreateMockClient(data, false, false)
+
+			// First poll: green comes up healthy, blue fails to stop -> cooldown armed.
+			_, err := actions.Update(client, blueGreenParams)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.StartedContainers).To(HaveLen(1))
+
+			// Second poll immediately after: the container is on cooldown, so no
+			// second green is started — no thrash, no orphan accumulation.
+			_, err = actions.Update(client, blueGreenParams)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.StartedContainers).To(HaveLen(1))
+		})
+	})
+
+	When("--no-restart is set", func() {
+		It("never starts a green container", func() {
+			blue := buildBlueGreenContainer("blue-norestart-id", "web-norestart", nil)
+			data := &TestData{
+				Containers:            []types.Container{blue},
+				NextStartContainerIDs: []types.ContainerID{greenID},
+				HealthStatusByID:      map[types.ContainerID]string{greenID: dockerContainer.Healthy},
+			}
+			client := CreateMockClient(data, false, false)
+
+			_, err := actions.Update(client, types.UpdateParams{Strategy: types.StrategyBlueGreen, NoRestart: true})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.StartedContainers).To(BeEmpty())
+			Expect(client.TestData.RenameCalls).To(BeEmpty())
+		})
+	})
+
+	Describe("CleanupOrphanBlueGreen", func() {
+		It("removes an orphan green when its canonical container still exists", func() {
+			canonical := buildBlueGreenContainer("blue-id", "web", nil)
+			orphan := buildBlueGreenContainer("green-id", "web-wt-bluegreen-AbCdEfGh", nil)
+			data := &TestData{Containers: []types.Container{canonical, orphan}}
+			client := CreateMockClient(data, false, false)
+
+			Expect(actions.CleanupOrphanBlueGreen(client, "")).To(Succeed())
+
+			// Green is removed; the canonical container (blue) is left serving.
+			Expect(client.TestData.StoppedContainers).To(HaveLen(1))
+			Expect(client.TestData.StoppedContainers[0].Name()).To(Equal("web-wt-bluegreen-AbCdEfGh"))
+			Expect(client.TestData.RenameCalls).To(BeEmpty())
+		})
+
+		It("promotes an orphan green to the canonical name when no canonical container exists", func() {
+			orphan := buildBlueGreenContainer("green-id", "web-wt-bluegreen-AbCdEfGh", nil)
+			data := &TestData{Containers: []types.Container{orphan}}
+			client := CreateMockClient(data, false, false)
+
+			Expect(actions.CleanupOrphanBlueGreen(client, "")).To(Succeed())
+
+			Expect(client.TestData.StoppedContainers).To(BeEmpty())
+			Expect(client.TestData.RenameCalls).To(HaveLen(1))
+			Expect(client.TestData.RenameCalls[0].NewName).To(Equal("web"))
+		})
+
+		It("ignores containers that are not blue-green temporaries", func() {
+			normal := buildBlueGreenContainer("plain-id", "web", nil)
+			data := &TestData{Containers: []types.Container{normal}}
+			client := CreateMockClient(data, false, false)
+
+			Expect(actions.CleanupOrphanBlueGreen(client, "")).To(Succeed())
+
+			Expect(client.TestData.StoppedContainers).To(BeEmpty())
+			Expect(client.TestData.RenameCalls).To(BeEmpty())
 		})
 	})
 })

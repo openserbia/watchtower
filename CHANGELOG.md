@@ -59,6 +59,23 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   cooldown drop to `Debug`. The cache is in-memory and resets on restart, so a
   `docker restart watchtower` surfaces the next failure loudly. Non-self
   failures are unaffected and always log at `Error`.
+- **`--update-strategy=blue-green` hardening — three cutover edge cases closed.**
+  (1) When green came up healthy but the old "blue" container *refused to stop*,
+  the cutover aborted without arming any cooldown, so the next poll re-ran the
+  whole cutover — starting yet another green and accumulating orphaned
+  `-wt-bluegreen-*` containers. The blue-stop-failure path now arms the same
+  rollback cooldown the failed-health path uses, so the poll loop backs the
+  container off for an hour instead of thrashing. (2) A green container could be
+  stranded under its temporary `<name>-wt-bluegreen-XXXXXXXX` name by a failed
+  blue stop or a Watchtower crash between stopping blue and renaming green. A new
+  startup sweep, `CleanupOrphanBlueGreen` (gated on the blue-green strategy and
+  run before any poll, so it never races a live cutover), reconciles them:
+  it removes the orphan when the canonical container still exists (blue keeps
+  serving), or promotes it by renaming to the canonical name when blue is gone
+  (the green *is* the live service). (3) `params.NoRestart` (`--no-restart`) is
+  now honored by the blue-green path with an explicit guard, matching the
+  long-standing gate in the recreate path — the main loop already filters these
+  out, so it is a defensive consistency fix.
 - **Recreate no longer carries a stale `User` forward when the source image
   was garbage-collected (e.g. a distroless base-image switch).** Docker
   materializes an image's `USER` directive into the container's `Config.User`,

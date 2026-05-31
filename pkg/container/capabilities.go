@@ -370,9 +370,13 @@ func (client dockerClient) probe(ctx context.Context, id CapabilityID) error {
 	case CapContainerRemove:
 		return client.api.ContainerRemove(ctx, bogus, container.RemoveOptions{})
 	case CapContainerCreate:
-		// A nil config is an invalid spec the daemon rejects with 400 before
-		// creating anything.
-		_, err := client.api.ContainerCreate(ctx, nil, nil, nil, nil, bogus)
+		// The config MUST be non-nil: the SDK unconditionally writes
+		// config.MacAddress = "" on API >= 1.44 (we pin 1.54), so a nil config
+		// panics with a client-side nil-pointer dereference before any request
+		// is sent. Reference the bogus (nonexistent) image so a permitting
+		// daemon rejects the create with 404 "no such image" before anything is
+		// created; a filtering proxy still answers 403.
+		_, err := client.api.ContainerCreate(ctx, &container.Config{Image: bogus}, nil, nil, nil, bogus)
 		return err
 	case CapContainerStart:
 		return client.api.ContainerStart(ctx, bogus, container.StartOptions{})
