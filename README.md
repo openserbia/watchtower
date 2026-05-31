@@ -89,9 +89,26 @@ Full flag reference, notification setup, lifecycle hooks, HTTP API, and metrics 
 # Binary checksums
 sha256sum -c watchtower_<version>_checksums.txt --ignore-missing
 
-# Image provenance
-docker inspect openserbia/watchtower:latest \
-    --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}'
+# Verify the checksums file's keyless cosign signature (Sigstore)
+cosign verify-blob \
+    --certificate watchtower_<version>_checksums.txt.pem \
+    --signature watchtower_<version>_checksums.txt.sig \
+    --certificate-identity-regexp '^https://github.com/openserbia/watchtower/' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    watchtower_<version>_checksums.txt
+
+# Verify a published image's keyless cosign signature
+cosign verify ghcr.io/openserbia/watchtower:latest \
+    --certificate-identity-regexp '^https://github.com/openserbia/watchtower/' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+# Inspect the SLSA build provenance attached to the image
+docker buildx imagetools inspect ghcr.io/openserbia/watchtower:latest \
+    --format '{{ json .Provenance }}'
+
+# Inspect the CycloneDX SBOM attached to the image
+docker buildx imagetools inspect ghcr.io/openserbia/watchtower:latest \
+    --format '{{ json .SBOM }}'
 ```
 
 ## Security

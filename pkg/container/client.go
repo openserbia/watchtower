@@ -672,7 +672,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 
 	log.Infof("Creating %s", name)
 
-	createdContainer, err := client.api.ContainerCreate(ctx, config, hostConfig, simpleNetworkConfig, nil, name)
+	createdContainer, err := client.createWithConflictRecovery(ctx, c, config, hostConfig, simpleNetworkConfig, name)
 	if err != nil {
 		metrics.RegisterDockerAPIError("create")
 		return "", err
@@ -732,6 +732,85 @@ func (client dockerClient) cleanupPartialCreate(ctx context.Context, createdID, 
 			"id":        t.ContainerID(createdID).ShortID(),
 		}).Debug("Failed to remove the partially-created container; it may need manual cleanup")
 	}
+}
+
+// createWithConflictRecovery wraps ContainerCreate with a one-shot recovery for
+// the watchtower self-update name conflict. On a plain success, or any error
+// that isn't a recoverable self-update conflict, it behaves exactly like a bare
+// ContainerCreate. Only when a watchtower self-update create fails with a name
+// conflict does it try to clear a stale watchtower container still holding the
+// name (see clearConflictingWatchtower) and retry the create once. The
+// docker_api_errors counter is left to the caller so a recovered create isn't
+// double-counted.
+func (client dockerClient) createWithConflictRecovery(ctx context.Context, c t.Container, config *container.Config, hostConfig *container.HostConfig, networkConfig *network.NetworkingConfig, name string) (container.CreateResponse, error) {
+	created, err := client.api.ContainerCreate(ctx, config, hostConfig, networkConfig, nil, name)
+	if err == nil {
+		return created, nil
+	}
+	if cerrdefs.IsConflict(err) && c.IsWatchtower() && client.clearConflictingWatchtower(ctx, name, c.ID()) {
+		// A stale watchtower container from a previous interrupted self-update
+		// still held the canonical name; clearConflictingWatchtower removed it.
+		// Retry once so the self-update lands instead of wedging every poll with
+		// the same conflict.
+		return client.api.ContainerCreate(ctx, config, hostConfig, networkConfig, nil, name)
+	}
+	return created, err
+}
+
+// clearConflictingWatchtower resolves the ContainerCreate name conflict a
+// watchtower self-update hits when a stale watchtower container from a previous
+// interrupted cycle still holds the canonical name. Without recovery the
+// "/watchtower name is already in use" conflict re-fires every poll and the
+// self-update never lands — the orphan accumulation that CheckForMultipleWatchtowerInstances
+// only cleans up at the next process startup. It inspects whoever currently
+// holds name and force-removes it ONLY when the holder is a different
+// watchtower-labeled container than the one being recreated, then reports
+// whether the caller should retry the create.
+//
+// Deliberately narrow. The caller already gates on c.IsWatchtower(), so this
+// never fires for an ordinary container recreate, and the blocker must itself
+// carry the watchtower label — so an operator's container, or a Compose
+// recreate that beat us to the name, is left untouched and surfaces as the
+// original conflict to retry on the next poll. selfID guards against removing
+// the very container we are recreating from. Best-effort throughout: any
+// inspect/remove failure returns false and the original conflict stands.
+func (client dockerClient) clearConflictingWatchtower(ctx context.Context, name string, selfID t.ContainerID) bool {
+	inspected, err := client.api.ContainerInspect(ctx, strings.TrimPrefix(name, "/"))
+	if err != nil {
+		// NotFound means the blocker vanished between the failed create and
+		// this inspect — the name is free now, so a retry is still worthwhile.
+		return cerrdefs.IsNotFound(err)
+	}
+	if inspected.ContainerJSONBase == nil || inspected.Config == nil {
+		return false
+	}
+	if !ContainsWatchtowerLabel(inspected.Config.Labels) {
+		// Someone else owns the name (an operator container, a Compose
+		// recreate). Never force-remove a container we don't manage.
+		return false
+	}
+	blockerID := t.ContainerID(inspected.ID)
+	if blockerID == selfID {
+		// The holder is the container we're recreating from; removing it would
+		// be self-destructive and signals a logic error upstream. Leave the
+		// conflict to surface rather than tear down the running self.
+		return false
+	}
+	log.WithFields(log.Fields{
+		"name":    name,
+		"blocker": blockerID.ShortID(),
+	}).Warn("Recreate name conflict: a stale watchtower container still holds the name; force-removing it and retrying the create")
+	if err := client.api.ContainerRemove(ctx, inspected.ID, container.RemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
+		if cerrdefs.IsNotFound(err) {
+			// Already gone (a concurrent cleanup or the daemon tore it down).
+			// The name is free; a retry is warranted.
+			return true
+		}
+		metrics.RegisterDockerAPIError("remove")
+		log.WithError(err).WithField("blocker", blockerID.ShortID()).Debug("Failed to remove the conflicting watchtower container; the original create conflict will stand")
+		return false
+	}
+	return true
 }
 
 func (client dockerClient) doStartContainer(ctx context.Context, c t.Container, creation container.CreateResponse) error {

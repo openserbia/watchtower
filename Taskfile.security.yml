@@ -59,6 +59,17 @@ tasks:
         --output {{.REPORT_DIR}}/trivy-config.sarif
         .
 
+  govulncheck:
+    desc: Scan Go code + dependencies against the Go vulnerability database (call-graph aware), minus a tracked allowlist
+    cmds:
+      - mkdir -p {{.REPORT_DIR}}
+      # Fails on any reachable vulnerability that is NOT in the allowlist in the
+      # wrapper (govulncheck has no native ignore file); re-alerts when a new vuln
+      # appears, an allowlisted one gains a fix, or an allowlisted one goes stale.
+      - python3 scripts/govulncheck-allowlist.py ./...
+      # Best-effort SARIF for upload alongside the trivy/snyk reports (records all findings).
+      - govulncheck -format sarif ./... > {{.REPORT_DIR}}/govulncheck.sarif || true
+
   snyk:auth:
     desc: Verify snyk is authenticated (via SNYK_TOKEN env or stored CLI credentials)
     cmds:
@@ -90,10 +101,11 @@ tasks:
       - task: snyk:code
 
   all:
-    desc: Run every trivy + snyk scan
+    desc: Run every trivy + govulncheck + snyk scan
     cmds:
       - task: fs
       - task: config
+      - task: govulncheck
       - task: snyk:all
 
   clean:

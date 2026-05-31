@@ -11,6 +11,21 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 ## [Unreleased]
 
 ### Fixed
+- **Self-update recovers from a `"/watchtower" name is already in use`
+  conflict on recreate.** When a stale watchtower container from a previous
+  interrupted self-update cycle still holds the canonical name, the recreate's
+  `ContainerCreate` fails with a name conflict and — because the old self that
+  would clean it up is already gone — the conflict re-fires every poll, wedging
+  the self-update until the next process restart (when
+  `CheckForMultipleWatchtowerInstances` finally reconciles it). `StartContainer`
+  now detects this case mid-recreate: on a `Conflict` from `ContainerCreate`
+  for a watchtower self-update, it inspects whoever holds the name and, *only if
+  that holder is a different watchtower-labeled container*, force-removes it and
+  retries the create once. The recovery is deliberately narrow — an operator's
+  container or a Compose recreate that races the name is never touched (it
+  surfaces as the original conflict to retry next poll), and the container being
+  recreated from is never removed. Complements the existing post-create orphan
+  cleanup and the startup duplicate-instance reconciliation.
 - **Pull-stream errors are no longer silently swallowed.** Docker delivers pull
   *progress* and pull *failures* over the same newline-delimited JSON stream
   that `ImagePull` returns: a 401/404 on the manifest, a layer that 500s
@@ -204,6 +219,29 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
   `fsnotify/fsnotify`. `testify` (and `objx`) are gone now that the few
   `assert`/`require` test files and the `FilterableContainer` mock use Gomega
   and a hand-written stub, matching the project's Ginkgo/Gomega convention.
+- **Runtime image rebased from `scratch` onto digest-pinned
+  `gcr.io/distroless/static-debian13`.** The published images now use Google's
+  distroless static base (pinned by its multi-arch manifest-list digest for
+  reproducibility and Scorecard) instead of `scratch` with a hand-rolled Alpine
+  cert stage. distroless bundles `ca-certificates` and `tzdata`, so the manual
+  cert/tzdata copying is gone; the binary still runs as root (the default,
+  non-`:nonroot` tag) because Watchtower needs uid 0 for Docker socket access.
+  **`linux/386` and `linux/arm/v6` are dropped from the published container
+  image** — distroless is not built for those two platforms — but the release
+  still produces binary `tar.gz` archives for them, so non-image consumers on
+  32-bit x86 / ARMv6 are unaffected. The exec-form `HEALTHCHECK` runs the
+  binary directly and needs no shell.
+- **Releases are now cryptographically signed and carry build provenance.**
+  GoReleaser signs both the published container images and `checksums.txt` with
+  **keyless cosign** (GitHub Actions OIDC → Sigstore, no long-lived keys), and the
+  multi-arch image index ships **SLSA build provenance** and a **CycloneDX SBOM**
+  (buildx `--provenance` / `--sbom`).
+  Verify with `cosign verify` / `cosign verify-blob` and `docker buildx imagetools
+  inspect` — see the README "Verifying a release" section. Previously releases
+  offered only SHA256 checksums (integrity, not authenticity). The self-contained
+  build images also take the version via a `VERSION` build-arg instead of an
+  in-container `git describe`, so the dev image builds with no `git`/toolchain
+  packages.
 
 ## [1.14.3] - 2026-05-23
 

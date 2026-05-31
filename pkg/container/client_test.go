@@ -542,6 +542,107 @@ var _ = Describe("the client", func() {
 				Expect(mockServer.ReceivedRequests()).To(HaveLen(3))
 			})
 		})
+
+		// selfRecreate builds the watchtower container being recreated during a
+		// self-update: watchtower-labeled, host-networked (so StartContainer
+		// skips the network attach loop), and Exited so the create returns right
+		// after ContainerCreate without a ContainerStart — keeping the handler
+		// list focused on the name-conflict recovery path.
+		selfRecreate := func() *Container {
+			ctr := MockContainer(
+				WithImageName("ghcr.io/openserbia/watchtower:latest-dev"),
+				WithLabels(map[string]string{"com.centurylinklabs.watchtower": "true"}),
+				WithContainerState(container.State{Running: false}),
+			)
+			ctr.containerInfo.ID = "new-self-id"
+			ctr.containerInfo.Name = "/watchtower"
+			ctr.containerInfo.HostConfig.NetworkMode = "host"
+			ctr.containerInfo.NetworkSettings = &container.NetworkSettings{
+				Networks: map[string]*network.EndpointSettings{},
+			}
+			return ctr
+		}
+
+		When(`ContainerCreate conflicts with a stale watchtower container holding the name`, func() {
+			It(`force-removes the stale blocker and retries the create so the self-update lands`, func() {
+				removed := false
+				blocker := container.InspectResponse{
+					ContainerJSONBase: &container.ContainerJSONBase{
+						ID:   "stale-orphan-id",
+						Name: "/watchtower",
+					},
+					Config: &container.Config{
+						Labels: map[string]string{"com.centurylinklabs.watchtower": "true"},
+					},
+				}
+
+				mockServer.AppendHandlers(
+					// First create fails: the canonical name is already taken.
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("POST", HaveSuffix("/containers/create")),
+						ghttp.RespondWithJSONEncoded(http.StatusConflict, struct{ Message string }{
+							Message: `Conflict. The container name "/watchtower" is already in use by container "stale-orphan-id".`,
+						}),
+					),
+					// Inspect whoever currently holds the canonical name.
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", HaveSuffix("/containers/watchtower/json")),
+						ghttp.RespondWithJSONEncoded(http.StatusOK, blocker),
+					),
+					// Force-remove the stale watchtower blocker.
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("DELETE", HaveSuffix("/containers/stale-orphan-id")),
+						func(w http.ResponseWriter, r *http.Request) {
+							removed = true
+							ghttp.RespondWith(http.StatusNoContent, nil)(w, r)
+						},
+					),
+					// Retry create now succeeds under the freed name.
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("POST", HaveSuffix("/containers/create")),
+						ghttp.RespondWithJSONEncoded(http.StatusCreated, container.CreateResponse{ID: "new-self-id"}),
+					),
+				)
+
+				id, err := dockerClient{api: docker}.StartContainer(selfRecreate())
+				Expect(err).NotTo(HaveOccurred())
+				Expect(removed).To(BeTrue(), "expected the stale watchtower blocker to be force-removed")
+				Expect(id).To(BeEquivalentTo("new-self-id"))
+				// create(409) → inspect → remove → create(201), all consumed.
+				Expect(mockServer.ReceivedRequests()).To(HaveLen(4))
+			})
+		})
+
+		When(`ContainerCreate conflicts with a non-watchtower container`, func() {
+			It(`leaves the other container untouched and surfaces the conflict`, func() {
+				blocker := container.InspectResponse{
+					ContainerJSONBase: &container.ContainerJSONBase{
+						ID:   "operator-container-id",
+						Name: "/watchtower",
+					},
+					Config: &container.Config{Labels: map[string]string{}},
+				}
+
+				mockServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("POST", HaveSuffix("/containers/create")),
+						ghttp.RespondWithJSONEncoded(http.StatusConflict, struct{ Message string }{
+							Message: `Conflict. The container name "/watchtower" is already in use by container "operator-container-id".`,
+						}),
+					),
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", HaveSuffix("/containers/watchtower/json")),
+						ghttp.RespondWithJSONEncoded(http.StatusOK, blocker),
+					),
+				)
+
+				_, err := dockerClient{api: docker}.StartContainer(selfRecreate())
+				Expect(err).To(HaveOccurred())
+				// Inspect happened, but no DELETE and no retry create: we bailed
+				// the moment the blocker proved not to be a watchtower container.
+				Expect(mockServer.ReceivedRequests()).To(HaveLen(2))
+			})
+		})
 	})
 
 	Describe(`GetNetworkConfig`, func() {

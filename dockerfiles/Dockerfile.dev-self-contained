@@ -4,8 +4,10 @@
 
 FROM golang:alpine AS builder
 
-# use version (for example "v0.3.3") or "main"
-ARG WATCHTOWER_VERSION=main
+# Version string baked into the binary via ldflags. Pass it with
+# --build-arg VERSION=$(git describe --tags); `task docker:build` does exactly
+# that, so the build needs neither git nor the .git directory for versioning.
+ARG VERSION=dev
 
 # Pre download required modules to avoid redownloading at each build thanks to docker layer caching.
 # Copying go.mod and go.sum ensure to invalid the layer/build cache if there is a change in module requirement
@@ -14,18 +16,12 @@ COPY go.mod .
 COPY go.sum .
 RUN go mod download
 
-RUN apk add --no-cache \
-    alpine-sdk \
-    ca-certificates \
-    git \
-    tzdata
-
 COPY . /watchtower
 
 RUN \
   cd /watchtower && \
   \
-  GO111MODULE=on CGO_ENABLED=0 GOOS=linux go build -a -ldflags "-extldflags '-static' -X github.com/openserbia/watchtower/internal/meta.Version=$(git describe --tags)" . && \
+  GO111MODULE=on CGO_ENABLED=0 GOOS=linux go build -a -ldflags "-extldflags '-static' -X github.com/openserbia/watchtower/internal/meta.Version=${VERSION}" . && \
   GO111MODULE=on go test ./... -v
 
 
@@ -33,13 +29,12 @@ RUN \
 # watchtower
 #
 
-FROM scratch
+# distroless static-debian13 bundles ca-certificates + tzdata and runs as root
+# (needed for Docker socket access), so only the binary needs copying.
+FROM gcr.io/distroless/static-debian13:latest@sha256:3592aa8171c77482f62bbc4164e6a2d141c6122554ace66e5cc910cadb961ff0
 
 LABEL "com.centurylinklabs.watchtower"="true"
 
-# copy files from other container
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=builder /watchtower/watchtower /watchtower
 
 HEALTHCHECK CMD [ "/watchtower", "--health-check"]

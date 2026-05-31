@@ -93,4 +93,4 @@ tasks:
     vars:
       IMAGE_TAG: '{{.IMAGE_TAG | default "openserbia/watchtower:dev"}}'
     cmds:
-      - docker build . -f dockerfiles/Dockerfile.dev-self-contained -t {{.IMAGE_TAG}}
+      - docker build . -f dockerfiles/Dockerfile.dev-self-contained --build-arg VERSION={{.VERSION}} -t {{.IMAGE_TAG}}

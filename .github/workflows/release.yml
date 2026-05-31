@@ -42,6 +42,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write   # keyless cosign OIDC
     env:
       CGO_ENABLED: 0
     steps:

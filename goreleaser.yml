@@ -41,9 +41,10 @@ dockers_v2:
       - ghcr.io/openserbia/watchtower
     dockerfile: dockerfiles/Dockerfile
     platforms:
+      # linux/386 and linux/arm/v6 intentionally dropped: the distroless
+      # static-debian13 base (dockerfiles/Dockerfile) is not published for those
+      # two platforms. The binary archives above still cover them.
       - linux/amd64
-      - linux/386
-      - linux/arm/v6
       - linux/arm/v7
       - linux/arm64
       - linux/riscv64
@@ -52,6 +53,12 @@ dockers_v2:
       - latest
     flags:
       - --pull
+      # SLSA build provenance attestation attached to the pushed image index
+      # (inspect with `docker buildx imagetools inspect` / `cosign verify-attestation`).
+      - --provenance=true
+      # CycloneDX SBOM attestation (queryable component inventory; scan with
+      # trivy/grype without a rebuild).
+      - --sbom=true
     labels:
       org.opencontainers.image.title: "{{ .ProjectName }}"
       org.opencontainers.image.description: Automate Docker container base image updates (openserbia fork of containrrr/watchtower)
@@ -61,3 +68,27 @@ dockers_v2:
       org.opencontainers.image.source: "{{ .GitURL }}"
       org.opencontainers.image.url: https://github.com/openserbia/watchtower
       org.opencontainers.image.licenses: Apache-2.0
+
+# Keyless cosign signatures (GitHub Actions OIDC -> Sigstore; no key management).
+# The release workflow grants `id-token: write` and provides cosign via Devbox.
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    certificate: "${artifact}.pem"
+    signature: "${artifact}.sig"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    output: true
+
+docker_signs:
+  - cmd: cosign
+    artifacts: images
+    args:
+      - sign
+      - "${artifact}"
+      - "--yes"
+    output: true

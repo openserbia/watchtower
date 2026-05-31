@@ -43,8 +43,14 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write   # keyless cosign OIDC
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0   # full history + tags so `git describe` works
+      - name: Compute version
+        id: ver
+        run: echo "version=$(git describe --tags --always)" >> "$GITHUB_OUTPUT"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Login to Docker Hub
@@ -59,19 +65,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and publish
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: dockerfiles/Dockerfile.self-contained
           push: true
+          build-args: |
+            VERSION=${{ steps.ver.outputs.version }}
+          provenance: true   # SLSA build provenance (parity with tagged releases)
+          sbom: true         # CycloneDX SBOM attestation
           # Multi-arch manifest list matching the goreleaser release set
           # (dockers_v2 in goreleaser.yml) so :latest-dev runs anywhere a tagged
           # release does. The builder cross-compiles (BUILDPLATFORM-pinned builder
           # + GOOS/GOARCH/GOARM in the Dockerfile), so no QEMU is required.
-          platforms: linux/amd64,linux/386,linux/arm/v6,linux/arm/v7,linux/arm64,linux/riscv64
+          platforms: linux/amd64,linux/arm/v7,linux/arm64,linux/riscv64
           tags: |
             openserbia/watchtower:latest-dev
             ghcr.io/openserbia/watchtower:latest-dev
+      - name: Sign dev images (keyless cosign)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          devbox run -- cosign sign --yes "openserbia/watchtower@${DIGEST}"
+          devbox run -- cosign sign --yes "ghcr.io/openserbia/watchtower@${DIGEST}"
       # Trivy CVE scan (observation mode — exit-code: 0 = never fail.
       # Flip to 1 after the baseline is clean to make this a hard gate).
       # SARIF upload omitted (private repo without GHAS); operator

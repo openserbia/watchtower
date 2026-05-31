@@ -9,17 +9,19 @@ FROM --platform=$BUILDPLATFORM golang:alpine AS builder
 
 # use version (for example "v0.3.3") or "main"
 ARG WATCHTOWER_VERSION=main
+# Optional explicit version string for the ldflags stamp; falls back to
+# `git describe` on the cloned source when unset.
+ARG VERSION=
 # Supplied automatically by buildx for each target platform. TARGETVARIANT
 # carries the arm sub-arch ("v6"/"v7") and is empty for non-arm targets.
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
 
-RUN apk add --no-cache \
-    alpine-sdk \
-    ca-certificates \
-    git \
-    tzdata
+# Only git is needed: the source is cloned and `git describe` stamps the version.
+# CGO is disabled (no C toolchain), and ca-certificates/tzdata already ship in
+# golang:alpine (for HTTPS fetches) and in the distroless runtime base.
+RUN apk add --no-cache git
 
 RUN git clone --branch "${WATCHTOWER_VERSION}" https://github.com/openserbia/watchtower.git
 
@@ -30,20 +32,19 @@ RUN \
   cd watchtower && \
   \
   GO111MODULE=on CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \
-  go build -a -ldflags "-extldflags '-static' -X github.com/openserbia/watchtower/internal/meta.Version=$(git describe --tags)" .
+  go build -a -ldflags "-extldflags '-static' -X github.com/openserbia/watchtower/internal/meta.Version=${VERSION:-$(git describe --tags)}" .
 
 
 #
 # watchtower
 #
 
-FROM scratch
+# distroless static-debian13 bundles ca-certificates + tzdata and runs as root
+# (needed for Docker socket access), so only the binary needs copying.
+FROM gcr.io/distroless/static-debian13:latest@sha256:3592aa8171c77482f62bbc4164e6a2d141c6122554ace66e5cc910cadb961ff0
 
 LABEL "com.centurylinklabs.watchtower"="true"
 
-# copy files from other container
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=builder /go/watchtower/watchtower /watchtower
 
 HEALTHCHECK CMD [ "/watchtower", "--health-check"]
