@@ -12,7 +12,7 @@ env:
 
 jobs:
   greeting:
-    runs-on: [ubuntu-latest, x64]
+    runs-on: [ubuntu-latest]
     steps:
     - uses: actions/first-interaction@v3
       with:

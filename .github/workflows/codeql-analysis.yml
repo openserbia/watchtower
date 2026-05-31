@@ -25,7 +25,7 @@ env:
 jobs:
   analyze:
     name: Analyze
-    runs-on: [ubuntu-latest, x64]
+    runs-on: [ubuntu-latest]
 
     permissions:
       security-events: write
