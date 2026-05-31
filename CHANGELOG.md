@@ -10,6 +10,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-05-31
+
 ### Fixed
 - **Self-update recovers from a `"/watchtower" name is already in use`
   conflict on recreate.** When a stale watchtower container from a previous
