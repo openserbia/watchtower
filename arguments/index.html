@@ -697,6 +697,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#preflight_docker_capability_check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preflight Docker capability check
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#insecure_registries" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -938,6 +949,28 @@
     <span class="md-ellipsis">
       
         Scheduling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#update_strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update strategy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#blue-green_drain_window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blue-green drain window
       
     </span>
   </a>
@@ -1201,6 +1234,33 @@
     
   
     Remote hosts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../required-capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Required capabilities
   
 
     
@@ -1648,6 +1708,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#preflight_docker_capability_check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preflight Docker capability check
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#insecure_registries" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1889,6 +1960,28 @@
     <span class="md-ellipsis">
       
         Scheduling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#update_strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update strategy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#blue-green_drain_window" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blue-green drain window
       
     </span>
   </a>
@@ -2233,6 +2326,28 @@ Environment Variable: WATCHTOWER_AUDIT_UNMANAGED
                 Type: Boolean
              Default: false
 </code></pre></div>
+<h2 id="preflight_docker_capability_check">Preflight Docker capability check<a class="headerlink" href="#preflight_docker_capability_check" title="Permanent link">&para;</a></h2>
+<p>Probe the Docker API capabilities Watchtower needs <em>before</em> scheduling any polls, and abort with an
+actionable error if a required endpoint is blocked (e.g. filtered out by a socket proxy) or unreachable —
+instead of failing mid-update after the old container is already gone. Useful when running behind a
+<a href="../required-capabilities/">socket proxy</a>: a too-tight allow-list is caught at startup rather than the
+first recreate.</p>
+<p>Each probe is a side-effect-free request against a deliberately bogus target — nothing is created, started,
+or removed. A permitting daemon answers with a logical error (not-found / bad-request / conflict) → <em>present</em>;
+a socket proxy answers 403 → <em>blocked</em>; an unreachable daemon yields a transport error → <em>unreachable</em>. The
+abort message names both the Docker endpoint and the socket-proxy variable for the first failing capability.</p>
+<p>The required set is derived from the active flags, so the probe never demands more than the run will use:
+image pull is skipped under <code>--no-pull</code>, the whole recreate write set under <code>--monitor-only</code>, image removal
+only with <code>--cleanup</code>, the init-wait only with <code>--rerun-init-deps</code>, and the container-exec capability only
+when a watched container declares a lifecycle label. The <code>/events</code> stream (<code>--watch-docker-events</code>) is treated
+as an optional accelerator: a missing <code>/events</code> only warns and falls back to scheduled polling.</p>
+<p>Opt-in: disabled by default. See <a href="../required-capabilities/">Required capabilities</a> for the full catalog and a
+ready-to-paste socket-proxy environment block.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --preflight
+Environment Variable: WATCHTOWER_PREFLIGHT
+                Type: Boolean
+             Default: false
+</code></pre></div>
 <h2 id="insecure_registries">Insecure registries<a class="headerlink" href="#insecure_registries" title="Permanent link">&para;</a></h2>
 <p>Skip TLS certificate verification for specific registry hosts. Opt-in per host — the default is strict
 verification (TLS 1.2+, system trust store). Accepts a comma-separated list of <code>host</code> or <code>host:port</code> entries
@@ -2452,9 +2567,69 @@ Environment Variable: WATCHTOWER_SCHEDULE
                 Type: String
              Default: -
 </code></pre></div>
+<h2 id="update_strategy">Update strategy<a class="headerlink" href="#update_strategy" title="Permanent link">&para;</a></h2>
+<p>Selects how Watchtower applies an update to a stale container:</p>
+<ul>
+<li><strong><code>recreate</code></strong> (default) — stop the old container, then create and start a new one with the same
+  config on the new image. This is Watchtower's historical behavior; leaving the flag at its default
+  keeps everything byte-for-byte unchanged.</li>
+<li><strong><code>rolling-restart</code></strong> — update containers one at a time instead of stopping and starting the whole
+  batch at once. Useful together with lifecycle hooks to soften the downtime window.</li>
+<li><strong><code>blue-green</code></strong> — start the new ("green") container <em>alongside</em> the running ("blue") one, wait
+  until green reports <code>healthy</code>, let a drain window elapse so a dynamic reverse proxy registers green
+  and in-flight requests on blue finish, then stop blue and rename green to blue's name. This is the
+  only true zero-downtime strategy. It has hard requirements — see the note below — so it is opt-in
+  per container.</li>
+</ul>
+<p>The flag sets the <strong>global default</strong>. Override it per container with the
+<code>com.centurylinklabs.watchtower.update-strategy</code> label (value <code>recreate</code>, <code>rolling-restart</code>, or
+<code>blue-green</code>), so e.g. a stateless web service can run <code>blue-green</code> while a database in the same
+fleet stays on <code>recreate</code>.</p>
+<div class="admonition warning">
+<p class="admonition-title">blue-green requirements</p>
+<p>Blue-green only works for a container that:</p>
+<ul>
+<li>sits behind a <strong>dynamic, label-based reverse proxy</strong> (e.g. Traefik) on the Docker network —
+  it cannot publish host ports, because two copies cannot bind the same host port (such
+  containers fall back to <code>recreate</code> with a warning);</li>
+<li>uses <strong>explicit</strong> <code>traefik.http.routers.&lt;name&gt;</code> / <code>traefik.http.services.&lt;name&gt;</code> labels rather
+  than Traefik's name-derived <code>defaultRule</code>, so the proxy treats blue and green as one service
+  with two backends and the final rename is transparent to routing;</li>
+<li>defines a <strong><code>HEALTHCHECK</code></strong> so readiness can actually be verified (without one, Watchtower can
+  only rely on the drain window and warns);</li>
+<li>is <strong>stateless / idempotent</strong>. During the drain window both copies receive traffic, so
+  blue-green is unsafe for databases, queues, and other stateful services. Keep those on
+  <code>recreate</code>.</li>
+</ul>
+<p>See <a href="../container-selection/#update-strategy-blue-green">Container selection → Update strategy label</a>
+for a worked Docker Compose + Traefik example.</p>
+</div>
+<div class="highlight"><pre><span></span><code>            Argument: --update-strategy
+Environment Variable: WATCHTOWER_UPDATE_STRATEGY
+     Possible values: recreate, rolling-restart, blue-green
+             Default: recreate
+</code></pre></div>
+<h2 id="blue-green_drain_window">Blue-green drain window<a class="headerlink" href="#blue-green_drain_window" title="Permanent link">&para;</a></h2>
+<p>For <code>--update-strategy=blue-green</code>: how long to keep the old (blue) and new (green) containers running
+together after green reports healthy, so a dynamic reverse proxy registers green and in-flight requests
+on blue drain, before blue is removed. Durations accept Go format (<code>5s</code>, <code>30s</code>, <code>2m</code>). Set <code>0</code> to skip
+the drain window entirely (green is retired the instant it is healthy).</p>
+<p>Per-container override via the <code>com.centurylinklabs.watchtower.blue-green.drain</code> label.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --blue-green-drain
+Environment Variable: WATCHTOWER_BLUE_GREEN_DRAIN
+                Type: Duration
+             Default: 10s
+</code></pre></div>
 <h2 id="rolling_restart">Rolling restart<a class="headerlink" href="#rolling_restart" title="Permanent link">&para;</a></h2>
 <p>Restart one image at time instead of stopping and starting all at once.  Useful in conjunction with lifecycle hooks
 to implement zero-downtime deploy.</p>
+<div class="admonition warning">
+<p class="admonition-title">Deprecated</p>
+<p><code>--rolling-restart</code> is a deprecated alias for <code>--update-strategy=rolling-restart</code>. It still works
+and maps to the rolling-restart strategy (logging a deprecation warning at startup), but prefer
+<code>--update-strategy</code>. Setting <code>--rolling-restart</code> together with a conflicting <code>--update-strategy</code>
+is a startup error.</p>
+</div>
 <div class="highlight"><pre><span></span><code>            Argument: --rolling-restart
 Environment Variable: WATCHTOWER_ROLLING_RESTART
                 Type: Boolean

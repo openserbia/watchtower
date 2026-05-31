@@ -8,11 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://openserbia.github.io/watchtower/metrics/">
+        <link rel="canonical" href="https://openserbia.github.io/watchtower/required-capabilities/">
       
       
-        <link rel="prev" href="../http-api-mode/">
+        <link rel="prev" href="../remote-hosts/">
       
+      
+        <link rel="next" href="../secure-connections/">
       
       
         
@@ -23,7 +25,7 @@
     
     
       
-        <title>Metrics - Watchtower</title>
+        <title>Required capabilities - Watchtower</title>
       
     
     
@@ -76,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#scrape_configuration" class="md-skip">
+        <a href="#required_docker_capabilities" class="md-skip">
           Skip to content
         </a>
       
@@ -111,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Metrics
+              Required capabilities
             
           </span>
         </div>
@@ -577,10 +579,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../required-capabilities/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Required capabilities
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -596,6 +625,120 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how_the_proxy_variables_map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the proxy variables map
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capability_catalog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capability catalog
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Capability catalog">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#always-on_reads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Always-on reads
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#staleness_detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Staleness detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the_recreate_write_set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The recreate write set
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conditional_writes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditional writes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#optional_accelerator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional accelerator
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#socket-proxy_environment_block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Socket-proxy environment block
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -739,35 +882,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Metrics
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../metrics/" class="md-nav__link">
         
   
   
@@ -783,162 +901,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#scrape_configuration" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Scrape configuration
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#available_metrics" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Available metrics
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Available metrics">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#scan_cycle" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Scan cycle
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#watch_status" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Watch status
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#update_lifecycle" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Update lifecycle
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#http_api_v1_endpoints" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        HTTP API (/v1/* endpoints)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#registry_traffic" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Registry traffic
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#docker_daemon" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Docker daemon
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#docker_event_stream_--watch-docker-events" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Docker event stream (--watch-docker-events)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#useful_queries" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Useful queries
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dashboards_and_alerts" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Dashboards and alerts
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#demo" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Demo
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -960,6 +922,8 @@
   
   
   
+    
+  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -968,10 +932,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#scrape_configuration" class="md-nav__link">
+  <a href="#how_the_proxy_variables_map" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Scrape configuration
+        How the proxy variables map
       
     </span>
   </a>
@@ -979,22 +943,22 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#available_metrics" class="md-nav__link">
+  <a href="#capability_catalog" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Available metrics
+        Capability catalog
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Available metrics">
+    <nav class="md-nav" aria-label="Capability catalog">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#scan_cycle" class="md-nav__link">
+  <a href="#always-on_reads" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Scan cycle
+        Always-on reads
       
     </span>
   </a>
@@ -1002,10 +966,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#watch_status" class="md-nav__link">
+  <a href="#staleness_detection" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Watch status
+        Staleness detection
       
     </span>
   </a>
@@ -1013,10 +977,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#update_lifecycle" class="md-nav__link">
+  <a href="#the_recreate_write_set" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Update lifecycle
+        The recreate write set
       
     </span>
   </a>
@@ -1024,10 +988,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#http_api_v1_endpoints" class="md-nav__link">
+  <a href="#conditional_writes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        HTTP API (/v1/* endpoints)
+        Conditional writes
       
     </span>
   </a>
@@ -1035,32 +999,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#registry_traffic" class="md-nav__link">
+  <a href="#optional_accelerator" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Registry traffic
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#docker_daemon" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Docker daemon
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#docker_event_stream_--watch-docker-events" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Docker event stream (--watch-docker-events)
+        Optional accelerator
       
     </span>
   </a>
@@ -1073,32 +1015,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#useful_queries" class="md-nav__link">
+  <a href="#socket-proxy_environment_block" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Useful queries
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dashboards_and_alerts" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Dashboards and alerts
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#demo" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Demo
+        Socket-proxy environment block
       
     </span>
   </a>
@@ -1125,259 +1045,272 @@
   
 
 
-  <h1>Metrics</h1>
+<h1 id="required_docker_capabilities">Required Docker capabilities<a class="headerlink" href="#required_docker_capabilities" title="Permanent link">&para;</a></h1>
+<p>Watchtower talks to the Docker daemon over the socket (or a <code>DOCKER_HOST</code> endpoint). When you put a
+proxy such as <a href="https://github.com/Tecnativa/docker-socket-proxy"><code>tecnativa/docker-socket-proxy</code></a> in
+front of the socket to narrow the attack surface, you have to allow the exact set of API endpoints
+Watchtower uses — and a too-tight allow-list otherwise only reveals itself mid-update, <em>after</em> the old
+container has already been stopped and removed and the recreate hits a blocked endpoint.</p>
+<p>The table below is the full catalog of Docker API operations Watchtower can issue, the
+socket-proxy environment variable that gates each one, <strong>when</strong> it is required (some are conditional on a
+flag or a label), and <strong>why</strong>. It is the same catalog the <a href="../arguments/#preflight_docker_capability_check"><code>--preflight</code></a>
+check probes at startup — enable <code>--preflight</code> to have Watchtower verify this list against your daemon (or
+proxy) before it schedules any polls, and abort with an error naming the blocked endpoint <em>and</em> its proxy
+variable.</p>
+<div class="admonition tip">
+<p class="admonition-title">Let preflight check it for you</p>
+<p>Run with <code>--preflight</code> (env <code>WATCHTOWER_PREFLIGHT=true</code>) to probe every required endpoint at startup.
+Each probe is side-effect-free (a request against a bogus target — nothing is created, started, or
+removed), and a blocked or unreachable required endpoint aborts before the first update instead of
+failing halfway through one.</p>
+</div>
+<h2 id="how_the_proxy_variables_map">How the proxy variables map<a class="headerlink" href="#how_the_proxy_variables_map" title="Permanent link">&para;</a></h2>
+<p><code>tecnativa/docker-socket-proxy</code> gates the daemon API with two kinds of switch:</p>
+<ul>
+<li><strong>Per-resource variables</strong> — <code>CONTAINERS</code>, <code>IMAGES</code>, <code>NETWORKS</code>, <code>EVENTS</code>, <code>EXEC</code>, <code>PING</code> — allow the
+  endpoints for that resource group.</li>
+<li><strong>Per-method variables</strong> — most importantly <code>POST</code> — allow the <em>mutating</em> HTTP methods. The proxy
+  defaults to read-only (<code>GET</code>/<code>HEAD</code>), so any create / start / stop / remove / tag / connect call needs
+  <strong>both</strong> the resource variable <em>and</em> <code>POST=1</code>. That is why the write rows below read e.g. <code>CONTAINERS</code>
+  <strong>+</strong> <code>POST</code>.</li>
+</ul>
+<p><code>DELETE</code>-method endpoints (<code>DELETE /containers/{id}</code>, <code>DELETE /images/{name}</code>) are also gated by <code>POST</code> in
+the proxy's default configuration — the proxy treats <code>POST</code> as the umbrella "allow mutating methods" switch.</p>
+<h2 id="capability_catalog">Capability catalog<a class="headerlink" href="#capability_catalog" title="Permanent link">&para;</a></h2>
+<h3 id="always-on_reads">Always-on reads<a class="headerlink" href="#always-on_reads" title="Permanent link">&para;</a></h3>
+<p>Every poll reaches the daemon, lists containers, and inspects each container and its image before deciding
+anything. These are always required.</p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Docker endpoint</th>
+<th>Socket-proxy variable</th>
+<th>When required</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ping</td>
+<td><code>GET /_ping</code></td>
+<td><code>PING</code></td>
+<td>Always</td>
+<td>Confirms the daemon socket is reachable and negotiates the API version on startup.</td>
+</tr>
+<tr>
+<td>Container list</td>
+<td><code>GET /containers/json</code></td>
+<td><code>CONTAINERS</code></td>
+<td>Always</td>
+<td>Lists running containers each poll to decide which ones Watchtower manages.</td>
+</tr>
+<tr>
+<td>Container inspect</td>
+<td><code>GET /containers/{id}/json</code></td>
+<td><code>CONTAINERS</code></td>
+<td>Always</td>
+<td>Inspects each container to read its image, config, labels, and network attachments.</td>
+</tr>
+<tr>
+<td>Image inspect</td>
+<td><code>GET /images/{name}/json</code></td>
+<td><code>IMAGES</code></td>
+<td>Always</td>
+<td>Resolves the local image ID behind a container so staleness can be compared against the registry digest.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="staleness_detection">Staleness detection<a class="headerlink" href="#staleness_detection" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Docker endpoint</th>
+<th>Socket-proxy variable</th>
+<th>When required</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Image pull</td>
+<td><code>POST /images/create</code></td>
+<td><code>IMAGES</code> + <code>POST</code></td>
+<td>Unless <code>--no-pull</code></td>
+<td>Pulls the candidate image during staleness detection. Not needed with <code>--no-pull</code> (or <code>WATCHTOWER_NO_PULL</code>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="the_recreate_write_set">The recreate write set<a class="headerlink" href="#the_recreate_write_set" title="Permanent link">&para;</a></h3>
+<p>These are the mutating operations a recreate performs: stop (kill + remove), recreate (create + start),
+re-tag to the resolved digest, re-attach networks, and rename for the self-update dance. They are skipped
+<strong>wholesale</strong> under <code>--monitor-only</code> (Watchtower then only detects staleness and notifies).</p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Docker endpoint</th>
+<th>Socket-proxy variable</th>
+<th>When required</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Container kill</td>
+<td><code>POST /containers/{id}/kill</code></td>
+<td><code>CONTAINERS</code> + <code>POST</code></td>
+<td>Unless <code>--monitor-only</code></td>
+<td>Sends the stop signal to a stale container before it is removed and recreated.</td>
+</tr>
+<tr>
+<td>Container remove</td>
+<td><code>DELETE /containers/{id}</code></td>
+<td><code>CONTAINERS</code> + <code>POST</code></td>
+<td>Unless <code>--monitor-only</code></td>
+<td>Removes the old container after it has stopped so the replacement can take its name.</td>
+</tr>
+<tr>
+<td>Container create</td>
+<td><code>POST /containers/create</code></td>
+<td><code>CONTAINERS</code> + <code>POST</code></td>
+<td>Unless <code>--monitor-only</code></td>
+<td>Recreates the container from the new image, carrying its previous config forward.</td>
+</tr>
+<tr>
+<td>Container start</td>
+<td><code>POST /containers/{id}/start</code></td>
+<td><code>CONTAINERS</code> + <code>POST</code></td>
+<td>Unless <code>--monitor-only</code></td>
+<td>Starts the freshly recreated container.</td>
+</tr>
+<tr>
+<td>Image tag</td>
+<td><code>POST /images/{name}/tag</code></td>
+<td><code>IMAGES</code> + <code>POST</code></td>
+<td>Unless <code>--monitor-only</code></td>
+<td>Re-binds the original tag to the resolved digest just before recreate, so a CI retag between scan and create cannot strand the container on a missing image.</td>
+</tr>
+<tr>
+<td>Network connect</td>
+<td><code>POST /networks/{id}/connect</code></td>
+<td><code>NETWORKS</code> + <code>POST</code></td>
+<td>Unless <code>--monitor-only</code></td>
+<td>Re-attaches the recreated container to each of its original networks with the original aliases.</td>
+</tr>
+<tr>
+<td>Network disconnect</td>
+<td><code>POST /networks/{id}/disconnect</code></td>
+<td><code>NETWORKS</code> + <code>POST</code></td>
+<td>Unless <code>--monitor-only</code></td>
+<td>Detaches the single network <code>ContainerCreate</code> auto-attached so the full original network set can be restored cleanly.</td>
+</tr>
+<tr>
+<td>Container rename</td>
+<td><code>POST /containers/{id}/rename</code></td>
+<td><code>CONTAINERS</code> + <code>POST</code></td>
+<td>Unless <code>--monitor-only</code></td>
+<td>Renames Watchtower's own container during a self-update so the replacement can claim the canonical name.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="conditional_writes">Conditional writes<a class="headerlink" href="#conditional_writes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Docker endpoint</th>
+<th>Socket-proxy variable</th>
+<th>When required</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Container exec</td>
+<td><code>POST /containers/{id}/exec</code></td>
+<td><code>EXEC</code> + <code>POST</code></td>
+<td>With <code>--enable-lifecycle-hooks</code> <strong>and</strong> a watched container that declares a <code>com.centurylinklabs.watchtower.lifecycle.*</code> label</td>
+<td>Runs user-defined <a href="../lifecycle-hooks/">lifecycle hook</a> commands inside containers.</td>
+</tr>
+<tr>
+<td>Image remove</td>
+<td><code>DELETE /images/{name}</code></td>
+<td><code>IMAGES</code> + <code>POST</code></td>
+<td>With <code>--cleanup</code></td>
+<td>Deletes the superseded image after a successful update. Not needed without <code>--cleanup</code> (or <code>WATCHTOWER_CLEANUP</code>).</td>
+</tr>
+<tr>
+<td>Container wait</td>
+<td><code>POST /containers/{id}/wait</code></td>
+<td><code>CONTAINERS</code> + <code>POST</code></td>
+<td>With <code>--rerun-init-deps</code></td>
+<td>Blocks until a re-run Compose init container exits. Not needed without <code>--rerun-init-deps</code> (or <code>WATCHTOWER_RERUN_INIT_DEPS</code>).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="optional_accelerator">Optional accelerator<a class="headerlink" href="#optional_accelerator" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Docker endpoint</th>
+<th>Socket-proxy variable</th>
+<th>When required</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Events</td>
+<td><code>GET /events</code></td>
+<td><code>EVENTS</code></td>
+<td>Optional, with <code>--watch-docker-events</code></td>
+<td>Subscribes to the engine event stream to trigger targeted scans on local image rebuilds. Optional accelerator for <code>--watch-docker-events</code>; Watchtower degrades to scheduled polling without it, and <code>--preflight</code> only <em>warns</em> when it is missing.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="socket-proxy_environment_block">Socket-proxy environment block<a class="headerlink" href="#socket-proxy_environment_block" title="Permanent link">&para;</a></h2>
+<p>A ready-to-paste <code>tecnativa/docker-socket-proxy</code> service that grants exactly what Watchtower needs. <code>POST=1</code>
+enables the mutating methods (create / start / kill / remove / tag / connect / rename); the per-resource
+variables scope which endpoints are exposed. Leave <code>EXEC=0</code> unless you use <a href="../lifecycle-hooks/">lifecycle hooks</a>.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">docker-proxy</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">tecnativa/docker-socket-proxy</span>
+<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock:ro</span>
+<span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+<span class="w">      </span><span class="c1"># Read endpoints (always required)</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PING=1</span><span class="w">          </span><span class="c1"># GET /_ping</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CONTAINERS=1</span><span class="w">    </span><span class="c1"># GET /containers/json, GET /containers/{id}/json</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">IMAGES=1</span><span class="w">        </span><span class="c1"># GET /images/{name}/json, POST /images/create (+POST)</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NETWORKS=1</span><span class="w">      </span><span class="c1"># POST /networks/{id}/connect|disconnect (+POST)</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">EVENTS=1</span><span class="w">        </span><span class="c1"># GET /events (optional; only needed for --watch-docker-events)</span>
+<span class="w">      </span><span class="c1"># Mutating methods (required for the recreate write set; drop under --monitor-only)</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">POST=1</span><span class="w">          </span><span class="c1"># create / start / kill / remove / tag / connect / disconnect / rename</span>
+<span class="w">      </span><span class="c1"># Lifecycle hooks (only if a watched container uses com.centurylinklabs.watchtower.lifecycle.*)</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">EXEC=0</span><span class="w">          </span><span class="c1"># set to 1 with --enable-lifecycle-hooks</span>
+<span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
 
-<p>Metrics let you track how Watchtower behaves over time — scan cadence,
-registry reliability, security-relevant events, and per-container watch
-status.</p>
-<p>To use this feature, <a href="../arguments/#http_api_metrics">enable the metrics API</a>,
-set an <a href="../arguments/#http_api_token">API token</a> (or opt out via
-<a href="../arguments/#public_metrics_endpoint"><code>--http-api-metrics-no-auth</code></a> for
-trusted networks), and map port <code>8080</code> from the container.</p>
-<p>The endpoint is <code>GET /v1/metrics</code>, served in Prometheus exposition format.</p>
-<h2 id="scrape_configuration">Scrape configuration<a class="headerlink" href="#scrape_configuration" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><span class="nt">scrape_configs</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">job_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">watchtower</span>
-<span class="w">    </span><span class="nt">scrape_interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30s</span>
-<span class="w">    </span><span class="nt">metrics_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/v1/metrics</span>
-<span class="w">    </span><span class="nt">bearer_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demotoken</span>
-<span class="w">    </span><span class="nt">static_configs</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">targets</span><span class="p">:</span>
-<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;watchtower:8080&#39;</span>
+<span class="w">  </span><span class="nt">watchtower</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openserbia/watchtower</span>
+<span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DOCKER_HOST=tcp://docker-proxy:2375</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">WATCHTOWER_PREFLIGHT=true</span><span class="w">   </span><span class="c1"># verify the allow-list at startup</span>
+<span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">docker-proxy</span>
+<span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
 </code></pre></div>
-<p>Replace <code>demotoken</code> with the token you set via <code>--http-api-token</code>. Drop the
-<code>bearer_token</code> line entirely if <code>--http-api-metrics-no-auth</code> is active.</p>
-<p>For homelab cadences (polls every minutes-to-hours), <code>scrape_interval: 30s</code>
-is plenty. Tighter intervals don't help because the underlying gauges only
-change once per scan.</p>
-<h2 id="available_metrics">Available metrics<a class="headerlink" href="#available_metrics" title="Permanent link">&para;</a></h2>
-<p>Grouped by what they tell you.</p>
-<h3 id="scan_cycle">Scan cycle<a class="headerlink" href="#scan_cycle" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Metric</th>
-<th>Type</th>
-<th>What it tells you</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>watchtower_scans_total</code></td>
-<td>counter</td>
-<td>Poll cycles since the daemon started. <code>rate()</code> gives you scans-per-second.</td>
-</tr>
-<tr>
-<td><code>watchtower_scans_skipped</code></td>
-<td>counter</td>
-<td>Cycles where another update was still in flight. Non-zero suggests an HTTP API request is racing the scheduler or the update is stuck.</td>
-</tr>
-<tr>
-<td><code>watchtower_containers_scanned</code></td>
-<td>gauge</td>
-<td>Containers inspected during the last scan.</td>
-</tr>
-<tr>
-<td><code>watchtower_containers_updated</code></td>
-<td>gauge</td>
-<td>Containers recreated during the last scan.</td>
-</tr>
-<tr>
-<td><code>watchtower_containers_failed</code></td>
-<td>gauge</td>
-<td>Containers whose update failed during the last scan.</td>
-</tr>
-<tr>
-<td><code>watchtower_last_scan_timestamp_seconds</code></td>
-<td>gauge</td>
-<td>Unix timestamp of the most recent completed scan. Pair with <code>time()</code> for staleness alerts.</td>
-</tr>
-<tr>
-<td><code>watchtower_poll_interval_seconds</code></td>
-<td>gauge</td>
-<td>Configured cadence between scans, derived from the active schedule at startup. Scale alert thresholds by this instead of hardcoding a window.</td>
-</tr>
-<tr>
-<td><code>watchtower_poll_duration_seconds</code></td>
-<td>histogram</td>
-<td>Wall-clock duration of each scan + update cycle. Buckets from 0.5s to 5m. Use <code>histogram_quantile(0.95, ...)</code> for p95.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="watch_status">Watch status<a class="headerlink" href="#watch_status" title="Permanent link">&para;</a></h3>
-<p>Published every scan regardless of whether any audit flag is set.</p>
-<table>
-<thead>
-<tr>
-<th>Metric</th>
-<th>Type</th>
-<th>What it tells you</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>watchtower_containers_managed</code></td>
-<td>gauge</td>
-<td>Containers with <code>com.centurylinklabs.watchtower.enable=true</code>.</td>
-</tr>
-<tr>
-<td><code>watchtower_containers_excluded</code></td>
-<td>gauge</td>
-<td>Containers with <code>com.centurylinklabs.watchtower.enable=false</code> (intentional opt-out).</td>
-</tr>
-<tr>
-<td><code>watchtower_containers_unmanaged</code></td>
-<td>gauge</td>
-<td>Containers with no <code>enable</code> label at all. Under <code>--label-enable</code> these are silently skipped — hit <a href="../arguments/#watch_status_audit_endpoint"><code>/v1/audit</code></a> for names or enable <a href="../arguments/#audit_unmanaged_containers"><code>--audit-unmanaged</code></a> for log warnings. Excludes Docker-managed infrastructure (buildkit etc.), which is tracked separately in <code>watchtower_containers_infrastructure</code>.</td>
-</tr>
-<tr>
-<td><code>watchtower_containers_infrastructure</code></td>
-<td>gauge</td>
-<td>Docker-managed scaffolding (<code>moby/buildkit*</code> image prefix, <code>docker/desktop-*</code> image prefix, <code>com.docker.buildx.*</code> / <code>com.docker.desktop.*</code> label prefixes). Not a user workload; tracked separately so transient builder containers don't show up as unmanaged noise.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="update_lifecycle">Update lifecycle<a class="headerlink" href="#update_lifecycle" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Metric</th>
-<th>Type</th>
-<th>What it tells you</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>watchtower_rollbacks_total</code></td>
-<td>counter</td>
-<td>Rollbacks triggered by <a href="../arguments/#health_check_gated_updates"><code>--health-check-gated</code></a>. Each increment = a replacement container failed health check and the previous image was restored.</td>
-</tr>
-<tr>
-<td><code>watchtower_containers_in_cooldown</code></td>
-<td>gauge</td>
-<td>Containers currently waiting out a <a href="../arguments/#image_cooldown_supply-chain_gate"><code>--image-cooldown</code></a> window. Non-zero right after a fresh push; stuck non-zero means the author keeps re-pushing and resetting the clock.</td>
-</tr>
-<tr>
-<td><code>watchtower_image_fallback_total</code></td>
-<td>counter</td>
-<td>Times <code>GetContainer</code> fell back to inspecting by image reference because the source image ID was missing locally. Sustained counts indicate external tooling is deleting images Watchtower still needs. Background: <a href="https://github.com/containrrr/watchtower/issues/1217">upstream#1217</a>.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="http_api_v1_endpoints">HTTP API (<code>/v1/*</code> endpoints)<a class="headerlink" href="#http_api_v1_endpoints" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Metric</th>
-<th>Labels</th>
-<th>What it tells you</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>watchtower_api_requests_total</code></td>
-<td><code>endpoint</code>, <code>status</code></td>
-<td>One counter per endpoint and response status code. A burst of <code>status="401"</code> on <code>endpoint="/v1/update"</code> is usually credential stuffing.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="registry_traffic">Registry traffic<a class="headerlink" href="#registry_traffic" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Metric</th>
-<th>Labels</th>
-<th>What it tells you</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>watchtower_registry_requests_total</code></td>
-<td><code>host</code>, <code>operation</code>, <code>outcome</code></td>
-<td>Outbound requests to registries. Operations are <code>challenge</code>, <code>token</code>, <code>digest_head</code>, <code>digest_get</code>; outcomes are <code>success</code>, <code>error</code>, <code>retried</code>. <code>digest_head</code> failures followed by <code>digest_get</code> successes are expected for registries that reject HEAD on manifests.</td>
-</tr>
-<tr>
-<td><code>watchtower_registry_retries_total</code></td>
-<td><code>host</code></td>
-<td>Bounded-backoff retry attempts. Zero is healthy; sustained non-zero means a flaky registry.</td>
-</tr>
-<tr>
-<td><code>watchtower_auth_cache_hits_total</code></td>
-<td>—</td>
-<td>Bearer-token cache hits. High rate means the in-memory cache is sparing the oauth endpoint.</td>
-</tr>
-<tr>
-<td><code>watchtower_auth_cache_misses_total</code></td>
-<td>—</td>
-<td>Cache misses — each miss triggers an oauth exchange.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="docker_daemon">Docker daemon<a class="headerlink" href="#docker_daemon" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Metric</th>
-<th>Labels</th>
-<th>What it tells you</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>watchtower_docker_api_errors_total</code></td>
-<td><code>operation</code></td>
-<td>Errors from the Docker engine API, broken down by operation. Operations: <code>list</code>, <code>inspect</code>, <code>kill</code>, <code>start</code>, <code>create</code>, <code>remove</code>, <code>image_inspect</code>, <code>image_remove</code>, <code>image_pull</code>, <code>rename</code>, <code>network_connect</code>, <code>network_disconnect</code>, <code>events</code>. Sustained non-zero rates usually mean socket permission issues or a daemon under load.</td>
-</tr>
-<tr>
-<td><code>watchtower_docker_api_retries_total</code></td>
-<td><code>operation</code></td>
-<td>Retry attempts against the Docker engine API after a transient failure (daemon restart, socket blip, engine 5xx). One increment per retry attempt, not per failed call. Currently emitted for <code>operation="list"</code>. Zero is healthy; a rising counter points at a flaky daemon.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="docker_event_stream_--watch-docker-events">Docker event stream (<a href="../arguments/#watch_docker_engine_for_local_rebuilds"><code>--watch-docker-events</code></a>)<a class="headerlink" href="#docker_event_stream_--watch-docker-events" title="Permanent link">&para;</a></h3>
-<p>Emitted only when the event watcher is enabled. Flat zeros on all three are expected if the flag is off.</p>
-<table>
-<thead>
-<tr>
-<th>Metric</th>
-<th>Labels</th>
-<th>What it tells you</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>watchtower_events_received_total</code></td>
-<td><code>action</code></td>
-<td>Docker engine events consumed from the stream, split by action (<code>tag</code>, <code>load</code>). Correlates with local <code>docker build</code> / <code>docker load</code> activity.</td>
-</tr>
-<tr>
-<td><code>watchtower_events_triggered_scans_total</code></td>
-<td>—</td>
-<td>Debounced scans actually fired. Always ≤ <code>watchtower_events_received_total</code> — a multi-layer build collapses into a single scan.</td>
-</tr>
-<tr>
-<td><code>watchtower_events_reconnects_total</code></td>
-<td>—</td>
-<td>Times the event stream was re-established after a transport error. Occasional ticks are normal (daemon restart, network blip); a rapidly climbing counter means the stream is flapping — pair with <code>watchtower_docker_api_errors_total{operation="events"}</code> to see the cause.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="useful_queries">Useful queries<a class="headerlink" href="#useful_queries" title="Permanent link">&para;</a></h2>
-<p>Staleness: <code>time() - watchtower_last_scan_timestamp_seconds</code> — seconds since the last scan.</p>
-<p>p95 scan duration: <code>histogram_quantile(0.95, sum by (le) (rate(watchtower_poll_duration_seconds_bucket[5m])))</code>.</p>
-<p>Bearer-cache hit ratio: <code>sum(increase(watchtower_auth_cache_hits_total[1h])) / clamp_min(sum(increase(watchtower_auth_cache_hits_total[1h])) + sum(increase(watchtower_auth_cache_misses_total[1h])), 1)</code>.</p>
-<p>Unmanaged containers present for &gt; 1 h: <code>watchtower_containers_unmanaged &gt; 0</code> with an alert <code>for: 1h</code>.</p>
-<h2 id="dashboards_and_alerts">Dashboards and alerts<a class="headerlink" href="#dashboards_and_alerts" title="Permanent link">&para;</a></h2>
-<p>Ready-to-import Grafana dashboard and Prometheus alerting rules ship under
-<a href="https://github.com/openserbia/watchtower/tree/main/observability"><code>observability/</code></a>
-in the source tree. Dashboard covers the three rows above (overview, watch
-status, reliability + security), plus three annotation tracks for rollbacks,
-daemon restarts, and newly-appeared unmanaged containers.</p>
-<h2 id="demo">Demo<a class="headerlink" href="#demo" title="Permanent link">&para;</a></h2>
-<p>The repository contains a demo with Prometheus and Grafana, available via
-<code>docker-compose.yml</code>. This demo is preconfigured with the dashboard:</p>
-<p><img alt="grafana metrics" src="../assets/grafana-dashboard.png" /></p>
+<div class="admonition note">
+<p class="admonition-title">Trim for <code>--monitor-only</code></p>
+<p>Under <code>--monitor-only</code> Watchtower never mutates anything, so you can drop <code>POST</code>, <code>NETWORKS</code>, and <code>EXEC</code>
+entirely and keep only the read variables (<code>PING</code>, <code>CONTAINERS</code>, <code>IMAGES</code>, and optionally <code>EVENTS</code>).</p>
+</div>
+<p>Watchtower does not mount <code>/var/run/docker.sock</code> itself in this setup — it reaches the daemon through the
+proxy via <code>DOCKER_HOST</code>, the same mechanism described under <a href="../remote-hosts/">Remote hosts</a>. Combine with the
+TLS options in <a href="../secure-connections/">Secure connections</a> when the proxy is reached over the network rather
+than a shared Docker network.</p>
 
 
 

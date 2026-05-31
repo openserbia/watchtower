@@ -551,6 +551,51 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#update_strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update strategy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Update strategy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#blue-green_zero-downtime_deploys_update-strategy-blue-green" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blue-green (zero-downtime) deploys {#update-strategy-blue-green}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Blue-green (zero-downtime) deploys {#update-strategy-blue-green}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#worked_example_compose_traefik" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked example: Compose + Traefik
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -628,6 +673,33 @@
     
   
     Remote hosts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../required-capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Required capabilities
   
 
     
@@ -848,6 +920,51 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#update_strategy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update strategy
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Update strategy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#blue-green_zero-downtime_deploys_update-strategy-blue-green" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blue-green (zero-downtime) deploys {#update-strategy-blue-green}
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Blue-green (zero-downtime) deploys {#update-strategy-blue-green}">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#worked_example_compose_traefik" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worked example: Compose + Traefik
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -936,6 +1053,93 @@
 <div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--label<span class="o">=</span>com.centurylinklabs.watchtower.monitor-only<span class="o">=</span><span class="nb">true</span><span class="w"> </span>someimage
 </code></pre></div>
 <p>When the label is specified on a container, watchtower treats that container exactly as if <a href="https://openserbia.github.io/watchtower/arguments/#without_updating_containers"><code>WATCHTOWER_MONITOR_ONLY</code></a> was set, but the effect is limited to the individual container. </p>
+<h2 id="update_strategy">Update strategy<a class="headerlink" href="#update_strategy" title="Permanent link">&para;</a></h2>
+<p>The global <a href="https://openserbia.github.io/watchtower/arguments/#update_strategy"><code>--update-strategy</code></a> flag
+(<code>recreate</code> (default) / <code>rolling-restart</code> / <code>blue-green</code>) can be overridden per container with the
+<code>com.centurylinklabs.watchtower.update-strategy</code> label. This lets a stateless web service run
+<code>blue-green</code> while a database in the same fleet stays on the safe <code>recreate</code> path, all under one
+Watchtower instance.</p>
+<div class="highlight"><pre><span></span><code><span class="k">LABEL</span><span class="w"> </span>com.centurylinklabs.watchtower.update-strategy<span class="o">=</span><span class="s2">&quot;blue-green&quot;</span>
+</code></pre></div>
+<p>The per-container drain window for blue-green is set with the
+<code>com.centurylinklabs.watchtower.blue-green.drain</code> label (a Go duration such as <code>10s</code>, <code>30s</code>, <code>2m</code>;
+overrides the global <a href="https://openserbia.github.io/watchtower/arguments/#blue_green_drain_window"><code>--blue-green-drain</code></a>;
+<code>0</code> disables the drain window).</p>
+<h3 id="blue-green_zero-downtime_deploys_update-strategy-blue-green">Blue-green (zero-downtime) deploys {#update-strategy-blue-green}<a class="headerlink" href="#blue-green_zero-downtime_deploys_update-strategy-blue-green" title="Permanent link">&para;</a></h3>
+<p>With <code>update-strategy=blue-green</code>, Watchtower brings the new ("green") container up <em>alongside</em> the
+running ("blue") one, waits for green to report <code>healthy</code>, lets the drain window elapse so the reverse
+proxy registers green and in-flight requests on blue finish, then stops blue and renames green to
+blue's name. It is the only true zero-downtime strategy, but it has hard requirements.</p>
+<div class="admonition warning">
+<p class="admonition-title">Blue-green prerequisites — opt in per container</p>
+<p>Blue-green only works for a container that:</p>
+<ul>
+<li>Sits behind a <strong>dynamic, label-based reverse proxy</strong> (e.g. Traefik) on the Docker network. It
+  <strong>must not publish host ports</strong> — two copies cannot bind the same host port, so a container with
+  published ports falls back to <code>recreate</code> with a warning. Route through the proxy on the Docker
+  network instead.</li>
+<li>Uses <strong>explicit</strong> <code>traefik.http.routers.&lt;name&gt;</code> / <code>traefik.http.services.&lt;name&gt;</code> labels rather
+  than Traefik's name-derived <code>defaultRule</code>. The proxy must treat blue and green as one service
+  with two backends; explicit labels are what survive the temporary-name → canonical-name rename
+  transparently. With a name-derived rule the temporary green name would create a different router
+  and the rename would flip routing.</li>
+<li>Defines a <strong><code>HEALTHCHECK</code></strong> so green's readiness can actually be verified. Without one, Watchtower
+  can only rely on the drain window and logs a warning.</li>
+<li>Is <strong>stateless / idempotent</strong>. During the drain window both copies receive traffic, so blue-green
+  is <strong>unsafe for databases, queues, and other stateful services</strong> — keep those on <code>recreate</code>.</li>
+</ul>
+</div>
+<p>A failed green health check removes green, leaves blue serving, and records a rollback (the same
+<code>watchtower_rollbacks_total</code> metric and post-rollback cooldown as <code>--health-check-gated</code>).</p>
+<h4 id="worked_example_compose_traefik">Worked example: Compose + Traefik<a class="headerlink" href="#worked_example_compose_traefik" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">traefik</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">traefik:v3</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--providers.docker=true</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--providers.docker.exposedbydefault=false</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--entrypoints.web.address=:80</span>
+<span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;80:80&quot;</span><span class="w">                       </span><span class="c1"># only the proxy publishes host ports</span>
+<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock:ro</span>
+
+<span class="w">  </span><span class="nt">web</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myorg/web:latest</span>
+<span class="w">    </span><span class="c1"># No `ports:` here — Traefik routes to it over the Docker network.</span>
+<span class="w">    </span><span class="nt">healthcheck</span><span class="p">:</span><span class="w">                      </span><span class="c1"># required for a real readiness gate</span>
+<span class="w">      </span><span class="nt">test</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;CMD&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;wget&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;-qO-&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;http://localhost:8080/healthz&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10s</span>
+<span class="w">      </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3s</span>
+<span class="w">      </span><span class="nt">retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">      </span><span class="nt">start_period</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5s</span>
+<span class="w">    </span><span class="nt">labels</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">com.centurylinklabs.watchtower.enable</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+<span class="w">      </span><span class="nt">com.centurylinklabs.watchtower.update-strategy</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;blue-green&quot;</span>
+<span class="w">      </span><span class="nt">com.centurylinklabs.watchtower.blue-green.drain</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;15s&quot;</span><span class="w">   </span><span class="c1"># optional per-container override</span>
+<span class="w">      </span><span class="nt">traefik.enable</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+<span class="w">      </span><span class="c1"># Explicit router + service labels (NOT a name-derived defaultRule) so the</span>
+<span class="w">      </span><span class="c1"># temporary green container and the renamed survivor stay on the same route:</span>
+<span class="w">      </span><span class="nt">traefik.http.routers.web.rule</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Host(`web.example.com`)&quot;</span>
+<span class="w">      </span><span class="nt">traefik.http.routers.web.service</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;web&quot;</span>
+<span class="w">      </span><span class="nt">traefik.http.services.web.loadbalancer.server.port</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;8080&quot;</span>
+
+<span class="w">  </span><span class="nt">watchtower</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openserbia/watchtower:latest</span>
+<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--interval=60</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--label-enable</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--cleanup</span>
+<span class="w">      </span><span class="c1"># Optional: set the fleet-wide default; the per-container label above still wins.</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--update-strategy=recreate</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--blue-green-drain=10s</span>
+</code></pre></div>
+<p>When <code>myorg/web:latest</code> changes, Watchtower starts a second <code>web</code> container (temporary unique name,
+same labels) on the new image. Traefik sees two backends for service <code>web</code> and load-balances across
+both. Once green is healthy and the 15s drain elapses, Watchtower stops the old container and renames
+green to <code>web</code> — no failed requests through Traefik during the cutover.</p>
 
 
 

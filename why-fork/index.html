@@ -554,6 +554,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#zero-downtime_blue-green_deploys_v115" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Zero-downtime blue-green deploys (v1.15)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#startup_capability_preflight_v115" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Startup capability preflight (v1.15)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -820,6 +842,33 @@
     
   
     Remote hosts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../required-capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Required capabilities
   
 
     
@@ -1203,6 +1252,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#zero-downtime_blue-green_deploys_v115" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Zero-downtime blue-green deploys (v1.15)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#startup_capability_preflight_v115" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Startup capability preflight (v1.15)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1336,6 +1407,16 @@
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>Update strategy</td>
+<td>Global <code>--rolling-restart</code> boolean only</td>
+<td><strong><code>--update-strategy</code></strong> enum (<code>recreate</code> / <code>rolling-restart</code> / <code>blue-green</code>), per-container override via the <code>com.centurylinklabs.watchtower.update-strategy</code> label; <code>--rolling-restart</code> kept as a deprecated alias</td>
+</tr>
+<tr>
+<td>Zero-downtime deploys</td>
+<td>—</td>
+<td><strong><code>--update-strategy=blue-green</code></strong> brings the new container up alongside the old, waits for <code>HEALTHCHECK</code> healthy, drains, then retires the old (behind a dynamic label-based reverse proxy, no host ports)</td>
+</tr>
 <tr>
 <td>Health-check gating</td>
 <td>—</td>
@@ -1475,6 +1556,14 @@
 <li><strong><code>ContainerCreate</code> "No such image: name:latest" race after stop+remove</strong> — the recreate referenced the tag rather than the digest resolved by <code>IsContainerStale</code>, so a CI rebuild that briefly untagged <code>name:latest</code> between scan and recreate caused <code>ContainerCreate</code> to fail <em>after</em> the old container had already been killed and removed. The service stayed down with no automatic recovery. Fixed by threading the resolved digest onto the container (<code>SetTargetImageID</code>) and re-binding the original tag to that digest via <code>ImageTag</code> just before <code>ContainerCreate</code>, so the create call still uses the human-readable tag (and every downstream reader of <code>Config.Image</code> keeps working) but is immune to a registry tag that has moved or vanished in the gap. Belt-and-braces: <code>--cleanup</code> now defers image removal by one generation per container, so the previous image stays on disk as a manual recovery target if a recreate ever fails for a reason pinning can't cover.</li>
 <li><strong>Malformed port bindings produced an opaque "invalid port range: value is empty" failure on recreate, after the old container was already gone</strong> — a compose file with <code>ports: ["8080:"]</code> (or any entry that resolved to an empty port number) passed through <code>VerifyConfiguration</code> untouched and only surfaced inside <code>ContainerCreate</code>, by which point the previous container had been stopped and removed. <code>VerifyConfiguration</code> now strips the malformed entries from <code>HostConfig.PortBindings</code> and <code>Config.ExposedPorts</code> and logs a warn that names the offending key and container, so the create proceeds with the remaining bindings instead of dropping the service. Borrowed from <a href="https://github.com/nicholas-fedor/watchtower/pull/1478">nicholas-fedor/watchtower#1478</a>.</li>
 <li><strong>A hung Docker daemon could wedge the scan loop forever</strong> — every call into the daemon used <code>context.Background()</code>, so a socket that accepted the connection but never responded (partial engine upgrade, wedged containerd snapshotter, daemon under extreme load) could block a single API call indefinitely with no recovery. Each operation now runs under a <code>context.WithTimeout</code> sized to its category (2 min for management calls, 5 min for <code>ImageRemove</code>, 30 min for the staleness path that streams the pull); <code>StopContainer</code> budgets <code>2 × stop-timeout + 2m</code> so both wait phases plus the in-loop inspect have full headroom. Healthy daemons see no change; hung daemons surface a deadline error and the next poll retries cleanly. Adapted from <a href="https://github.com/Marrrrrrrrry/watchtower/commit/69616e64c479af8a8472d1db5722e96bbb524225">Marrrrrrrrry/watchtower</a> with revised per-call budgets — their 60 s in <code>IsContainerStale</code> would have cut healthy multi-GB pulls off mid-stream.</li>
+<li><strong>Pull failures reported over the JSON stream were silently swallowed</strong> — Docker delivers pull progress <em>and</em> pull failures over the same newline-delimited JSON stream that <code>ImagePull</code> returns, so a 401/404 on the manifest, a layer that 500s mid-download, or a partial-content abort arrives as a <code>JSONMessage</code> error field, not as the immediate error from the <code>ImagePull</code> call. <code>PullImage</code> drained that stream with <code>io.ReadAll</code> only to keep the daemon from aborting the pull, then returned <code>nil</code> regardless of content — a mid-stream failure was reported as a <em>successful</em> pull, and the stale container was recreated against a half-pulled image or (with no new digest) looked perpetually "up to date". The stream is now drained through <code>jsonmessage.DisplayJSONMessagesStream</code>, which completes the pull and returns the in-stream error, routed through the existing <code>classifyPullError</code> so the registry classification and local-build safeguard still apply.</li>
+<li><strong>Locally-built bare-name images churned <code>pull access denied</code> on every poll under the containerd image store</strong> — <code>docker build -t app:latest .</code> on the containerd image store gives the image a <code>docker.io/library/app</code> RepoDigest, so the staleness pull hits Docker Hub for a repository that does not exist. Hub answers a non-existent <code>docker.io/library/&lt;bare-name&gt;</code> repo with a <strong>401 unauthorized</strong>, not a 404, but the local-build heuristic only recognized the 404 not-found case — so the 401 fell through as a real auth failure and the container logged <code>pull access denied</code> every poll. The heuristic now also treats the unauthorized signal as "locally built" for references that lack a registry hostname, while hostname-qualified references (<code>ghcr.io/foo/bar</code>, <code>registry:5000/x</code>) still fail loudly, so typos and broken private-registry credentials aren't masked. Complements the daemon-<code>Identity</code>-provenance fast path noted in the table above (the safeguard for older daemons that don't expose it).</li>
+<li>
+<p><strong>A self-update that failed mid-recreate leaked an orphan and could storm notifications</strong> — when <code>ContainerCreate</code> had already produced the new container but a later step failed (network attach error, <code>start</code> failure), the orphan was left behind; on a self-update it occupies the <code>/watchtower</code> name and wedges every subsequent poll with a name conflict. <code>StartContainer</code> now force-removes the container it just created when a later step fails (best-effort, strictly scoped to that one ID). Separately, a wedged self-update re-enters the failed-start branch every poll with the same error, and each <code>Error</code> became a notification via the logrus hook — a per-poll storm. The self-update path now dedups identical <code>(container, error-signature)</code> start failures: the first occurrence (and any genuinely different failure) notifies, identical repeats inside a one-hour cooldown drop to <code>Debug</code>; the cache resets on restart so a <code>docker restart watchtower</code> surfaces the next failure loudly.</p>
+</li>
+<li>
+<p><strong>A self-update could wedge on a <code>"/watchtower" name is already in use</code> conflict</strong> — if a stale watchtower container from a previous interrupted self-update still held the canonical name, the recreate's <code>ContainerCreate</code> failed with a name conflict that re-fired every poll until the next restart (the old self that would clean it up is already gone). <code>StartContainer</code> now detects this mid-recreate: on a conflict during a watchtower self-update it inspects whoever holds the name and, only when that holder is a <em>different watchtower-labeled</em> container, force-removes it and retries the create once. Scoped narrowly — an operator's container or a Compose recreate that races the name is left untouched, and the container being recreated from is never removed.</p>
+</li>
 </ul>
 <p>See <a href="https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md">CHANGELOG.md</a> for the full list per release.</p>
 <h2 id="reliability_and_performance_improvements">Reliability and performance improvements<a class="headerlink" href="#reliability_and_performance_improvements" title="Permanent link">&para;</a></h2>
@@ -1514,6 +1603,43 @@
 <li>Independent of <code>--compose-depends-on</code>; both can be enabled together. New package <code>internal/initrerun</code>, new client method <code>RerunInitContainer</code> (unconditional start that bypasses the <code>IsRunning()</code> gate so <code>Exited(0)</code> init containers actually run again), new parser <code>Container.ComposeInitDependencies()</code> (preserves the <code>service_completed_successfully</code> filter that <code>ComposeDependencies()</code> intentionally strips for the sorter).</li>
 </ul>
 </li>
+</ul>
+<h3 id="zero-downtime_blue-green_deploys_v115">Zero-downtime blue-green deploys (v1.15)<a class="headerlink" href="#zero-downtime_blue-green_deploys_v115" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>--update-strategy=blue-green</code> brings up the new container alongside the old, then cuts over.</strong>
+  Upstream's only update model is stop-then-recreate — there is always a gap between stopping the old
+  container and the new one being ready, so the service is down for that window. <code>--rolling-restart</code>
+  softens batch updates and <code>--health-check-gated</code> rolls back a broken image, but neither gives true
+  zero-downtime for a single service. The new <code>--update-strategy</code> flag adds a <strong>blue-green</strong> strategy
+  (alongside the existing <code>recreate</code> default and <code>rolling-restart</code>, which the deprecated
+  <code>--rolling-restart</code> boolean now aliases). For a stale container marked blue-green it:<ul>
+<li>Starts a "green" copy from the old container's config + labels under a temporary unique name, so
+  both run side by side on the new image. With explicit <code>traefik.http.routers.*</code> /
+  <code>traefik.http.services.*</code> labels, the reverse proxy treats blue and green as one service with two
+  backends.</li>
+<li>Waits for green's Docker <code>HEALTHCHECK</code> to report <code>healthy</code> (reusing <code>--health-check-timeout</code> and
+  its per-container label). No <code>HEALTHCHECK</code> ⇒ warns and relies on the drain window only.</li>
+<li>Lets a drain window elapse (<code>--blue-green-drain</code>, default <code>10s</code>; per-container override
+  <code>com.centurylinklabs.watchtower.blue-green.drain</code>) so the proxy registers green and in-flight
+  requests on blue finish.</li>
+<li>Stops blue, renames green to blue's canonical name, runs the post-update hook, and rotates the
+  old image out under <code>--cleanup</code>.</li>
+<li>On a failed health check: removes green, leaves blue serving, records the rollback
+  (<code>watchtower_rollbacks_total</code>) and the post-rollback cooldown.</li>
+</ul>
+</li>
+<li>Opt in per container via <code>com.centurylinklabs.watchtower.update-strategy=blue-green</code>. It requires a
+    dynamic label-based reverse proxy (Traefik) on the Docker network with explicit (not name-derived)
+    router/service labels and <strong>no published host ports</strong> (two copies can't bind the same host port —
+    such containers fall back to <code>recreate</code> with a warning), and is unsafe for stateful services
+    (DBs, queues) because both copies receive traffic during the drain. Default stays <code>recreate</code>, so
+    nothing changes for existing users. See
+    <a href="../container-selection/#update-strategy-blue-green">Container selection → Update strategy</a> for a
+    worked Compose + Traefik example.</li>
+</ul>
+<h3 id="startup_capability_preflight_v115">Startup capability preflight (v1.15)<a class="headerlink" href="#startup_capability_preflight_v115" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong><code>--preflight</code> probes the Docker API capabilities Watchtower needs before scheduling.</strong> Running behind a <a href="../required-capabilities/">socket proxy</a> (e.g. <code>tecnativa/docker-socket-proxy</code>) hardens the daemon surface, but a too-tight allow-list otherwise only reveals itself mid-update — <em>after</em> the old container has been killed and removed and the recreate hits a blocked endpoint. The opt-in <code>--preflight</code> flag closes that gap: at startup it issues one side-effect-free probe per required endpoint (a request against a deliberately bogus target — nothing is created, started, or removed) and aborts with an actionable error before any poll runs. It distinguishes <strong>present</strong> (daemon answered with a logical not-found/bad-request/conflict), <strong>blocked</strong> (a proxy returned 403), and <strong>unreachable</strong> (transport error), and the abort message names <em>both</em> the Docker endpoint and the socket-proxy variable for the first failing capability, so the fix is a one-shot allow-list edit. The required set is derived from the active flags — image pull is skipped under <code>--no-pull</code>, the recreate write set under <code>--monitor-only</code>, image removal only with <code>--cleanup</code>, exec only when a watched container declares a lifecycle label — so the probe never demands more than the run will use. The <code>/events</code> stream is treated as an optional accelerator and only warns. See <a href="../required-capabilities/">Required capabilities</a> for the full catalog and a ready-to-paste socket-proxy environment block.</li>
 </ul>
 <h2 id="known_rough_edges_fork_roadmap">Known rough edges (fork roadmap)<a class="headerlink" href="#known_rough_edges_fork_roadmap" title="Permanent link">&para;</a></h2>
 <p>Contributions welcome. The list is currently empty — the original "<code>:latest</code> everywhere means a broken upstream push reaches prod in one poll interval" rough edge was substantially addressed in v1.12.0 by <code>--image-cooldown</code> (supply-chain grace window: defer applying a pulled image until its digest has been stable for N) and <code>--health-check-gated</code> (revert to previous image if the replacement isn't healthy). Together they turn the classic fast-broken-push scenario into a non-event: operators who enable both can afford the one-poll detection gap because the gate holds the update and, if one slips through, the rollback catches it.</p>
