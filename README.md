@@ -89,10 +89,9 @@ Full flag reference, notification setup, lifecycle hooks, HTTP API, and metrics 
 # Binary checksums
 sha256sum -c watchtower_<version>_checksums.txt --ignore-missing
 
-# Verify the checksums file's keyless cosign signature (Sigstore)
+# Verify the checksums file's keyless cosign signature (Sigstore bundle)
 cosign verify-blob \
-    --certificate watchtower_<version>_checksums.txt.pem \
-    --signature watchtower_<version>_checksums.txt.sig \
+    --bundle watchtower_<version>_checksums.txt.bundle \
     --certificate-identity-regexp '^https://github.com/openserbia/watchtower/' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
     watchtower_<version>_checksums.txt

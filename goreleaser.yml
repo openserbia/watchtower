@@ -74,12 +74,13 @@ dockers_v2:
 signs:
   - cmd: cosign
     artifacts: checksum
-    certificate: "${artifact}.pem"
-    signature: "${artifact}.sig"
+    # cosign 3.x defaults to the new Sigstore bundle (sig + cert in one file) and
+    # ignores the old --output-signature/--output-certificate flags, so emit a
+    # single .bundle. Verify with: cosign verify-blob --bundle <file>.bundle …
+    signature: "${artifact}.bundle"
     args:
       - sign-blob
-      - "--output-certificate=${certificate}"
-      - "--output-signature=${signature}"
+      - "--bundle=${signature}"
       - "${artifact}"
       - "--yes"
     output: true
