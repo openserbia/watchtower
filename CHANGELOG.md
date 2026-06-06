@@ -10,6 +10,8 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+## [1.15.1] - 2026-06-06
+
 ### Fixed
 - **A Docker daemon outage mid-scan no longer crashes watchtower with a nil
   pointer panic.** When the daemon (or a socket proxy in front of it) becomes
