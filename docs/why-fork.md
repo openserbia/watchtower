@@ -162,6 +162,21 @@ Concrete repairs for issues left open on `containrrr/watchtower` when it was arc
   the create once. Scoped narrowly — an operator's container or a Compose recreate that races the name is left
   untouched, and the container being recreated from is never removed.
 
+- **A self-update could strand the live watchtower under an unrecoverable random name** — the rename-and-respawn renamed
+  the running self to an opaque 32-character `util.RandName()` before recreating the replacement. That name embeds
+  nothing, so once it crept in — a non-Compose `docker run --name watchtower` with no `com.docker.compose.service` label
+  to recover from, a respawn that failed *after* the rename, or a `--no-restart` cycle that renamed without respawning —
+  the operator-chosen name existed nowhere recoverable, and watchtower could run indefinitely as e.g.
+  `pmGEucoAmWufDGCRjdiooekxKbtHMNkU` with no `watchtower` container at all. The outgoing self is now renamed to a
+  *structured* temp name that embeds the canonical name, `<canonical>-wt-self-XXXXXXXX` (the twin of the blue-green
+  `<canonical>-wt-bluegreen-XXXXXXXX` pattern), so the real name is always recoverable from the daemon-side container
+  name with zero dependence on Compose labels or `os.Hostname()`-to-short-ID matching. The next poll re-derives the
+  canonical name from the temp name, a `CleanupOrphanSelf` startup sweep promotes a stranded self (or removes it when
+  the canonical self already exists), and a failed respawn renames the live self straight back. The fragile
+  Compose-label rescue and the post-create re-rename — both defeated by the cases above — are removed. `--no-restart`
+  now skips the self-rename entirely (mirroring the blue-green `NoRestart` short-circuit). The `-wt-self-` suffix is a
+  reserved container-name pattern, like `-wt-bluegreen-`.
+
 - **A Docker daemon outage mid-scan crashed watchtower with a nil-pointer panic** — when the daemon (or a socket proxy
   in front of it) became unreachable during a poll, e.g. it was being upgraded and answered `503 Service Unavailable`,
   `actions.Update` bailed early and returned a `nil` report alongside the error. The scheduled, HTTP `/v1/update`, and

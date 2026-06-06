@@ -93,6 +93,38 @@ var _ = Describe("the actions package", func() {
 				Expect(err).NotTo(HaveOccurred())
 			})
 		})
+		When("a newer survivor is a self-update temp and an older one is canonical", func() {
+			It("keeps the canonically-named instance, not the newer temp", func() {
+				// docker rename preserves CreatedAt, so a just-promoted canonical
+				// self is OLDER than a newer "-wt-self-" stray. The keep-newest
+				// reaper must not stop the canonical one. NameOfContainerToKeep
+				// makes the mock error if the canonical is stopped.
+				client := CreateMockClient(
+					&TestData{
+						NameOfContainerToKeep: "watchtower",
+						Containers: []types.Container{
+							CreateMockContainer(
+								"canonical-id",
+								"watchtower",
+								"watchtower",
+								time.Now().AddDate(0, 0, -1),
+							),
+							CreateMockContainer(
+								"temp-id",
+								"watchtower-wt-self-AbCdEfGh",
+								"watchtower",
+								time.Now(),
+							),
+						},
+					},
+					false,
+					false,
+				)
+				Expect(actions.CheckForMultipleWatchtowerInstances(client, false, "")).To(Succeed())
+				Expect(client.TestData.StoppedContainers).To(HaveLen(1))
+				Expect(client.TestData.StoppedContainers[0].Name()).To(Equal("watchtower-wt-self-AbCdEfGh"))
+			})
+		})
 		When("deciding whether to cleanup images", func() {
 			It("should delete the old image when the kept watchtower runs a different one", func() {
 				client := CreateMockClient(

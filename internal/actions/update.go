@@ -931,6 +931,48 @@ func isImageStillReferenced(scanView []types.Container, imageID types.ImageID) b
 	return false
 }
 
+// selfCanonicalName recovers the operator-chosen ("canonical") bare name of the
+// running watchtower self for a self-update recreate, in descending order of
+// trust:
+//
+//  1. the name embedded in a "<canonical>-wt-self-XXXXXXXX" temp left by a
+//     prior interrupted self-update — recoverable with zero compose/hostname
+//     dependence, which is the whole point of the structured temp name. Checked
+//     first so a drifted cached name is never mistaken for an operator name.
+//  2. the current name, when it is not a bare util.RandName() — i.e. the real
+//     name in every healthy deployment shape: plain `docker run --name`,
+//     default-compose "<project>-<service>-N", or a container_name override.
+//  3. the compose service label, but ONLY as a legacy bridge when the cached
+//     name is a bare RandName from a pre-structured-name self-update. Imperfect
+//     for default-compose names (it drops the project/ordinal), but it matches
+//     the previous behavior, so it is no regression.
+//  4. the bare current name as a terminal fallback — a legacy random-named,
+//     non-compose self cannot be auto-healed, exactly as before this change.
+func selfCanonicalName(c types.Container) string {
+	bare := strings.TrimPrefix(c.Name(), "/")
+	if m := selfTempNameRe.FindStringSubmatch(bare); m != nil {
+		return m[1]
+	}
+	if !util.IsRandName(bare) {
+		return bare
+	}
+	if service := c.ComposeService(); service != "" {
+		return service
+	}
+
+	return bare
+}
+
+// selfTempName builds the temporary name the outgoing self wears during a
+// self-update recreate: "<canonical>-wt-self-XXXXXXXX". It is the deliberate
+// twin of greenName in performBlueGreenUpdate, and MUST be built from the
+// already-recovered bare canonical (selfCanonicalName) — never a raw cached
+// name — so a prior "-wt-self-XXXXXXXX" suffix is never re-embedded and the
+// name cannot grow on each cycle.
+func selfTempName(canonical string) string {
+	return canonical + "-wt-self-" + util.RandName()[:8]
+}
+
 // restartStaleContainer is the rename-and-respawn coordinator for one
 // container the scan flagged as stale. Self-update gating, name-rescue
 // heuristics, hostname-clear flag wiring, lifecycle hooks, and the
@@ -960,27 +1002,16 @@ func restartStaleContainer(container types.Container, client container.Client, p
 	// instance so that the new one can adopt the old name.
 	wasRunningSelf := isRunningSelf(container, params)
 
+	// Recover the operator-chosen canonical name (compose-, hostname-, and
+	// random-name-independent — see selfCanonicalName) and pin it as the create
+	// name so the respawned self always reclaims it even when the cached name
+	// has already drifted to a previous-cycle "-wt-self-" temp or a legacy
+	// random name. selfCanonical (bare) is reused below to build the temp name
+	// and to restore the canonical name should the respawn fail.
+	var selfCanonical string
 	if wasRunningSelf {
-		// When the cached Name looks like the output of util.RandName() (32
-		// chars of [a-zA-Z]), it was set by a *previous* self-update's
-		// rename-and-respawn — not by the operator. Faithfully propagating
-		// that random name forward is the bug class the safety net was
-		// supposed to catch but can't, because it compares the new
-		// container's name to a cached "original" that is itself random.
-		// Recover the canonical name from the compose service label, which
-		// survives docker rename, when available.
-		cachedName := container.Name()
-		trimmed := strings.TrimPrefix(cachedName, "/")
-		if util.IsRandName(trimmed) {
-			if service := container.ComposeService(); service != "" {
-				canonical := "/" + service
-				log.WithFields(log.Fields{
-					"cached_name": cachedName,
-					"canonical":   canonical,
-				}).Info("Self-update: cached name looks like a previous rename target; deriving canonical name from compose service label")
-				container.SetCreateName(canonical)
-			}
-		}
+		selfCanonical = selfCanonicalName(container)
+		container.SetCreateName("/" + selfCanonical)
 	}
 	originalName := container.CreateName()
 
@@ -998,6 +1029,18 @@ func restartStaleContainer(container types.Container, client container.Client, p
 			)
 			return nil
 		}
+		// --no-restart updates images but never (re)starts containers. The
+		// self-rename is only the first half of rename-and-respawn; with no
+		// respawn to follow (the StartContainer block below is gated on
+		// !NoRestart) renaming the live self to a temp name would strand it
+		// under "<canonical>-wt-self-XXXXXXXX" with no replacement. Skip the
+		// whole dance — the live self keeps its canonical name. Mirrors the
+		// NoRestart short-circuit in performBlueGreenUpdate.
+		if params.NoRestart {
+			log.WithField("container", originalName).Debug("Self-update: skipping rename-and-respawn because --no-restart is set")
+
+			return nil
+		}
 		// Break the os.Hostname()-drift chain that otherwise propagates the
 		// founding container's short ID into every subsequent self-update
 		// and silently degrades DetectSelfContainerID + the startup-time
@@ -1005,11 +1048,17 @@ func restartStaleContainer(container types.Container, client container.Client, p
 		// Hostname cleared on this recreate, the new container's hostname
 		// equals its own short ID and self-detection stays accurate.
 		container.SetClearHostnameOnRecreate(true)
-		if err := client.RenameContainer(container, util.RandName()); err != nil {
+		// Rename the outgoing self to a STRUCTURED temp name that embeds the
+		// canonical name, so the name survives docker rename in a recoverable
+		// form: selfCanonicalName re-derives it on the next poll and the
+		// startup CleanupOrphanSelf sweep promotes it. Built from the recovered
+		// bare canonical, so a prior "-wt-self-" suffix is never re-embedded.
+		if err := client.RenameContainer(container, selfTempName(selfCanonical)); err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				"container": originalName,
 				"image":     container.ImageName(),
 			}).Errorf("Failed to rename container %s (image %s): %v", originalName, container.ImageName(), err)
+
 			return nil
 		}
 	}
@@ -1017,6 +1066,19 @@ func restartStaleContainer(container types.Container, client container.Client, p
 	if !params.NoRestart {
 		newContainerID, err := client.StartContainer(container)
 		if err != nil {
+			if wasRunningSelf {
+				// The destructive rename already moved the live self to its temp
+				// name, but the respawn failed — restore the canonical name so
+				// the still-running self keeps serving as "<canonical>" instead
+				// of being stranded as "<canonical>-wt-self-XXXXXXXX". Best-
+				// effort: on failure selfCanonicalName (next poll) and the
+				// startup CleanupOrphanSelf sweep still reconcile it.
+				if rerr := client.RenameContainer(container, selfCanonical); rerr != nil {
+					log.WithError(rerr).WithField("container", originalName).Warn(
+						"Self-update: failed to restore the canonical name after a failed respawn; it will be reconciled on the next poll or startup sweep",
+					)
+				}
+			}
 			entry := log.WithError(err).WithFields(log.Fields{
 				"container": originalName,
 				"image":     container.ImageName(),
@@ -1034,9 +1096,6 @@ func restartStaleContainer(container types.Container, client container.Client, p
 			entry.Errorf("Failed to start container %s (image %s): %v", originalName, container.ImageName(), err)
 			return err
 		}
-		if wasRunningSelf {
-			verifySelfContainerName(client, newContainerID, originalName)
-		}
 		if container.ToRestart() && params.LifecycleHooks {
 			lifecycle.ExecutePostUpdateCommand(client, newContainerID)
 		}
@@ -1047,54 +1106,6 @@ func restartStaleContainer(container types.Container, client container.Client, p
 		}
 	}
 	return nil
-}
-
-// verifySelfContainerName is the belt-and-suspenders companion to the
-// SelfContainerID-based orphan-skip in restartStaleContainer. The primary
-// mechanism (DetectSelfContainerID at startup + orphan-skip at restart
-// time) is meant to keep the rename-and-respawn pattern from firing on
-// orphan watchtower-labeled containers — when it works, the new self
-// container always inherits the canonical name (e.g. "watchtower" from a
-// compose container_name: directive) via StartContainer's c.Name() path.
-//
-// In practice, the primary mechanism degrades silently after the first
-// self-update: ContainerCreate carries the old container's Hostname into
-// the new one, so os.Hostname() inside the new self no longer matches
-// any live container's short ID and DetectSelfContainerID returns "" —
-// pushing isRunningSelf back to the label-only fallback that treats
-// every watchtower-labeled container as self. A transient orphan during
-// that window can then have its random name copied onto the new
-// container.
-//
-// This check inspects the freshly-created container by ID and renames
-// it back to the canonical name when it diverged. It is intentionally
-// best-effort: failures log a warning but never abort the update, since
-// the new container is already running the right image and an
-// out-of-band rename is a cosmetic concern rather than a service one.
-func verifySelfContainerName(client container.Client, newID types.ContainerID, expected string) {
-	fresh, err := client.GetContainer(newID)
-	if err != nil {
-		log.WithError(err).WithField("id", newID.ShortID()).Warn(
-			"Self-update safety net: GetContainer failed; cannot verify new container's name",
-		)
-		return
-	}
-	actual := fresh.Name()
-	if actual == expected {
-		return
-	}
-	canonical := strings.TrimPrefix(expected, "/")
-	log.WithFields(log.Fields{
-		"expected": expected,
-		"actual":   actual,
-		"id":       newID.ShortID(),
-	}).Warn("Self-update safety net: new container's name diverged from the original; renaming back to canonical")
-	if err := client.RenameContainer(fresh, canonical); err != nil {
-		log.WithError(err).WithFields(log.Fields{
-			"from": actual,
-			"to":   canonical,
-		}).Error("Self-update safety net: rename-back failed; container will keep the wrong name until next manual fix")
-	}
 }
 
 // resolveHealthCheckTimeout picks the timeout to use for gating a specific

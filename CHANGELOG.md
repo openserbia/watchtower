@@ -11,6 +11,49 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+### Fixed
+- **Self-update can no longer strand the live watchtower under an
+  unrecoverable random name.** The self-update rename-and-respawn renamed the
+  running self to an opaque 32-character `util.RandName()` before recreating the
+  replacement. That name embeds nothing, so once it crept in — a non-Compose
+  `docker run --name watchtower` (no `com.docker.compose.service` label to
+  recover from), a respawn that failed *after* the rename, or a `--no-restart`
+  cycle that renamed without ever respawning — the operator-chosen name existed
+  nowhere recoverable, and the existing safety nets either dead-ended (the
+  Compose-label rescue) or cemented the random name (the post-create check
+  compared the new name against an *already-random* "expected"). Watchtower
+  could end up running indefinitely as e.g. `pmGEucoAmWufDGCRjdiooekxKbtHMNkU`
+  with no `watchtower` container at all. The outgoing self is now renamed to a
+  **structured** temporary name that embeds the canonical name —
+  `<canonical>-wt-self-XXXXXXXX`, the deliberate twin of the blue-green
+  `<canonical>-wt-bluegreen-XXXXXXXX` pattern — so the real name is always
+  recoverable from the daemon-side container name alone, with zero dependence on
+  Compose labels or `os.Hostname()`-to-short-ID matching. Recovery happens three
+  ways: the next poll re-derives the canonical name from the temp name's capture
+  group; a new `CleanupOrphanSelf` startup sweep (mirroring
+  `CleanupOrphanBlueGreen`, run for every strategy before the `--run-once`
+  exit and before `CheckForMultipleWatchtowerInstances`) promotes a stranded
+  self back to its canonical name or removes it when the canonical self already
+  exists; and a failed respawn now renames the live self straight back to its
+  canonical name instead of leaving it stranded.
+- **`--no-restart` no longer renames the live self at all.** The destructive
+  rename was gated only on "this is self", independent of the respawn gate, so a
+  stale self under `--no-restart` was renamed to a temp name with no replacement
+  ever created. The rename is now skipped entirely under `--no-restart`,
+  mirroring the existing blue-green `NoRestart` short-circuit — the live self
+  keeps its canonical name and image-only monitoring is unaffected.
+
+### Changed
+- **Self-update name recovery is now structural rather than heuristic.** The
+  Compose-service-only "looks-random, derive from label" rescue and the
+  post-create `verifySelfContainerName` re-rename (both defeated by the cases
+  above) are removed in favor of the embedded-canonical temp name and the
+  `CleanupOrphanSelf` sweep. `CheckForMultipleWatchtowerInstances` now prefers a
+  canonically-named survivor over a newer transient (`-wt-self-`/random) one, so
+  a just-promoted self — which keeps its older `CreatedAt` across the rename —
+  is not reaped by the keep-newest rule. The `-wt-self-` suffix joins
+  `-wt-bluegreen-` as a reserved container-name pattern operators should avoid.
+
 ## [1.15.1] - 2026-06-06
 
 ### Fixed

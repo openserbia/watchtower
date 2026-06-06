@@ -156,3 +156,112 @@ var _ = Describe("AuditUnmanaged", func() {
 		Expect(logBuf.String()).To(ContainSubstring("audit cleared"))
 	})
 })
+
+var _ = Describe("CleanupOrphanSelf", func() {
+	// buildSelfTemp builds a watchtower-labeled container (so the IsWatchtower
+	// guard passes) with no compose label, at a given creation time — the shape
+	// CleanupOrphanSelf reconciles.
+	buildSelfTemp := func(id, name string, created time.Time) types.Container {
+		return CreateMockContainerWithConfig(
+			id, name, "openserbia/watchtower:latest", true, false, created,
+			&dockerContainer.Config{
+				Image: "openserbia/watchtower:latest",
+				Labels: map[string]string{
+					"com.centurylinklabs.watchtower": "true",
+				},
+				ExposedPorts: map[nat.Port]struct{}{},
+			},
+		)
+	}
+
+	It("promotes a stranded self-temp to its canonical name when no canonical sibling exists (no compose label)", func() {
+		orphan := buildSelfTemp("orphan-id", "/watchtower-wt-self-AbCdEfGh", time.Now())
+		client := CreateMockClient(&TestData{Containers: []types.Container{orphan}}, false, false)
+
+		Expect(actions.CleanupOrphanSelf(client, "", "")).To(Succeed())
+
+		Expect(client.TestData.StoppedContainers).To(BeEmpty())
+		Expect(client.TestData.RenameCalls).To(HaveLen(1))
+		Expect(client.TestData.RenameCalls[0].NewName).To(Equal("watchtower"))
+	})
+
+	It("removes a stale self-temp when the canonical self is already present", func() {
+		canonical := buildSelfTemp("canon-id", "/watchtower", time.Now())
+		orphan := buildSelfTemp("orphan-id", "/watchtower-wt-self-AbCdEfGh", time.Now())
+		client := CreateMockClient(&TestData{Containers: []types.Container{canonical, orphan}}, false, false)
+
+		Expect(actions.CleanupOrphanSelf(client, "", "")).To(Succeed())
+
+		Expect(client.TestData.RenameCalls).To(BeEmpty())
+		Expect(client.TestData.StoppedContainers).To(HaveLen(1))
+		Expect(client.TestData.StoppedContainers[0].Name()).To(Equal("/watchtower-wt-self-AbCdEfGh"))
+	})
+
+	It("promotes to the container name embedded in the temp, not the compose service", func() {
+		// "myproj-watchtower-1-wt-self-XXXX" must promote to "myproj-watchtower-1"
+		// (the embedded capture group), proving recovery uses the structured
+		// name, not ComposeService() which would yield the bare "watchtower".
+		orphan := CreateMockContainerWithConfig(
+			"orphan-id", "/myproj-watchtower-1-wt-self-AbCdEfGh", "openserbia/watchtower:latest",
+			true, false, time.Now(),
+			&dockerContainer.Config{
+				Image: "openserbia/watchtower:latest",
+				Labels: map[string]string{
+					"com.centurylinklabs.watchtower":   "true",
+					"com.docker.compose.service":       "watchtower",
+					"com.docker.compose.project":       "myproj",
+					"com.docker.compose.container-num": "1",
+				},
+				ExposedPorts: map[nat.Port]struct{}{},
+			},
+		)
+		client := CreateMockClient(&TestData{Containers: []types.Container{orphan}}, false, false)
+
+		Expect(actions.CleanupOrphanSelf(client, "", "")).To(Succeed())
+
+		Expect(client.TestData.RenameCalls).To(HaveLen(1))
+		Expect(client.TestData.RenameCalls[0].NewName).To(Equal("myproj-watchtower-1"))
+	})
+
+	It("ignores a non-watchtower container that merely matches the -wt-self- name shape", func() {
+		app := CreateMockContainerWithConfig(
+			"app-id", "/app-wt-self-AbCdEfGh", "fake-image:latest",
+			true, false, time.Now(),
+			&dockerContainer.Config{
+				Image:        "fake-image:latest",
+				Labels:       map[string]string{},
+				ExposedPorts: map[nat.Port]struct{}{},
+			},
+		)
+		client := CreateMockClient(&TestData{Containers: []types.Container{app}}, false, false)
+
+		Expect(actions.CleanupOrphanSelf(client, "", "")).To(Succeed())
+
+		Expect(client.TestData.RenameCalls).To(BeEmpty())
+		Expect(client.TestData.StoppedContainers).To(BeEmpty())
+	})
+
+	It("promotes the newest of several self-temps for one canonical and stops the rest", func() {
+		older := buildSelfTemp("older-id", "/watchtower-wt-self-AaAaAaAa", time.Now())
+		newer := buildSelfTemp("newer-id", "/watchtower-wt-self-BbBbBbBb", time.Now().Add(time.Hour))
+		client := CreateMockClient(&TestData{Containers: []types.Container{older, newer}}, false, false)
+
+		Expect(actions.CleanupOrphanSelf(client, "", "")).To(Succeed())
+
+		Expect(client.TestData.RenameCalls).To(HaveLen(1))
+		Expect(client.TestData.RenameCalls[0].ContainerID).To(Equal(types.ContainerID("newer-id")))
+		Expect(client.TestData.RenameCalls[0].NewName).To(Equal("watchtower"))
+		Expect(client.TestData.StoppedContainers).To(HaveLen(1))
+		Expect(client.TestData.StoppedContainers[0].Name()).To(Equal("/watchtower-wt-self-AaAaAaAa"))
+	})
+
+	It("never stops or renames the live self", func() {
+		liveSelf := buildSelfTemp("live-self-id", "/watchtower-wt-self-AbCdEfGh", time.Now())
+		client := CreateMockClient(&TestData{Containers: []types.Container{liveSelf}}, false, false)
+
+		Expect(actions.CleanupOrphanSelf(client, "", types.ContainerID("live-self-id"))).To(Succeed())
+
+		Expect(client.TestData.RenameCalls).To(BeEmpty())
+		Expect(client.TestData.StoppedContainers).To(BeEmpty())
+	})
+})

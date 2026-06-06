@@ -842,11 +842,12 @@ var _ = Describe("watchtower self-update name safety net", func() {
 		)
 	}
 
-	It("does not double-rename when the recreated self already inherits the canonical name", func() {
-		// MockClient.StartContainer returns c.ID() when NextStartContainerIDs
-		// is empty, and GetContainer with no ContainerByID override returns
-		// Containers[0]. So the safety net inspects the same /watchtower
-		// container the test set up — actual==expected, no extra rename.
+	It("renames the outgoing self to a structured <canonical>-wt-self- temp name", func() {
+		// The self-update renames the live self exactly once, to a temp name
+		// that EMBEDS the canonical name (so it stays recoverable on the next
+		// poll and by CleanupOrphanSelf), then creates the replacement under the
+		// canonical name. No second rename: the old verifySelfContainerName
+		// double-rename safety net is gone.
 		self := buildSelf()
 		client := CreateMockClient(&TestData{
 			Containers: []types.Container{self},
@@ -855,10 +856,10 @@ var _ = Describe("watchtower self-update name safety net", func() {
 		_, err := actions.Update(client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 
-		// Exactly one rename — the initial random one that frees the
-		// canonical name for the new container to adopt.
 		Expect(client.TestData.RenameCalls).To(HaveLen(1))
-		Expect(client.TestData.RenameCalls[0].NewName).NotTo(Equal("watchtower"))
+		Expect(client.TestData.RenameCalls[0].NewName).To(MatchRegexp(`^watchtower-wt-self-[A-Za-z]{8}$`))
+		Expect(client.TestData.StartedContainers).To(HaveLen(1))
+		Expect(client.TestData.StartedContainers[0].CreateName()).To(Equal("/watchtower"))
 	})
 
 	It("recovers the canonical name from the compose service label when the cached Name looks like a previous rename target", func() {
@@ -941,17 +942,16 @@ var _ = Describe("watchtower self-update name safety net", func() {
 		Expect(client.TestData.StartedContainers[0].ClearHostnameOnRecreate()).To(BeTrue())
 	})
 
-	It("renames the recreated self back to the canonical name when StartContainer returns a divergent name", func() {
-		// Drive the divergence: StartContainer returns a fresh ID for the
-		// new container, GetContainer for that ID returns a container
-		// whose Name() is a random string instead of /watchtower. This
-		// simulates the orphan-name-leakage scenario the safety net
-		// exists to recover from.
-		self := buildSelf()
-		newID := types.ContainerID("newcontainer1234567890abcdef")
-		wrongName := CreateMockContainerWithConfig(
-			string(newID),
-			"/VWhtejHFazORFJVQPmEDXTirLeVHxFAz",
+	It("recovers the canonical name from an embedded -wt-self- temp name without a compose label", func() {
+		// The non-compose recovery the old IsRandName+compose rescue could
+		// never do: a self whose cached name is itself a "<canonical>-wt-self-"
+		// temp (a prior cycle renamed it and the respawn never restored the
+		// name). selfCanonicalName re-derives "watchtower" straight from the
+		// embedded capture group — no compose label, no hostname matching — so
+		// the replacement is created under the canonical name.
+		self := CreateMockContainerWithConfig(
+			"self-id",
+			"/watchtower-wt-self-AbCdEfGh",
 			"openserbia/watchtower:latest",
 			true, false, time.Now(),
 			&dockerContainer.Config{
@@ -963,25 +963,54 @@ var _ = Describe("watchtower self-update name safety net", func() {
 			},
 		)
 		client := CreateMockClient(&TestData{
-			Containers:            []types.Container{self},
-			NextStartContainerIDs: []types.ContainerID{newID},
-			ContainerByID: map[types.ContainerID]types.Container{
-				newID: wrongName,
-			},
+			Containers: []types.Container{self},
 		}, false, false)
 
 		_, err := actions.Update(client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 
-		// Two renames expected: the initial random one freeing the
-		// canonical slot, then the safety-net restore to "watchtower".
+		Expect(client.TestData.StartedContainers).To(HaveLen(1))
+		Expect(client.TestData.StartedContainers[0].CreateName()).To(Equal("/watchtower"))
+		// The fresh temp is built from the recovered bare canonical, never the
+		// raw cached name, so the "-wt-self-" suffix is not re-embedded.
+		Expect(client.TestData.RenameCalls).To(HaveLen(1))
+		Expect(client.TestData.RenameCalls[0].NewName).To(MatchRegexp(`^watchtower-wt-self-[A-Za-z]{8}$`))
+	})
+
+	It("skips the rename-and-respawn entirely under --no-restart so the live self keeps its name", func() {
+		// The destructive rename is only the first half of rename-and-respawn;
+		// with no respawn to follow under --no-restart, renaming the live self
+		// would strand it. Mirrors the blue-green NoRestart short-circuit.
+		self := buildSelf()
+		client := CreateMockClient(&TestData{
+			Containers: []types.Container{self},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{NoRestart: true})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(client.TestData.RenameCalls).To(BeEmpty())
+		Expect(client.TestData.StartedContainers).To(BeEmpty())
+	})
+
+	It("restores the canonical name when the respawn fails after the rename", func() {
+		// StartContainer fails for the self after it was already renamed to its
+		// temp name; restartStaleContainer must rename it back to the canonical
+		// name rather than leave the still-running self stranded as a temp.
+		self := buildSelf()
+		client := CreateMockClient(&TestData{
+			Containers:           []types.Container{self},
+			StartContainerErrors: map[string]error{"/watchtower": errors.New("address already in use")},
+		}, false, false)
+
+		_, err := actions.Update(client, types.UpdateParams{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Two renames: the temp rename, then the restore back to the canonical
+		// bare name on the failed-respawn path.
 		Expect(client.TestData.RenameCalls).To(HaveLen(2))
+		Expect(client.TestData.RenameCalls[0].NewName).To(MatchRegexp(`^watchtower-wt-self-[A-Za-z]{8}$`))
 		Expect(client.TestData.RenameCalls[1].NewName).To(Equal("watchtower"))
-		Expect(client.TestData.RenameCalls[1].ContainerID).To(Equal(newID))
-		// And the OldName captured at safety-net time is the diverged one,
-		// not the original canonical — proves the check is looking at the
-		// fresh post-StartContainer state, not stale cached info.
-		Expect(client.TestData.RenameCalls[1].OldName).To(Equal("/VWhtejHFazORFJVQPmEDXTirLeVHxFAz"))
 	})
 })
 

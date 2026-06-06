@@ -14,6 +14,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
+	"github.com/openserbia/watchtower/internal/util"
 	"github.com/openserbia/watchtower/pkg/container"
 	"github.com/openserbia/watchtower/pkg/filters"
 	"github.com/openserbia/watchtower/pkg/metrics"
@@ -26,6 +27,18 @@ import (
 // first 8 characters of util.RandName() (the [A-Za-z] alphabet). The capture
 // group is the canonical bare name the green was cloned from.
 var blueGreenTempName = regexp.MustCompile(`^(.+)-wt-bluegreen-[A-Za-z]{8}$`)
+
+// selfTempNameRe matches the temporary name restartStaleContainer gives the
+// outgoing watchtower self during a self-update: "<canonical>-wt-self-XXXXXXXX",
+// where the suffix is the first 8 characters of util.RandName() ([A-Za-z]). The
+// capture group is the canonical bare name the self was renamed from.
+//
+// This is the deliberate twin of blueGreenTempName: embedding the operator-
+// chosen name in the temp name makes it recoverable — at the next poll and by
+// the CleanupOrphanSelf startup sweep — with zero dependence on compose labels
+// or os.Hostname()<->short-ID matching, which is exactly what the old opaque
+// util.RandName() self-rename destroyed.
+var selfTempNameRe = regexp.MustCompile(`^(.+)-wt-self-[A-Za-z]{8}$`)
 
 // CheckForSanity makes sure everything is sane before starting. When
 // requireNoLinks is set (the rolling-restart and blue-green strategies, which
@@ -209,6 +222,116 @@ func CleanupOrphanBlueGreen(client container.Client, scope string) error {
 	return nil
 }
 
+// CleanupOrphanSelf reconciles watchtower self-update temporary containers
+// ("<canonical>-wt-self-XXXXXXXX") left behind by an interrupted self-update —
+// e.g. a respawn that failed after the outgoing self was already renamed, or a
+// crash between the rename and the respawn. It is the self-update twin of
+// CleanupOrphanBlueGreen and runs once at startup, before any update is
+// scheduled and before CheckForMultipleWatchtowerInstances, so it never races a
+// live cutover: the update lock serializes runs and none is in flight yet.
+//
+// selfID is the running self's container ID (DetectSelfContainerID); the live
+// self is never touched. For each remaining watchtower-labeled
+// "<canonical>-wt-self-XXXXXXXX" container, grouped by its embedded canonical
+// name:
+//   - if a container with the canonical "<canonical>" name already exists, the
+//     respawn already produced the canonical self, so every temp for that name
+//     is a stale outgoing self — stop it.
+//   - otherwise the temp IS the stranded live service that never got its name
+//     back — promote it by renaming to the canonical name. When several temps
+//     share one canonical with no sibling (two interrupted cycles), the newest
+//     by creation time is promoted and the rest stopped, mirroring
+//     cleanupExcessWatchtowers' keep-newest rule.
+//
+// Recovery never consults compose labels or hostname matching: the canonical
+// name is read straight out of the temp name's capture group. Failures are
+// logged and skipped rather than returned, so one stuck container can't block
+// startup; the function only returns an error if the initial list fails.
+func CleanupOrphanSelf(client container.Client, scope string, selfID types.ContainerID) error {
+	filter := filters.WatchtowerContainersFilter
+	if scope != "" {
+		filter = filters.FilterByScope(scope, filter)
+	}
+	containers, err := client.ListContainers(filter)
+	if err != nil {
+		return err
+	}
+
+	present := make(map[string]struct{}, len(containers))
+	for _, c := range containers {
+		present[strings.TrimPrefix(c.Name(), "/")] = struct{}{}
+	}
+
+	// Group self-temps by their embedded canonical name so that multiple temps
+	// for the same canonical (two interrupted cycles) resolve deterministically.
+	tempsByCanonical := make(map[string][]types.Container)
+	for _, c := range containers {
+		if selfID != "" && c.ID() == selfID {
+			continue // never reconcile the live self — it is the running process
+		}
+		// The watchtower filter already narrows the list, but keep the explicit
+		// guard so an operator container that merely happens to match the
+		// "-wt-self-" name shape is never stopped or renamed.
+		if !c.IsWatchtower() {
+			continue
+		}
+		bare := strings.TrimPrefix(c.Name(), "/")
+		match := selfTempNameRe.FindStringSubmatch(bare)
+		if match == nil {
+			continue
+		}
+		tempsByCanonical[match[1]] = append(tempsByCanonical[match[1]], c)
+	}
+
+	for canonical, temps := range tempsByCanonical {
+		if _, ok := present[canonical]; ok {
+			// The respawn already produced the canonical self; the temps are
+			// stale outgoing selves the respawn replaced — remove them.
+			for _, c := range temps {
+				stopOrphanSelf(client, c, canonical, "the canonical self is already present")
+			}
+
+			continue
+		}
+
+		// No canonical sibling: a temp is the stranded live self. Promote the
+		// newest and stop the rest (keep-newest, like cleanupExcessWatchtowers).
+		sort.Sort(sorter.ByCreated(temps))
+		promote := temps[len(temps)-1]
+		for _, c := range temps[:len(temps)-1] {
+			stopOrphanSelf(client, c, canonical, "promoting a newer stranded self for this canonical name")
+		}
+
+		log.WithFields(log.Fields{"self": strings.TrimPrefix(promote.Name(), "/"), "canonical": canonical}).Info(
+			"self-update: promoting stranded self to its canonical name; an earlier self-update renamed it but never restored the name",
+		)
+		if err := client.RenameContainer(promote, canonical); err != nil {
+			log.WithError(err).WithFields(log.Fields{"self": strings.TrimPrefix(promote.Name(), "/"), "canonical": canonical}).Warn(
+				"self-update: failed to rename stranded self to its canonical name; it keeps the temporary name until the next update",
+			)
+
+			continue
+		}
+		present[canonical] = struct{}{}
+	}
+
+	return nil
+}
+
+// stopOrphanSelf removes a stale self-update temporary container, tolerating a
+// vanished container. Best-effort: a failure is logged and never returned so it
+// cannot block the startup sweep.
+func stopOrphanSelf(client container.Client, c types.Container, canonical, reason string) {
+	log.WithFields(log.Fields{"self": strings.TrimPrefix(c.Name(), "/"), "canonical": canonical}).Infof(
+		"self-update: removing orphan self-update temporary container — %s", reason,
+	)
+	if err := client.StopContainer(c, stopTimeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
+		log.WithError(err).WithField("self", strings.TrimPrefix(c.Name(), "/")).Warn(
+			"self-update: failed to remove orphan self-update temporary container; it will be retried on the next startup",
+		)
+	}
+}
+
 // CheckForMultipleWatchtowerInstances will ensure that there are not multiple instances of the
 // watchtower running simultaneously. If multiple watchtower containers are detected, this function
 // will stop and remove all but the most recently started container. This behaviour can be bypassed
@@ -238,10 +361,31 @@ func cleanupExcessWatchtowers(containers []types.Container, client container.Cli
 	var stopErrors int
 
 	sort.Sort(sorter.ByCreated(containers))
-	allContainersExceptLast := containers[0 : len(containers)-1]
 	keep := containers[len(containers)-1]
 
-	for _, c := range allContainersExceptLast {
+	// docker rename preserves CreatedAt, so a just-promoted canonical self (the
+	// CleanupOrphanSelf sweep renames an older outgoing self back to its
+	// canonical name) is OLDER than a newer "-wt-self-"/random stray and would
+	// otherwise lose the keep-newest tie-break and be reaped. Prefer a stably-
+	// named survivor: if the newest carries a transient self-temp or bare random
+	// name, keep instead the newest container that does not.
+	if isTransientWatchtowerName(keep.Name()) {
+		// containers is sorted oldest→newest; walk back from the newest and keep
+		// the first stably-named instance instead. The last element is the
+		// already-rejected transient keep, so it simply fails the guard.
+		for i := len(containers) - 1; i >= 0; i-- {
+			if !isTransientWatchtowerName(containers[i].Name()) {
+				keep = containers[i]
+
+				break
+			}
+		}
+	}
+
+	for _, c := range containers {
+		if c.ID() == keep.ID() {
+			continue
+		}
 		if err := client.StopContainer(c, stopTimeout); err != nil {
 			if errors.Is(err, container.ErrContainerNotFound) {
 				log.WithField("container", c.Name()).Debug("Excess watchtower vanished before stop — skipping")
@@ -272,4 +416,13 @@ func cleanupExcessWatchtowers(containers []types.Container, client container.Cli
 	}
 
 	return nil
+}
+
+// isTransientWatchtowerName reports whether name is a watchtower-authored
+// transient name — a self-update temp ("<canonical>-wt-self-XXXXXXXX") or a
+// legacy bare util.RandName() — rather than a stable operator/compose name.
+func isTransientWatchtowerName(name string) bool {
+	bare := strings.TrimPrefix(name, "/")
+
+	return selfTempNameRe.MatchString(bare) || util.IsRandName(bare)
 }

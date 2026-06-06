@@ -219,6 +219,16 @@ func Run(c *cobra.Command, names []string) {
 		}
 	}
 
+	// Reconcile any watchtower self-update temporaries ("<name>-wt-self-XXXXXXXX")
+	// stranded by an interrupted self-update — a respawn that failed after the
+	// outgoing self was renamed, or a crash between the rename and the respawn.
+	// Runs for every strategy, before both the --run-once path and
+	// CheckForMultipleWatchtowerInstances (so a promoted self survives the
+	// keep-newest reaper). Non-fatal: a sweep failure must not block startup.
+	if err := actions.CleanupOrphanSelf(client, scope, selfContainerID); err != nil {
+		log.WithError(err).Warn("self-update: orphan self-temp cleanup sweep failed; continuing startup")
+	}
+
 	if preflight, _ := c.PersistentFlags().GetBool("preflight"); preflight {
 		// List the watched containers so the required set can include the
 		// exec capability only when a watched container declares a lifecycle
