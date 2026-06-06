@@ -576,6 +576,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#supply-chain_hardening_v115" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supply-chain hardening (v1.15)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1274,6 +1285,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#supply-chain_hardening_v115" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supply-chain hardening (v1.15)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1322,9 +1344,13 @@
 
 
 <h1 id="why_this_fork">Why this fork?<a class="headerlink" href="#why_this_fork" title="Permanent link">&para;</a></h1>
-<p><code>containrrr/watchtower</code> is the de-facto Docker auto-updater, but the <a href="https://github.com/containrrr/watchtower/discussions/2135">upstream repository stopped accepting changes in late 2024</a>. <code>openserbia/watchtower</code> exists to keep the project alive with a modern toolchain and fixes driven by real-world homelab usage.</p>
+<p><code>containrrr/watchtower</code> is the de-facto Docker auto-updater, but
+the <a href="https://github.com/containrrr/watchtower/discussions/2135">upstream repository stopped accepting changes in late 2024</a>.
+<code>openserbia/watchtower</code> exists to keep the project alive with a modern toolchain and fixes driven by real-world homelab
+usage.</p>
 <h2 id="requirements">Requirements<a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h2>
-<p><strong>Docker Engine 20.10 or newer.</strong> Watchtower auto-negotiates the Docker API version with the daemon, so older engines may work but aren't tested and are out of scope for bug reports.</p>
+<p><strong>Docker Engine 20.10 or newer.</strong> Watchtower auto-negotiates the Docker API version with the daemon, so older engines
+may work but aren't tested and are out of scope for bug reports.</p>
 <h2 id="drop-in_compatible">Drop-in compatible<a class="headerlink" href="#drop-in_compatible" title="Permanent link">&para;</a></h2>
 <p>Swap the image name and you're done. The fork deliberately preserves:</p>
 <ul>
@@ -1393,7 +1419,7 @@
 <tr>
 <td>Shoutrrr library</td>
 <td><code>containrrr/shoutrrr</code> (paused)</td>
-<td><strong><code>nicholas-fedor/shoutrrr</code></strong> v0.14 (active fork, URL-compatible)</td>
+<td><strong><code>nicholas-fedor/shoutrrr</code></strong> v0.15 (active fork, URL-compatible)</td>
 </tr>
 </tbody>
 </table>
@@ -1504,6 +1530,16 @@
 <td><code>!=</code> (timing-sensitive)</td>
 <td><strong><code>crypto/subtle.ConstantTimeCompare</code></strong></td>
 </tr>
+<tr>
+<td>Release signatures &amp; provenance</td>
+<td>Unsigned (SHA256 checksums only)</td>
+<td><strong>Keyless cosign signatures</strong> (Sigstore OIDC, no keys) on images + <code>checksums.txt</code>, plus <strong>SLSA build provenance</strong> and a <strong>CycloneDX SBOM</strong> attached to every image</td>
+</tr>
+<tr>
+<td>Runtime image base</td>
+<td><code>scratch</code> + hand-copied certs</td>
+<td><strong>digest-pinned <code>gcr.io/distroless/static-debian13</code></strong> (maintained CA bundle + tzdata, minimal, scannable)</td>
+</tr>
 </tbody>
 </table>
 <h3 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h3>
@@ -1544,25 +1580,93 @@
 <li><strong>GHCR:</strong> <a href="https://github.com/openserbia/watchtower/pkgs/container/watchtower"><code>ghcr.io/openserbia/watchtower</code></a></li>
 <li><strong>Go module:</strong> <code>github.com/openserbia/watchtower</code></li>
 </ul>
-<p>Multi-arch images (amd64, arm64, arm/v6, arm/v7, 386, riscv64) live under the same <code>:latest</code> / <code>:&lt;version&gt;</code> tag — Docker picks the right variant for your host.</p>
+<p>Multi-arch images (amd64, arm64, arm/v6, arm/v7, 386, riscv64) live under the same <code>:latest</code> / <code>:&lt;version&gt;</code> tag — Docker
+picks the right variant for your host.</p>
 <h2 id="versioning">Versioning<a class="headerlink" href="#versioning" title="Permanent link">&para;</a></h2>
-<p>This fork picks up the upstream version line: <code>v1.7.1</code> was upstream's last tag, so the fork starts at <code>v1.8.0</code>. Semver applies — patch bumps for fixes and dep updates, minor for behavior-preserving additions, and <code>v2.0.0</code> will signal the first intentional break of upstream compatibility (CLI flags, labels, or HTTP API).</p>
+<p>This fork picks up the upstream version line: <code>v1.7.1</code> was upstream's last tag, so the fork starts at <code>v1.8.0</code>. Semver
+applies — patch bumps for fixes and dep updates, minor for behavior-preserving additions, and <code>v2.0.0</code> will signal the
+first intentional break of upstream compatibility (CLI flags, labels, or HTTP API).</p>
 <h2 id="upstream_bugs_this_fork_has_fixed">Upstream bugs this fork has fixed<a class="headerlink" href="#upstream_bugs_this_fork_has_fixed" title="Permanent link">&para;</a></h2>
 <p>Concrete repairs for issues left open on <code>containrrr/watchtower</code> when it was archived. Examples:</p>
 <ul>
-<li><a href="https://github.com/containrrr/watchtower/issues/966">upstream#966</a> — <code>--cleanup</code> deletes the freshly-pulled replacement image and logs <code>conflict: unable to delete ... image is being used by running container</code>.</li>
-<li><a href="https://github.com/containrrr/watchtower/issues/1217">upstream#1217</a> — nil-pointer panic in <code>Container.ImageID()</code> when a container's source image has been garbage-collected.</li>
-<li><a href="https://github.com/containrrr/watchtower/issues/1413">upstream#1413</a> — <code>Unable to update container: Error: No such image</code> loop that permanently wedges the affected container.</li>
-<li><strong><code>ContainerCreate</code> "No such image: name:latest" race after stop+remove</strong> — the recreate referenced the tag rather than the digest resolved by <code>IsContainerStale</code>, so a CI rebuild that briefly untagged <code>name:latest</code> between scan and recreate caused <code>ContainerCreate</code> to fail <em>after</em> the old container had already been killed and removed. The service stayed down with no automatic recovery. Fixed by threading the resolved digest onto the container (<code>SetTargetImageID</code>) and re-binding the original tag to that digest via <code>ImageTag</code> just before <code>ContainerCreate</code>, so the create call still uses the human-readable tag (and every downstream reader of <code>Config.Image</code> keeps working) but is immune to a registry tag that has moved or vanished in the gap. Belt-and-braces: <code>--cleanup</code> now defers image removal by one generation per container, so the previous image stays on disk as a manual recovery target if a recreate ever fails for a reason pinning can't cover.</li>
-<li><strong>Malformed port bindings produced an opaque "invalid port range: value is empty" failure on recreate, after the old container was already gone</strong> — a compose file with <code>ports: ["8080:"]</code> (or any entry that resolved to an empty port number) passed through <code>VerifyConfiguration</code> untouched and only surfaced inside <code>ContainerCreate</code>, by which point the previous container had been stopped and removed. <code>VerifyConfiguration</code> now strips the malformed entries from <code>HostConfig.PortBindings</code> and <code>Config.ExposedPorts</code> and logs a warn that names the offending key and container, so the create proceeds with the remaining bindings instead of dropping the service. Borrowed from <a href="https://github.com/nicholas-fedor/watchtower/pull/1478">nicholas-fedor/watchtower#1478</a>.</li>
-<li><strong>A hung Docker daemon could wedge the scan loop forever</strong> — every call into the daemon used <code>context.Background()</code>, so a socket that accepted the connection but never responded (partial engine upgrade, wedged containerd snapshotter, daemon under extreme load) could block a single API call indefinitely with no recovery. Each operation now runs under a <code>context.WithTimeout</code> sized to its category (2 min for management calls, 5 min for <code>ImageRemove</code>, 30 min for the staleness path that streams the pull); <code>StopContainer</code> budgets <code>2 × stop-timeout + 2m</code> so both wait phases plus the in-loop inspect have full headroom. Healthy daemons see no change; hung daemons surface a deadline error and the next poll retries cleanly. Adapted from <a href="https://github.com/Marrrrrrrrry/watchtower/commit/69616e64c479af8a8472d1db5722e96bbb524225">Marrrrrrrrry/watchtower</a> with revised per-call budgets — their 60 s in <code>IsContainerStale</code> would have cut healthy multi-GB pulls off mid-stream.</li>
-<li><strong>Pull failures reported over the JSON stream were silently swallowed</strong> — Docker delivers pull progress <em>and</em> pull failures over the same newline-delimited JSON stream that <code>ImagePull</code> returns, so a 401/404 on the manifest, a layer that 500s mid-download, or a partial-content abort arrives as a <code>JSONMessage</code> error field, not as the immediate error from the <code>ImagePull</code> call. <code>PullImage</code> drained that stream with <code>io.ReadAll</code> only to keep the daemon from aborting the pull, then returned <code>nil</code> regardless of content — a mid-stream failure was reported as a <em>successful</em> pull, and the stale container was recreated against a half-pulled image or (with no new digest) looked perpetually "up to date". The stream is now drained through <code>jsonmessage.DisplayJSONMessagesStream</code>, which completes the pull and returns the in-stream error, routed through the existing <code>classifyPullError</code> so the registry classification and local-build safeguard still apply.</li>
-<li><strong>Locally-built bare-name images churned <code>pull access denied</code> on every poll under the containerd image store</strong> — <code>docker build -t app:latest .</code> on the containerd image store gives the image a <code>docker.io/library/app</code> RepoDigest, so the staleness pull hits Docker Hub for a repository that does not exist. Hub answers a non-existent <code>docker.io/library/&lt;bare-name&gt;</code> repo with a <strong>401 unauthorized</strong>, not a 404, but the local-build heuristic only recognized the 404 not-found case — so the 401 fell through as a real auth failure and the container logged <code>pull access denied</code> every poll. The heuristic now also treats the unauthorized signal as "locally built" for references that lack a registry hostname, while hostname-qualified references (<code>ghcr.io/foo/bar</code>, <code>registry:5000/x</code>) still fail loudly, so typos and broken private-registry credentials aren't masked. Complements the daemon-<code>Identity</code>-provenance fast path noted in the table above (the safeguard for older daemons that don't expose it).</li>
+<li><a href="https://github.com/containrrr/watchtower/issues/966">upstream#966</a> — <code>--cleanup</code> deletes the freshly-pulled
+  replacement image and logs <code>conflict: unable to delete ... image is being used by running container</code>.</li>
+<li><a href="https://github.com/containrrr/watchtower/issues/1217">upstream#1217</a> — nil-pointer panic in <code>Container.ImageID()</code>
+  when a container's source image has been garbage-collected.</li>
+<li><a href="https://github.com/containrrr/watchtower/issues/1413">upstream#1413</a> —
+  <code>Unable to update container: Error: No such image</code> loop that permanently wedges the affected container.</li>
+<li><strong><code>ContainerCreate</code> "No such image: name:latest" race after stop+remove</strong> — the recreate referenced the tag rather
+  than the digest resolved by <code>IsContainerStale</code>, so a CI rebuild that briefly untagged <code>name:latest</code> between scan and
+  recreate caused <code>ContainerCreate</code> to fail <em>after</em> the old container had already been killed and removed. The service
+  stayed down with no automatic recovery. Fixed by threading the resolved digest onto the container (<code>SetTargetImageID</code>)
+  and re-binding the original tag to that digest via <code>ImageTag</code> just before <code>ContainerCreate</code>, so the create call still
+  uses the human-readable tag (and every downstream reader of <code>Config.Image</code> keeps working) but is immune to a registry
+  tag that has moved or vanished in the gap. Belt-and-braces: <code>--cleanup</code> now defers image removal by one generation per
+  container, so the previous image stays on disk as a manual recovery target if a recreate ever fails for a reason
+  pinning can't cover.</li>
+<li><strong>Malformed port bindings produced an opaque "invalid port range: value is empty" failure on recreate, after the old
+  container was already gone</strong> — a compose file with <code>ports: ["8080:"]</code> (or any entry that resolved to an empty port
+  number) passed through <code>VerifyConfiguration</code> untouched and only surfaced inside <code>ContainerCreate</code>, by which point the
+  previous container had been stopped and removed. <code>VerifyConfiguration</code> now strips the malformed entries from
+  <code>HostConfig.PortBindings</code> and <code>Config.ExposedPorts</code> and logs a warn that names the offending key and container, so the
+  create proceeds with the remaining bindings instead of dropping the service. Borrowed
+  from <a href="https://github.com/nicholas-fedor/watchtower/pull/1478">nicholas-fedor/watchtower#1478</a>.</li>
+<li><strong>A hung Docker daemon could wedge the scan loop forever</strong> — every call into the daemon used <code>context.Background()</code>,
+  so a socket that accepted the connection but never responded (partial engine upgrade, wedged containerd snapshotter,
+  daemon under extreme load) could block a single API call indefinitely with no recovery. Each operation now runs under
+  a <code>context.WithTimeout</code> sized to its category (2 min for management calls, 5 min for <code>ImageRemove</code>, 30 min for the
+  staleness path that streams the pull); <code>StopContainer</code> budgets <code>2 × stop-timeout + 2m</code> so both wait phases plus the
+  in-loop inspect have full headroom. Healthy daemons see no change; hung daemons surface a deadline error and the next
+  poll retries cleanly. Adapted
+  from <a href="https://github.com/Marrrrrrrrry/watchtower/commit/69616e64c479af8a8472d1db5722e96bbb524225">Marrrrrrrrry/watchtower</a>
+  with revised per-call budgets — their 60 s in <code>IsContainerStale</code> would have cut healthy multi-GB pulls off mid-stream.</li>
+<li><strong>Pull failures reported over the JSON stream were silently swallowed</strong> — Docker delivers pull progress <em>and</em> pull
+  failures over the same newline-delimited JSON stream that <code>ImagePull</code> returns, so a 401/404 on the manifest, a layer
+  that 500s mid-download, or a partial-content abort arrives as a <code>JSONMessage</code> error field, not as the immediate error
+  from the <code>ImagePull</code> call. <code>PullImage</code> drained that stream with <code>io.ReadAll</code> only to keep the daemon from aborting the
+  pull, then returned <code>nil</code> regardless of content — a mid-stream failure was reported as a <em>successful</em> pull, and the
+  stale container was recreated against a half-pulled image or (with no new digest) looked perpetually "up to date". The
+  stream is now drained through <code>jsonmessage.DisplayJSONMessagesStream</code>, which completes the pull and returns the
+  in-stream error, routed through the existing <code>classifyPullError</code> so the registry classification and local-build
+  safeguard still apply.</li>
+<li><strong>Locally-built bare-name images churned <code>pull access denied</code> on every poll under the containerd image store</strong> —
+  <code>docker build -t app:latest .</code> on the containerd image store gives the image a <code>docker.io/library/app</code> RepoDigest, so
+  the staleness pull hits Docker Hub for a repository that does not exist. Hub answers a non-existent
+  <code>docker.io/library/&lt;bare-name&gt;</code> repo with a <strong>401 unauthorized</strong>, not a 404, but the local-build heuristic only
+  recognized the 404 not-found case — so the 401 fell through as a real auth failure and the container logged
+  <code>pull access denied</code> every poll. The heuristic now also treats the unauthorized signal as "locally built" for
+  references that lack a registry hostname, while hostname-qualified references (<code>ghcr.io/foo/bar</code>, <code>registry:5000/x</code>)
+  still fail loudly, so typos and broken private-registry credentials aren't masked. Complements the daemon-<code>Identity</code>
+  -provenance fast path noted in the table above (the safeguard for older daemons that don't expose it).</li>
 <li>
-<p><strong>A self-update that failed mid-recreate leaked an orphan and could storm notifications</strong> — when <code>ContainerCreate</code> had already produced the new container but a later step failed (network attach error, <code>start</code> failure), the orphan was left behind; on a self-update it occupies the <code>/watchtower</code> name and wedges every subsequent poll with a name conflict. <code>StartContainer</code> now force-removes the container it just created when a later step fails (best-effort, strictly scoped to that one ID). Separately, a wedged self-update re-enters the failed-start branch every poll with the same error, and each <code>Error</code> became a notification via the logrus hook — a per-poll storm. The self-update path now dedups identical <code>(container, error-signature)</code> start failures: the first occurrence (and any genuinely different failure) notifies, identical repeats inside a one-hour cooldown drop to <code>Debug</code>; the cache resets on restart so a <code>docker restart watchtower</code> surfaces the next failure loudly.</p>
+<p><strong>A self-update that failed mid-recreate leaked an orphan and could storm notifications</strong> — when <code>ContainerCreate</code> had
+  already produced the new container but a later step failed (network attach error, <code>start</code> failure), the orphan was
+  left behind; on a self-update it occupies the <code>/watchtower</code> name and wedges every subsequent poll with a name
+  conflict. <code>StartContainer</code> now force-removes the container it just created when a later step fails (best-effort,
+  strictly scoped to that one ID). Separately, a wedged self-update re-enters the failed-start branch every poll with
+  the same error, and each <code>Error</code> became a notification via the logrus hook — a per-poll storm. The self-update path
+  now dedups identical <code>(container, error-signature)</code> start failures: the first occurrence (and any genuinely different
+  failure) notifies, identical repeats inside a one-hour cooldown drop to <code>Debug</code>; the cache resets on restart so a
+  <code>docker restart watchtower</code> surfaces the next failure loudly.</p>
 </li>
 <li>
-<p><strong>A self-update could wedge on a <code>"/watchtower" name is already in use</code> conflict</strong> — if a stale watchtower container from a previous interrupted self-update still held the canonical name, the recreate's <code>ContainerCreate</code> failed with a name conflict that re-fired every poll until the next restart (the old self that would clean it up is already gone). <code>StartContainer</code> now detects this mid-recreate: on a conflict during a watchtower self-update it inspects whoever holds the name and, only when that holder is a <em>different watchtower-labeled</em> container, force-removes it and retries the create once. Scoped narrowly — an operator's container or a Compose recreate that races the name is left untouched, and the container being recreated from is never removed.</p>
+<p><strong>A self-update could wedge on a <code>"/watchtower" name is already in use</code> conflict</strong> — if a stale watchtower container
+  from a previous interrupted self-update still held the canonical name, the recreate's <code>ContainerCreate</code> failed with a
+  name conflict that re-fired every poll until the next restart (the old self that would clean it up is already gone).
+  <code>StartContainer</code> now detects this mid-recreate: on a conflict during a watchtower self-update it inspects whoever
+  holds the name and, only when that holder is a <em>different watchtower-labeled</em> container, force-removes it and retries
+  the create once. Scoped narrowly — an operator's container or a Compose recreate that races the name is left
+  untouched, and the container being recreated from is never removed.</p>
+</li>
+<li>
+<p><strong>A Docker daemon outage mid-scan crashed watchtower with a nil-pointer panic</strong> — when the daemon (or a socket proxy
+  in front of it) became unreachable during a poll, e.g. it was being upgraded and answered <code>503 Service Unavailable</code>,
+  <code>actions.Update</code> bailed early and returned a <code>nil</code> report alongside the error. The scheduled, HTTP <code>/v1/update</code>, and
+  event-triggered callers logged the error but fed the <code>nil</code> report straight into <code>metrics.NewMetric</code>, which
+  dereferenced it (<code>report.Scanned()</code>) and panicked with a <code>SIGSEGV</code>. Because the scan runs inside a <code>robfig/cron</code>
+  goroutine with no recovery, the panic took down the entire process — a transient daemon blip killed watchtower until
+  its restart policy brought it back. <code>NewMetric</code> now treats a <code>nil</code> report as an empty scan, so a failed update cycle
+  records zero counts and the poll loop survives.</p>
 </li>
 </ul>
 <p>See <a href="https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md">CHANGELOG.md</a> for the full list per release.</p>
@@ -1570,37 +1674,86 @@
 <p>Not upstream-bug repairs — additions that harden the same feature set.</p>
 <h3 id="registry_and_auth_v19">Registry and auth (v1.9)<a class="headerlink" href="#registry_and_auth_v19" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Bounded exponential backoff on registry HTTP calls.</strong> The oauth challenge, bearer-token exchange, and manifest HEAD retry up to 3 times (500 ms → 4 s + jitter) on network errors, 5xx, 429, and the 401/403/404 flakes seen on registry oauth endpoints under load. Previously a single transient failure wedged the affected image until the next poll.</li>
-<li><strong>In-memory bearer-token cache.</strong> A poll across N containers on the same registry+repository scope now issues one token exchange instead of N. Keyed by auth URL + credential hash, respects the registry's <code>expires_in</code> (default 60 s per the Docker token spec) minus a 10 s skew. Cuts registry traffic dramatically on larger deployments and further reduces oauth-flake exposure.</li>
+<li><strong>Bounded exponential backoff on registry HTTP calls.</strong> The oauth challenge, bearer-token exchange, and manifest HEAD
+  retry up to 3 times (500 ms → 4 s + jitter) on network errors, 5xx, 429, and the 401/403/404 flakes seen on registry
+  oauth endpoints under load. Previously a single transient failure wedged the affected image until the next poll.</li>
+<li><strong>In-memory bearer-token cache.</strong> A poll across N containers on the same registry+repository scope now issues one
+  token exchange instead of N. Keyed by auth URL + credential hash, respects the registry's <code>expires_in</code> (default 60 s
+  per the Docker token spec) minus a 10 s skew. Cuts registry traffic dramatically on larger deployments and further
+  reduces oauth-flake exposure.</li>
 </ul>
 <h3 id="safer_updates_v110">Safer updates (v1.10)<a class="headerlink" href="#safer_updates_v110" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong><code>--health-check-gated</code> with automatic rollback.</strong> After creating the replacement container, Watchtower waits up to <code>--health-check-timeout</code> for <code>State.Health.Status == healthy</code>. If the container never reaches healthy (or reports unhealthy), the replacement is stopped and the previous image is restarted from preserved config. The rollback is itself health-gated — if the previous image is also broken, Watchtower logs <code>rollback_failed=true</code> and leaves the container in place for manual intervention rather than tearing the service down. A per-container rollback cooldown prevents the stop/start/fail loop from thrashing when an image author keeps pushing broken versions. Per-container label override (<code>com.centurylinklabs.watchtower.health-check-timeout=5m</code>) and a smart default derived from the image's own <code>HEALTHCHECK</code> (start_period + retries × (interval + timeout)) mean the gate scales across fast-boot and slow-boot services alike.</li>
-<li><strong><code>--insecure-registry</code> and <code>--registry-ca-bundle</code>.</strong> Upstream unconditionally set <code>InsecureSkipVerify: true</code> for every registry digest check — a long-standing security weakness. The fork enforces strict TLS (1.2+, system trust store) by default and offers per-host opt-outs: list hosts in <code>--insecure-registry</code> to skip verification for specific registries, or load additional CAs via <code>--registry-ca-bundle</code> (extends the system roots rather than replacing them).</li>
+<li><strong><code>--health-check-gated</code> with automatic rollback.</strong> After creating the replacement container, Watchtower waits up to
+  <code>--health-check-timeout</code> for <code>State.Health.Status == healthy</code>. If the container never reaches healthy (or reports
+  unhealthy), the replacement is stopped and the previous image is restarted from preserved config. The rollback is
+  itself health-gated — if the previous image is also broken, Watchtower logs <code>rollback_failed=true</code> and leaves the
+  container in place for manual intervention rather than tearing the service down. A per-container rollback cooldown
+  prevents the stop/start/fail loop from thrashing when an image author keeps pushing broken versions. Per-container
+  label override (<code>com.centurylinklabs.watchtower.health-check-timeout=5m</code>) and a smart default derived from the image's
+  own <code>HEALTHCHECK</code> (start_period + retries × (interval + timeout)) mean the gate scales across fast-boot and slow-boot
+  services alike.</li>
+<li><strong><code>--insecure-registry</code> and <code>--registry-ca-bundle</code>.</strong> Upstream unconditionally set <code>InsecureSkipVerify: true</code> for
+  every registry digest check — a long-standing security weakness. The fork enforces strict TLS (1.2+, system trust
+  store) by default and offers per-host opt-outs: list hosts in <code>--insecure-registry</code> to skip verification for specific
+  registries, or load additional CAs via <code>--registry-ca-bundle</code> (extends the system roots rather than replacing them).</li>
 </ul>
 <h3 id="operational_visibility_v110_v111">Operational visibility (v1.10 – v1.11)<a class="headerlink" href="#operational_visibility_v110_v111" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Ship-ready Grafana dashboard + Prometheus alerts.</strong> <code>observability/grafana/watchtower-dashboard.json</code> and <code>observability/prometheus/alerts.yml</code> drop into any Prometheus + Grafana stack: scan overview, watch-status donut, reliability/security row (poll p50/p95, registry outcomes, API error breakdown, Docker API errors, bearer-cache hit rate, image-fallback count), optional Loki logs row, and three annotation tracks for rollbacks/restarts/newly-appeared unmanaged containers. Six production-tuned alerts cover scheduler wedges, sustained failures, registry errors, and Docker API errors.</li>
-<li><strong>Poll-interval-aware staleness alert.</strong> <code>watchtower_poll_interval_seconds</code> is published at startup from the active schedule, so the <code>WatchtowerScansStopped</code> alert uses <code>(time() - last_scan) &gt; 2 × poll_interval</code> instead of a hardcoded window. Works equally for 60-second polls and 12-hour cadences.</li>
-<li><strong><code>GET /v1/audit</code> endpoint.</strong> JSON report of every container classified as <code>managed</code> / <code>excluded</code> / <code>unmanaged</code> / <code>infrastructure</code>. Pull-model alternative to log-based auditing — operators can <code>curl | jq</code> during incident response or wire to a dashboard. Token-gated like <code>/v1/update</code>.</li>
-<li><strong><code>--http-api-metrics-no-auth</code>.</strong> Matches Prometheus convention for trusted-network scraping — <code>/v1/metrics</code> can be exposed without bearer-token plumbing while <code>/v1/update</code> stays mandatorily token-gated.</li>
-<li><strong>Change-detecting <code>--audit-unmanaged</code>.</strong> With <code>--label-enable</code> active, warns once when a container first appears without the <code>enable</code> label and stays silent on subsequent polls unless the set changes. Orders of magnitude less log noise than upstream's would-be behavior for steady-state homelabs.</li>
-<li><strong>Infrastructure bucket.</strong> Docker's own scaffolding containers (<code>moby/buildkit*</code>, <code>docker/desktop-*</code>, anything labelled <code>com.docker.buildx.*</code> / <code>com.docker.desktop.*</code>) are classified separately from unmanaged workloads, so ephemeral buildx builders stop inflating the audit count every <code>docker buildx build</code>.</li>
-<li><strong>~20 Prometheus metrics</strong> covering every HTTP-facing surface: API requests by endpoint + status, registry calls by host + operation + outcome, retry counts, Docker API errors by operation, bearer-cache hits/misses, image-fallback count, last-scan timestamp, and a poll-duration histogram. See <a href="../metrics/">Metrics</a> for the full list.</li>
+<li><strong>Ship-ready Grafana dashboard + Prometheus alerts.</strong> <code>observability/grafana/watchtower-dashboard.json</code> and
+  <code>observability/prometheus/alerts.yml</code> drop into any Prometheus + Grafana stack: scan overview, watch-status donut,
+  reliability/security row (poll p50/p95, registry outcomes, API error breakdown, Docker API errors, bearer-cache hit
+  rate, image-fallback count), optional Loki logs row, and three annotation tracks for rollbacks/restarts/newly-appeared
+  unmanaged containers. Six production-tuned alerts cover scheduler wedges, sustained failures, registry errors, and
+  Docker API errors.</li>
+<li><strong>Poll-interval-aware staleness alert.</strong> <code>watchtower_poll_interval_seconds</code> is published at startup from the active
+  schedule, so the <code>WatchtowerScansStopped</code> alert uses <code>(time() - last_scan) &gt; 2 × poll_interval</code> instead of a hardcoded
+  window. Works equally for 60-second polls and 12-hour cadences.</li>
+<li><strong><code>GET /v1/audit</code> endpoint.</strong> JSON report of every container classified as <code>managed</code> / <code>excluded</code> / <code>unmanaged</code> /
+  <code>infrastructure</code>. Pull-model alternative to log-based auditing — operators can <code>curl | jq</code> during incident response or
+  wire to a dashboard. Token-gated like <code>/v1/update</code>.</li>
+<li><strong><code>--http-api-metrics-no-auth</code>.</strong> Matches Prometheus convention for trusted-network scraping — <code>/v1/metrics</code> can be
+  exposed without bearer-token plumbing while <code>/v1/update</code> stays mandatorily token-gated.</li>
+<li><strong>Change-detecting <code>--audit-unmanaged</code>.</strong> With <code>--label-enable</code> active, warns once when a container first appears
+  without the <code>enable</code> label and stays silent on subsequent polls unless the set changes. Orders of magnitude less log
+  noise than upstream's would-be behavior for steady-state homelabs.</li>
+<li><strong>Infrastructure bucket.</strong> Docker's own scaffolding containers (<code>moby/buildkit*</code>, <code>docker/desktop-*</code>, anything
+  labelled <code>com.docker.buildx.*</code> / <code>com.docker.desktop.*</code>) are classified separately from unmanaged workloads, so
+  ephemeral buildx builders stop inflating the audit count every <code>docker buildx build</code>.</li>
+<li><strong>~20 Prometheus metrics</strong> covering every HTTP-facing surface: API requests by endpoint + status, registry calls by
+  host + operation + outcome, retry counts, Docker API errors by operation, bearer-cache hits/misses, image-fallback
+  count, last-scan timestamp, and a poll-duration histogram. See <a href="../metrics/">Metrics</a> for the full list.</li>
 </ul>
 <h3 id="security_hardening_v111">Security hardening (v1.11)<a class="headerlink" href="#security_hardening_v111" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>Constant-time bearer-token comparison.</strong> <code>api.RequireToken</code> now uses <code>crypto/subtle.ConstantTimeCompare</code> instead of <code>!=</code>, closing a theoretical timing-oracle on the <code>/v1/*</code> endpoints.</li>
+<li><strong>Constant-time bearer-token comparison.</strong> <code>api.RequireToken</code> now uses <code>crypto/subtle.ConstantTimeCompare</code> instead of
+  <code>!=</code>, closing a theoretical timing-oracle on the <code>/v1/*</code> endpoints.</li>
 <li><strong>Strict TLS by default</strong> (noted above under v1.10).</li>
 </ul>
 <h3 id="compose-aware_init_reruns_v114">Compose-aware init reruns (v1.14)<a class="headerlink" href="#compose-aware_init_reruns_v114" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong><code>--rerun-init-deps</code> honors <code>service_completed_successfully</code>.</strong> Compose's <code>depends_on: { condition: service_completed_successfully }</code> is evaluated only by <code>docker compose up</code>, never by Watchtower's container-level update loop. Stacks that moved bootstrap (goose schema migrations, seed jobs, anything one-shot before the long-running service) into a sibling init container therefore silently regressed to "new code, old schema" on every Watchtower-driven restart. The new opt-in flag closes the gap:<ul>
-<li>When a target with <code>service_completed_successfully</code> deps becomes stale, Watchtower re-executes each declared init sibling against the <em>new</em> image first; only after every init exits 0 does it stop+recreate the target. Old container keeps serving traffic the entire time.</li>
-<li>On non-zero exit the failed init is left in <code>Exited(N)</code> for <code>docker logs</code> inspection, the new digest is cached in an in-process rejected-digest map, and the target keeps its old image until the registry serves a different digest (operator pushed a fix). The rejected cache evicts naturally on Watchtower restart, so a <code>docker restart watchtower</code> is the manual "retry once" lever.</li>
-<li>Same-image init containers (the common <code>migrate</code> service using the same image tag as the target) inherit the target's freshly-resolved digest so both run against identical bits; different-image inits (e.g. <code>pg-ready: postgres:18</code>) keep their own pinning untouched.</li>
-<li>Migrations must be backwards-compatible with the previous image — the old container keeps serving while the init runs, so the schema in between must be readable by both versions. Standard expand-then-contract practice; warn in the flag's help text.</li>
-<li>Independent of <code>--compose-depends-on</code>; both can be enabled together. New package <code>internal/initrerun</code>, new client method <code>RerunInitContainer</code> (unconditional start that bypasses the <code>IsRunning()</code> gate so <code>Exited(0)</code> init containers actually run again), new parser <code>Container.ComposeInitDependencies()</code> (preserves the <code>service_completed_successfully</code> filter that <code>ComposeDependencies()</code> intentionally strips for the sorter).</li>
+<li><strong><code>--rerun-init-deps</code> honors <code>service_completed_successfully</code>.</strong> Compose's
+  <code>depends_on: { condition: service_completed_successfully }</code> is evaluated only by <code>docker compose up</code>, never by
+  Watchtower's container-level update loop. Stacks that moved bootstrap (goose schema migrations, seed jobs, anything
+  one-shot before the long-running service) into a sibling init container therefore silently regressed to "new code, old
+  schema" on every Watchtower-driven restart. The new opt-in flag closes the gap:<ul>
+<li>When a target with <code>service_completed_successfully</code> deps becomes stale, Watchtower re-executes each declared init
+  sibling against the <em>new</em> image first; only after every init exits 0 does it stop+recreate the target. Old
+  container keeps serving traffic the entire time.</li>
+<li>On non-zero exit the failed init is left in <code>Exited(N)</code> for <code>docker logs</code> inspection, the new digest is cached in
+  an in-process rejected-digest map, and the target keeps its old image until the registry serves a different
+  digest (operator pushed a fix). The rejected cache evicts naturally on Watchtower restart, so a
+  <code>docker restart watchtower</code> is the manual "retry once" lever.</li>
+<li>Same-image init containers (the common <code>migrate</code> service using the same image tag as the target) inherit the
+  target's freshly-resolved digest so both run against identical bits; different-image inits (e.g.
+  <code>pg-ready: postgres:18</code>) keep their own pinning untouched.</li>
+<li>Migrations must be backwards-compatible with the previous image — the old container keeps serving while the init
+  runs, so the schema in between must be readable by both versions. Standard expand-then-contract practice; warn in
+  the flag's help text.</li>
+<li>Independent of <code>--compose-depends-on</code>; both can be enabled together. New package <code>internal/initrerun</code>, new client
+  method <code>RerunInitContainer</code> (unconditional start that bypasses the <code>IsRunning()</code> gate so <code>Exited(0)</code> init
+  containers actually run again), new parser <code>Container.ComposeInitDependencies()</code> (preserves the
+  <code>service_completed_successfully</code> filter that <code>ComposeDependencies()</code> intentionally strips for the sorter).</li>
 </ul>
 </li>
 </ul>
@@ -1626,24 +1779,60 @@
   old image out under <code>--cleanup</code>.</li>
 <li>On a failed health check: removes green, leaves blue serving, records the rollback
   (<code>watchtower_rollbacks_total</code>) and the post-rollback cooldown.</li>
+<li>Opt in per container via <code>com.centurylinklabs.watchtower.update-strategy=blue-green</code>. It requires a
+  dynamic label-based reverse proxy (Traefik) on the Docker network with explicit (not name-derived)
+  router/service labels and <strong>no published host ports</strong> (two copies can't bind the same host port —
+  such containers fall back to <code>recreate</code> with a warning), and is unsafe for stateful services
+  (DBs, queues) because both copies receive traffic during the drain. Default stays <code>recreate</code>, so
+  nothing changes for existing users. See
+  <a href="../container-selection/#update-strategy-blue-green">Container selection → Update strategy</a> for a
+  worked Compose + Traefik example.</li>
 </ul>
 </li>
-<li>Opt in per container via <code>com.centurylinklabs.watchtower.update-strategy=blue-green</code>. It requires a
-    dynamic label-based reverse proxy (Traefik) on the Docker network with explicit (not name-derived)
-    router/service labels and <strong>no published host ports</strong> (two copies can't bind the same host port —
-    such containers fall back to <code>recreate</code> with a warning), and is unsafe for stateful services
-    (DBs, queues) because both copies receive traffic during the drain. Default stays <code>recreate</code>, so
-    nothing changes for existing users. See
-    <a href="../container-selection/#update-strategy-blue-green">Container selection → Update strategy</a> for a
-    worked Compose + Traefik example.</li>
 </ul>
 <h3 id="startup_capability_preflight_v115">Startup capability preflight (v1.15)<a class="headerlink" href="#startup_capability_preflight_v115" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong><code>--preflight</code> probes the Docker API capabilities Watchtower needs before scheduling.</strong> Running behind a <a href="../required-capabilities/">socket proxy</a> (e.g. <code>tecnativa/docker-socket-proxy</code>) hardens the daemon surface, but a too-tight allow-list otherwise only reveals itself mid-update — <em>after</em> the old container has been killed and removed and the recreate hits a blocked endpoint. The opt-in <code>--preflight</code> flag closes that gap: at startup it issues one side-effect-free probe per required endpoint (a request against a deliberately bogus target — nothing is created, started, or removed) and aborts with an actionable error before any poll runs. It distinguishes <strong>present</strong> (daemon answered with a logical not-found/bad-request/conflict), <strong>blocked</strong> (a proxy returned 403), and <strong>unreachable</strong> (transport error), and the abort message names <em>both</em> the Docker endpoint and the socket-proxy variable for the first failing capability, so the fix is a one-shot allow-list edit. The required set is derived from the active flags — image pull is skipped under <code>--no-pull</code>, the recreate write set under <code>--monitor-only</code>, image removal only with <code>--cleanup</code>, exec only when a watched container declares a lifecycle label — so the probe never demands more than the run will use. The <code>/events</code> stream is treated as an optional accelerator and only warns. See <a href="../required-capabilities/">Required capabilities</a> for the full catalog and a ready-to-paste socket-proxy environment block.</li>
+<li><strong><code>--preflight</code> probes the Docker API capabilities Watchtower needs before scheduling.</strong> Running behind
+  a <a href="../required-capabilities/">socket proxy</a> (e.g. <code>tecnativa/docker-socket-proxy</code>) hardens the daemon surface, but a
+  too-tight allow-list otherwise only reveals itself mid-update — <em>after</em> the old container has been killed and removed
+  and the recreate hits a blocked endpoint. The opt-in <code>--preflight</code> flag closes that gap: at startup it issues one
+  side-effect-free probe per required endpoint (a request against a deliberately bogus target — nothing is created,
+  started, or removed) and aborts with an actionable error before any poll runs. It distinguishes <strong>present</strong> (daemon
+  answered with a logical not-found/bad-request/conflict), <strong>blocked</strong> (a proxy returned 403), and <strong>unreachable</strong> (
+  transport error), and the abort message names <em>both</em> the Docker endpoint and the socket-proxy variable for the first
+  failing capability, so the fix is a one-shot allow-list edit. The required set is derived from the active flags —
+  image pull is skipped under <code>--no-pull</code>, the recreate write set under <code>--monitor-only</code>, image removal only with
+  <code>--cleanup</code>, exec only when a watched container declares a lifecycle label — so the probe never demands more than the
+  run will use. The <code>/events</code> stream is treated as an optional accelerator and only warns.
+  See <a href="../required-capabilities/">Required capabilities</a> for the full catalog and a ready-to-paste socket-proxy
+  environment block.</li>
+</ul>
+<h3 id="supply-chain_hardening_v115">Supply-chain hardening (v1.15)<a class="headerlink" href="#supply-chain_hardening_v115" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Published images are signed, carry build provenance and an SBOM, and run on a minimal distroless base.</strong> The runtime
+  image moved from <code>scratch</code> (with a hand-rolled Alpine cert stage) to a *
+  <em>digest-pinned <code>gcr.io/distroless/static-debian13</code></em><em> — a maintained base that bundles <code>ca-certificates</code> and <code>tzdata</code>,
+  stays tiny (~26 MB with the binary), and is actually scannable. Every release — both tagged <code>vX.Y.Z</code> and the rolling
+  <code>:latest-dev</code> — is </em><em>signed with keyless cosign</em><em> (GitHub Actions OIDC → Sigstore Fulcio/Rekor, no long-lived keys to
+  manage or leak), and each multi-arch image carries a </em><em>SLSA build provenance</em><em> attestation and a </em><em>CycloneDX SBOM</em><em> (
+  BuildKit <code>--provenance</code> / <code>--sbom</code>); the GoReleaser <code>checksums.txt</code> is cosign-signed too. Consumers can answer all
+  three supply-chain questions — </em>who built it<em> (signature), </em>how<em> (provenance), and </em>what's inside<em> (SBOM) — and verify
+  them with <code>cosign verify</code> / <code>cosign verify-blob</code> / <code>docker buildx imagetools inspect</code>;
+  see <a href="https://github.com/openserbia/watchtower#verifying-a-release">Verifying a release</a>. Releases are additionally
+  gated in CI by <code>govulncheck</code> (Go vulnerability DB), Trivy, and Snyk. The distroless base is not published for
+  <code>linux/386</code> or <code>linux/arm/v6</code>, so those two platforms are dropped from the </em><em>container image</em>* — the binary <code>tar.gz</code>
+  archives still ship for them.</li>
 </ul>
 <h2 id="known_rough_edges_fork_roadmap">Known rough edges (fork roadmap)<a class="headerlink" href="#known_rough_edges_fork_roadmap" title="Permanent link">&para;</a></h2>
-<p>Contributions welcome. The list is currently empty — the original "<code>:latest</code> everywhere means a broken upstream push reaches prod in one poll interval" rough edge was substantially addressed in v1.12.0 by <code>--image-cooldown</code> (supply-chain grace window: defer applying a pulled image until its digest has been stable for N) and <code>--health-check-gated</code> (revert to previous image if the replacement isn't healthy). Together they turn the classic fast-broken-push scenario into a non-event: operators who enable both can afford the one-poll detection gap because the gate holds the update and, if one slips through, the rollback catches it.</p>
-<p>See <a href="https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md">CHANGELOG.md</a> for rough edges that have already been fixed (auth-flake backoff, pull-failure log levels, label fail-open audit, compose-deploy races, GC'd source images, blanket TLS skip, unmanaged-audit spam, buildkit noise, and more).</p>
+<p>Contributions welcome. The list is currently empty — the original "<code>:latest</code> everywhere means a broken upstream push
+reaches prod in one poll interval" rough edge was substantially addressed in v1.12.0 by <code>--image-cooldown</code> (supply-chain
+grace window: defer applying a pulled image until its digest has been stable for N) and <code>--health-check-gated</code> (revert
+to previous image if the replacement isn't healthy). Together they turn the classic fast-broken-push scenario into a
+non-event: operators who enable both can afford the one-poll detection gap because the gate holds the update and, if one
+slips through, the rollback catches it.</p>
+<p>See <a href="https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md">CHANGELOG.md</a> for rough edges that have already
+been fixed (auth-flake backoff, pull-failure log levels, label fail-open audit, compose-deploy races, GC'd source
+images, blanket TLS skip, unmanaged-audit spam, buildkit noise, and more).</p>
 <h2 id="migrating_from_upstream">Migrating from upstream<a class="headerlink" href="#migrating_from_upstream" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="w"> </span>services:
 <span class="w"> </span>  watchtower:
@@ -1652,7 +1841,8 @@
 <span class="w"> </span>    volumes:
 <span class="w"> </span>      - /var/run/docker.sock:/var/run/docker.sock
 </code></pre></div>
-<p>That's the whole migration for the common case. If you pin a specific version, the fork resumes the version line at <code>v1.8.0</code> and later.</p>
+<p>That's the whole migration for the common case. If you pin a specific version, the fork resumes the version line at
+<code>v1.8.0</code> and later.</p>
 
 
 

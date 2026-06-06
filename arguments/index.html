@@ -2695,6 +2695,67 @@ Environment Variable: WATCHTOWER_RERUN_INIT_DEPS
                 Type: Boolean
              Default: false
 </code></pre></div>
+<p><strong>Worked example — migrate-before-deploy.</strong> A typical stack: a long-running <code>app</code>, a one-shot
+<code>migrate</code> init sibling that runs <code>goose up</code> against the same image, and Postgres. The <code>depends_on</code>
+condition makes <code>docker compose up</code> run migrations before starting <code>app</code>; <code>--rerun-init-deps</code> extends
+that same contract to every Watchtower-driven update.</p>
+<div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">db</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgres:18</span>
+<span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">POSTGRES_PASSWORD</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">secret</span>
+<span class="w">    </span><span class="nt">healthcheck</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">test</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;CMD-SHELL&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;pg_isready</span><span class="nv"> </span><span class="s">-U</span><span class="nv"> </span><span class="s">postgres&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">      </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5s</span>
+<span class="w">      </span><span class="nt">retries</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+
+<span class="w">  </span><span class="c1"># One-shot init sibling. Same image as `app`, so the migrations always</span>
+<span class="w">  </span><span class="c1"># match the code being deployed. Exits 0 when goose has nothing left to do.</span>
+<span class="w">  </span><span class="nt">migrate</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myorg/app:latest</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;goose&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;-dir&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;/migrations&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;postgres&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;postgres://postgres:secret@db/app?sslmode=disable&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;up&quot;</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">db</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">service_healthy</span>
+<span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;no&quot;</span>
+
+<span class="w">  </span><span class="nt">app</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myorg/app:latest</span>
+<span class="w">    </span><span class="nt">depends_on</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">db</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">service_healthy</span>
+<span class="w">      </span><span class="nt">migrate</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">condition</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">service_completed_successfully</span><span class="w">   </span><span class="c1"># &lt;- the gate --rerun-init-deps honors</span>
+<span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;8080:8080&quot;</span>
+<span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+
+<span class="w">  </span><span class="nt">watchtower</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">openserbia/watchtower</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">--rerun-init-deps --interval 300</span>
+<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/run/docker.sock:/var/run/docker.sock</span>
+<span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+</code></pre></div>
+<p>No Watchtower-specific labels are needed — the init relationship is read straight from the
+<code>com.docker.compose.depends_on</code> label Compose writes on <code>app</code> automatically. When <code>myorg/app:latest</code>
+gets a new digest, Watchtower:</p>
+<ol>
+<li>Resolves the new digest for <code>app</code> (the regular staleness check).</li>
+<li>Recreates <code>migrate</code> against that <strong>same</strong> new digest and runs <code>goose up</code>, blocking on its exit.
+   The <strong>old</strong> <code>app</code> keeps serving <code>:8080</code> the whole time.</li>
+<li>On <code>migrate</code> exit 0 → stops and recreates <code>app</code> on the new digest. Done: migrations ran before the
+   new code went live.</li>
+<li>On non-zero exit → leaves <code>migrate</code> in <code>Exited(N)</code> for <code>docker logs migrate</code>, keeps the old <code>app</code>
+   running, and caches the digest as rejected until you push a fix (or restart Watchtower to retry
+   once).</li>
+</ol>
+<div class="admonition warning">
+<p class="admonition-title">Expand-then-contract only</p>
+<p>Because old <code>app</code> serves traffic while the new migration runs, the post-migration schema must stay
+readable by the old code — add columns/tables in one release, remove the old ones in a later release.
+Breaking schema changes need a planned downtime window instead, not this flag.</p>
+</div>
 <h2 id="image_cooldown_supply-chain_gate">Image cooldown (supply-chain gate)<a class="headerlink" href="#image_cooldown_supply-chain_gate" title="Permanent link">&para;</a></h2>
 <p>After a new image digest is detected, defer applying it until the digest has been stable for this
 duration. Protects against the "broken <code>:latest</code> push reaches every host in one poll interval" failure
