@@ -758,6 +758,69 @@ Environment Variable: WATCHTOWER_RERUN_INIT_DEPS
              Default: false
 ```
 
+**Worked example — migrate-before-deploy.** A typical stack: a long-running `app`, a one-shot
+`migrate` init sibling that runs `goose up` against the same image, and Postgres. The `depends_on`
+condition makes `docker compose up` run migrations before starting `app`; `--rerun-init-deps` extends
+that same contract to every Watchtower-driven update.
+
+```yaml
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: secret
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 5
+
+  # One-shot init sibling. Same image as `app`, so the migrations always
+  # match the code being deployed. Exits 0 when goose has nothing left to do.
+  migrate:
+    image: myorg/app:latest
+    command: ["goose", "-dir", "/migrations", "postgres", "postgres://postgres:secret@db/app?sslmode=disable", "up"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    image: myorg/app:latest
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully   # <- the gate --rerun-init-deps honors
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  watchtower:
+    image: openserbia/watchtower
+    command: --rerun-init-deps --interval 300
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+```
+
+No Watchtower-specific labels are needed — the init relationship is read straight from the
+`com.docker.compose.depends_on` label Compose writes on `app` automatically. When `myorg/app:latest`
+gets a new digest, Watchtower:
+
+1. Resolves the new digest for `app` (the regular staleness check).
+2. Recreates `migrate` against that **same** new digest and runs `goose up`, blocking on its exit.
+   The **old** `app` keeps serving `:8080` the whole time.
+3. On `migrate` exit 0 → stops and recreates `app` on the new digest. Done: migrations ran before the
+   new code went live.
+4. On non-zero exit → leaves `migrate` in `Exited(N)` for `docker logs migrate`, keeps the old `app`
+   running, and caches the digest as rejected until you push a fix (or restart Watchtower to retry
+   once).
+
+!!! warning "Expand-then-contract only"
+    Because old `app` serves traffic while the new migration runs, the post-migration schema must stay
+    readable by the old code — add columns/tables in one release, remove the old ones in a later release.
+    Breaking schema changes need a planned downtime window instead, not this flag.
+
 ## Image cooldown (supply-chain gate)
 After a new image digest is detected, defer applying it until the digest has been stable for this
 duration. Protects against the "broken `:latest` push reaches every host in one poll interval" failure

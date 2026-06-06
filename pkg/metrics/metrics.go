@@ -52,8 +52,18 @@ type Metrics struct {
 	eventsReconnects prometheus.Counter
 }
 
-// NewMetric returns a Metric with the counts taken from the appropriate types.Report fields
+// NewMetric returns a Metric with the counts taken from the appropriate types.Report fields.
+//
+// report may be nil: actions.Update returns a nil report on its error paths
+// (e.g. the Docker daemon was unreachable mid-scan and ListContainers failed),
+// and the scheduled/HTTP/event callers feed that result straight in here. Treat
+// a nil report as an empty scan rather than dereferencing it — a transient
+// daemon blip must not panic the cron goroutine and crash the whole daemon.
 func NewMetric(report types.Report) *Metric {
+	if report == nil {
+		return &Metric{}
+	}
+
 	return &Metric{
 		Scanned: len(report.Scanned()),
 		// Note: This is for backwards compatibility. ideally, stale containers should be counted separately

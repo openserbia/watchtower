@@ -1,0 +1,57 @@
+# Trims the build context sent to the Docker daemon. It primarily affects
+# dockerfiles/Dockerfile.dev-self-contained (the `task docker:build` target),
+# which copies the local tree and builds in vendor mode, then runs `go test
+# ./...`. So vendor/, go.mod, go.sum and every .go source/test file must stay;
+# everything below is irrelevant to compiling or testing the binary.
+#
+# Does NOT affect the release image (dockerfiles/Dockerfile, built by goreleaser
+# from its dist/ output) or the from-source image (Dockerfile.self-contained,
+# which git-clones inside the builder) — both use a different build context.
+
+# Version control and CI
+.git
+.github
+.gitignore
+
+# Build / packaging output and tool caches
+build
+dist
+site
+coverage.out
+.task
+.devbox
+.trivycache
+.code-review-graph
+.snyk
+
+# Local dev environments, editor and agent state
+.venv
+.idea
+.vscode
+.claude
+.mcp.json
+.envrc
+.editorconfig
+
+# Dashboards and the demo/observability stack (not needed to build).
+# NB: docs/ itself is intentionally NOT ignored — internal/flags/flags_test.go
+# reads docs/{arguments,lifecycle-hooks,notifications}.md, and the dev image
+# runs `go test ./...` during the build.
+docs-requirements.txt
+requirements.txt
+mkdocs.yml
+grafana
+observability
+prometheus
+docker-compose.yml
+scripts
+
+# Repo metadata, images and packaging configs
+*.md
+*.png
+*.gif
+devbox.json
+devbox.lock
+goreleaser.yml
+Taskfile.yml
+Taskfile.security.yml

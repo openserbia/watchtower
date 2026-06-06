@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"syscall"
@@ -523,7 +524,33 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 	return nil
 }
 
-func runUpdatesWithNotifications(filter t.Filter) *metrics.Metric {
+func runUpdatesWithNotifications(filter t.Filter) (metricResults *metrics.Metric) {
+	// Defense in depth: a panic anywhere in an update cycle must not take down
+	// the daemon. The scheduled (cron) callback, the --update-on-start scan, and
+	// the Docker-event watcher each run in a goroutine with no recovery of its
+	// own, so an unrecovered panic here crashes the whole process and only the
+	// container restart policy brings watchtower back. Every trigger path funnels
+	// through this function, so recovering here is a single chokepoint that covers
+	// them all (and is finer-grained than cron.Recover, which only wraps the
+	// scheduler and would ship its 64 KB goroutine dump straight to the
+	// notification backends).
+	defer func() {
+		if r := recover(); r != nil {
+			// Full stack to the local log only — notify:"no" keeps the goroutine
+			// dump out of the notification payload (Slack/Discord size limits).
+			log.WithField("notify", "no").
+				WithField("stack", string(debug.Stack())).
+				Errorf("panic during update cycle: %v", r)
+			// Concise, notifiable alert so operators hear about it. StartNotification
+			// opened a batch that the crashed cycle never flushed, so flush it here
+			// (carrying this alert with it) — otherwise nothing is sent until the
+			// next run.
+			log.Errorf("watchtower recovered from a panic during the update cycle and will retry on the next poll: %v", r)
+			notifier.SendNotification(nil)
+			metricResults = &metrics.Metric{}
+		}
+	}()
+
 	notifier.StartNotification()
 	// Always-on: classify containers and publish managed/excluded/unmanaged
 	// gauges so the Grafana dashboard has data to show. Log warnings are
@@ -556,7 +583,7 @@ func runUpdatesWithNotifications(filter t.Filter) *metrics.Metric {
 		log.Error(err)
 	}
 	notifier.SendNotification(result)
-	metricResults := metrics.NewMetric(result)
+	metricResults = metrics.NewMetric(result)
 	notifications.LocalLog.WithFields(log.Fields{
 		"Scanned": metricResults.Scanned,
 		"Updated": metricResults.Updated,

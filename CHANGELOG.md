@@ -10,6 +10,31 @@ this fork has addressed (upstream archived in late 2024 without shipping a fix).
 
 ## [Unreleased]
 
+### Fixed
+- **A Docker daemon outage mid-scan no longer crashes watchtower with a nil
+  pointer panic.** When the daemon (or a socket proxy in front of it) becomes
+  unreachable during a poll — e.g. it is being upgraded and returns `503
+  Service Unavailable` — `actions.Update` bails early and returns a `nil`
+  report along with the error. The scheduled, HTTP `/v1/update`, and
+  event-triggered callers logged that error but then fed the `nil` report
+  straight into `metrics.NewMetric`, which dereferenced it
+  (`report.Scanned()`) and panicked with a `SIGSEGV`. Because the scan runs
+  inside a `robfig/cron` goroutine with no recovery, the panic took down the
+  whole process — a transient daemon blip killed watchtower until its restart
+  policy brought it back. `NewMetric` now treats a `nil` report as an empty
+  scan, so a failed update cycle records zero counts and the daemon keeps
+  polling. Present in upstream too (same unguarded `NewMetric(result)` call).
+- **A panic during any update cycle no longer takes down the whole daemon.**
+  Defense in depth for the class of bug above: the scheduled (cron) callback,
+  the `--update-on-start` scan, and the Docker-event watcher each run in a
+  goroutine with no recovery of its own, so an unrecovered panic anywhere in an
+  update crashed the process. Every trigger path funnels through
+  `runUpdatesWithNotifications`, which now recovers at that single chokepoint —
+  logging the full stack to the local log, sending operators a concise (not
+  64 KB) notification, and returning an empty metric so the next poll retries
+  cleanly. Chosen over `cron.Recover` because it also covers the non-cron
+  trigger paths and keeps the goroutine dump out of the notification payload.
+
 ## [1.15.0] - 2026-05-31
 
 ### Fixed

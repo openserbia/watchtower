@@ -162,6 +162,15 @@ Concrete repairs for issues left open on `containrrr/watchtower` when it was arc
   the create once. Scoped narrowly — an operator's container or a Compose recreate that races the name is left
   untouched, and the container being recreated from is never removed.
 
+- **A Docker daemon outage mid-scan crashed watchtower with a nil-pointer panic** — when the daemon (or a socket proxy
+  in front of it) became unreachable during a poll, e.g. it was being upgraded and answered `503 Service Unavailable`,
+  `actions.Update` bailed early and returned a `nil` report alongside the error. The scheduled, HTTP `/v1/update`, and
+  event-triggered callers logged the error but fed the `nil` report straight into `metrics.NewMetric`, which
+  dereferenced it (`report.Scanned()`) and panicked with a `SIGSEGV`. Because the scan runs inside a `robfig/cron`
+  goroutine with no recovery, the panic took down the entire process — a transient daemon blip killed watchtower until
+  its restart policy brought it back. `NewMetric` now treats a `nil` report as an empty scan, so a failed update cycle
+  records zero counts and the poll loop survives.
+
 See [CHANGELOG.md](https://github.com/openserbia/watchtower/blob/main/CHANGELOG.md) for the full list per release.
 
 ## Reliability and performance improvements
