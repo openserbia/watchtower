@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	dockerContainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
+	dockerContainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 
 	"github.com/openserbia/watchtower/internal/actions/mocks"
 	"github.com/openserbia/watchtower/internal/initrerun"
@@ -35,7 +35,7 @@ func newComposeContainer(name, service, image, dependsOn string) t.Container {
 		&dockerContainer.Config{
 			Image:        image,
 			Labels:       labels,
-			ExposedPorts: map[nat.Port]struct{}{},
+			ExposedPorts: network.PortSet{},
 		},
 	)
 }

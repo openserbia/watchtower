@@ -3,8 +3,8 @@ package container
 import (
 	"time"
 
-	dc "github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
+	dc "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -65,46 +65,38 @@ var _ = Describe("the container", func() {
 		When("verifying a container with port bindings and exposed ports is non-nil", func() {
 			It("should return an error", func() {
 				c := MockContainer(WithPortBindings("80/tcp"))
-				c.containerInfo.Config.ExposedPorts = map[nat.Port]struct{}{"80/tcp": {}}
+				c.containerInfo.Config.ExposedPorts = network.PortSet{network.MustParsePort("80/tcp"): {}}
 				err := c.VerifyConfiguration()
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
-		When("a port binding has an empty port string", func() {
-			It("drops it from PortBindings and ExposedPorts and keeps the rest", func() {
+		When("a port binding cannot be parsed into a valid port", func() {
+			It("drops the invalid entry from PortBindings and ExposedPorts and keeps the rest", func() {
+				// With the v29 network.Port type, the malformed daemon entries
+				// that the old string-based nat.Port allowed (e.g. "" from
+				// `ports: ["8080:"]`, or "/tcp" with no port number) can only
+				// surface as the zero Port, which IsValid() rejects. The two
+				// former string cases therefore collapse into this single
+				// invalid-port drop test.
 				c := MockContainer(WithPortBindings("80/tcp"))
-				c.containerInfo.HostConfig.PortBindings[""] = []nat.PortBinding{}
-				c.containerInfo.Config.ExposedPorts = map[nat.Port]struct{}{
-					"":       {},
-					"80/tcp": {},
+				c.containerInfo.HostConfig.PortBindings[network.Port{}] = []network.PortBinding{}
+				c.containerInfo.Config.ExposedPorts = network.PortSet{
+					network.Port{}:                  {},
+					network.MustParsePort("80/tcp"): {},
 				}
 				Expect(c.VerifyConfiguration()).To(Succeed())
-				Expect(c.containerInfo.HostConfig.PortBindings).To(HaveKey(nat.Port("80/tcp")))
-				Expect(c.containerInfo.HostConfig.PortBindings).ToNot(HaveKey(nat.Port("")))
-				Expect(c.containerInfo.Config.ExposedPorts).To(HaveKey(nat.Port("80/tcp")))
-				Expect(c.containerInfo.Config.ExposedPorts).ToNot(HaveKey(nat.Port("")))
-			})
-		})
-		When("a port binding has an empty port number (\"/tcp\")", func() {
-			It("drops it so ContainerCreate doesn't fail with \"invalid port range\"", func() {
-				c := MockContainer(WithPortBindings("80/tcp"))
-				c.containerInfo.HostConfig.PortBindings["/tcp"] = []nat.PortBinding{}
-				c.containerInfo.Config.ExposedPorts = map[nat.Port]struct{}{
-					"/tcp":   {},
-					"80/tcp": {},
-				}
-				Expect(c.VerifyConfiguration()).To(Succeed())
-				Expect(c.containerInfo.HostConfig.PortBindings).ToNot(HaveKey(nat.Port("/tcp")))
-				Expect(c.containerInfo.Config.ExposedPorts).ToNot(HaveKey(nat.Port("/tcp")))
-				Expect(c.containerInfo.HostConfig.PortBindings).To(HaveKey(nat.Port("80/tcp")))
+				Expect(c.containerInfo.HostConfig.PortBindings).To(HaveKey(network.MustParsePort("80/tcp")))
+				Expect(c.containerInfo.HostConfig.PortBindings).ToNot(HaveKey(network.Port{}))
+				Expect(c.containerInfo.Config.ExposedPorts).To(HaveKey(network.MustParsePort("80/tcp")))
+				Expect(c.containerInfo.Config.ExposedPorts).ToNot(HaveKey(network.Port{}))
 			})
 		})
 		When("all port bindings are valid", func() {
 			It("preserves them unchanged", func() {
 				c := MockContainer(WithPortBindings("8080/tcp", "443/tcp"))
-				c.containerInfo.Config.ExposedPorts = map[nat.Port]struct{}{
-					"8080/tcp": {},
-					"443/tcp":  {},
+				c.containerInfo.Config.ExposedPorts = network.PortSet{
+					network.MustParsePort("8080/tcp"): {},
+					network.MustParsePort("443/tcp"):  {},
 				}
 				Expect(c.VerifyConfiguration()).To(Succeed())
 				Expect(c.containerInfo.HostConfig.PortBindings).To(HaveLen(2))

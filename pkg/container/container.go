@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	dockercontainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/go-connections/nat"
+	dockercontainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/network"
 	"github.com/sirupsen/logrus"
 
 	"github.com/openserbia/watchtower/internal/util"
@@ -634,9 +634,9 @@ func (c Container) GetCreateConfig() *dockercontainer.Config {
 	config.Volumes = util.StructMapSubtract(config.Volumes, imageConfig.Volumes)
 
 	// subtract ports exposed in image from container. The image config's ExposedPorts
-	// is keyed by string (OCI image-spec), while the container config uses nat.Port.
+	// is keyed by string (OCI image-spec), while the container config uses network.Port.
 	for k := range config.ExposedPorts {
-		if _, ok := imageConfig.ExposedPorts[string(k)]; ok {
+		if _, ok := imageConfig.ExposedPorts[k.String()]; ok {
 			delete(config.ExposedPorts, k)
 		}
 	}
@@ -705,31 +705,20 @@ func (c Container) VerifyConfiguration() error {
 	// Instead of returning an error here, we just create an empty map
 	// This should allow for updating containers where the exposed ports are missing
 	if len(hostConfig.PortBindings) > 0 && containerConfig.ExposedPorts == nil {
-		containerConfig.ExposedPorts = make(map[nat.Port]struct{})
+		containerConfig.ExposedPorts = make(network.PortSet)
 	}
 
-	// A misconfigured compose file (e.g. `ports: ["8080:"]`) can leave an
-	// empty port string or a "/tcp" entry with no port number on the
-	// running container. Those values fall through GetCreateConfig and
-	// surface as Docker's opaque "invalid port range: value is empty"
-	// during ContainerCreate, leaving operators chasing a recreate failure
-	// whose root cause was upstream of watchtower. Strip the malformed
-	// entries here so the rest of the bindings still go through and the
-	// log line points at the actual offender.
+	// A misconfigured compose file (e.g. `ports: ["8080:"]`) can leave a
+	// malformed binding on the running container. network.Port is a parsed,
+	// validated value, so such an entry surfaces as the zero Port (invalid,
+	// with no port number) rather than the raw "" / "8080:" string the older
+	// nat.Port type carried. Strip those so the rest of the bindings still go
+	// through and a recreate doesn't fail with Docker's opaque "invalid port
+	// range" whose root cause was upstream of watchtower.
 	for port := range hostConfig.PortBindings {
-		portStr := string(port)
-		if portStr == "" {
-			logrus.WithField("container", c.Name()).
-				Warn("Dropping empty port binding before recreate")
-			delete(hostConfig.PortBindings, port)
-			delete(containerConfig.ExposedPorts, port)
-			continue
-		}
-		// nat.Port is "<number>/<proto>"; the proto half can legitimately
-		// be missing, but the number half must be non-empty.
-		if portPart, _, _ := strings.Cut(portStr, "/"); portPart == "" {
-			logrus.WithFields(logrus.Fields{"container": c.Name(), "port": portStr}).
-				Warn("Dropping port binding with empty port number before recreate")
+		if !port.IsValid() || port.Port() == "" {
+			logrus.WithFields(logrus.Fields{"container": c.Name(), "port": port.String()}).
+				Warn("Dropping malformed port binding before recreate")
 			delete(hostConfig.PortBindings, port)
 			delete(containerConfig.ExposedPorts, port)
 		}

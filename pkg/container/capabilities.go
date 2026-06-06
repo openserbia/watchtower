@@ -6,11 +6,9 @@ import (
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
-	sdkClient "github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	sdkClient "github.com/moby/moby/client"
 )
 
 // CapabilityID names a single Docker API operation Watchtower depends on. It
@@ -333,13 +331,13 @@ func (client dockerClient) probe(ctx context.Context, id CapabilityID) error {
 
 	switch id {
 	case CapPing:
-		_, err := client.api.Ping(ctx)
+		_, err := client.api.Ping(ctx, sdkClient.PingOptions{})
 		return err
 	case CapContainerList:
-		_, err := client.api.ContainerList(ctx, container.ListOptions{Limit: 1})
+		_, err := client.api.ContainerList(ctx, sdkClient.ContainerListOptions{Limit: 1})
 		return err
 	case CapContainerInspect:
-		_, err := client.api.ContainerInspect(ctx, bogus)
+		_, err := client.api.ContainerInspect(ctx, bogus, sdkClient.ContainerInspectOptions{})
 		return err
 	case CapImageInspect:
 		_, err := client.api.ImageInspect(ctx, bogus)
@@ -357,42 +355,56 @@ func (client dockerClient) probe(ctx context.Context, id CapabilityID) error {
 		// 401 as Unreachable would log.Fatal a perfectly healthy daemon at startup
 		// — the exact bug this special-case guards against. The cost is one cheap
 		// outbound auth round-trip when --preflight is set; probeTimeout bounds it.
-		rc, err := client.api.ImagePull(ctx, bogus, image.PullOptions{})
-		if rc != nil {
-			_ = rc.Close()
+		//
+		// The auth failure can arrive either as the immediate ImagePull error or
+		// as an in-stream JSON error, so drain with Wait to surface both; Wait
+		// maps the in-stream error back through its HTTP status, preserving the
+		// cerrdefs classification the checks below rely on.
+		resp, err := client.api.ImagePull(ctx, bogus, sdkClient.ImagePullOptions{})
+		if resp != nil {
+			if werr := resp.Wait(ctx); err == nil {
+				err = werr
+			}
+			_ = resp.Close()
 		}
 		if cerrdefs.IsUnauthorized(err) || cerrdefs.IsNotFound(err) {
 			return nil
 		}
 		return err
 	case CapContainerKill:
-		return client.api.ContainerKill(ctx, bogus, "SIGTERM")
+		_, err := client.api.ContainerKill(ctx, bogus, sdkClient.ContainerKillOptions{Signal: "SIGTERM"})
+		return err
 	case CapContainerRemove:
-		return client.api.ContainerRemove(ctx, bogus, container.RemoveOptions{})
+		_, err := client.api.ContainerRemove(ctx, bogus, sdkClient.ContainerRemoveOptions{})
+		return err
 	case CapContainerCreate:
-		// The config MUST be non-nil: the SDK unconditionally writes
-		// config.MacAddress = "" on API >= 1.44 (we pin 1.54), so a nil config
-		// panics with a client-side nil-pointer dereference before any request
-		// is sent. Reference the bogus (nonexistent) image so a permitting
-		// daemon rejects the create with 404 "no such image" before anything is
-		// created; a filtering proxy still answers 403.
-		_, err := client.api.ContainerCreate(ctx, &container.Config{Image: bogus}, nil, nil, nil, bogus)
+		// Reference the bogus (nonexistent) image so a permitting daemon rejects
+		// the create with 404 "no such image" before anything is created; a
+		// filtering proxy still answers 403. The client tolerates a nil Config,
+		// but we pass the image explicitly so the daemon has a concrete target to
+		// reject.
+		_, err := client.api.ContainerCreate(ctx, sdkClient.ContainerCreateOptions{Config: &container.Config{Image: bogus}, Name: bogus})
 		return err
 	case CapContainerStart:
-		return client.api.ContainerStart(ctx, bogus, container.StartOptions{})
+		_, err := client.api.ContainerStart(ctx, bogus, sdkClient.ContainerStartOptions{})
+		return err
 	case CapImageTag:
-		return client.api.ImageTag(ctx, bogus, bogus+":preflight")
+		_, err := client.api.ImageTag(ctx, sdkClient.ImageTagOptions{Source: bogus, Target: bogus + ":preflight"})
+		return err
 	case CapNetworkConnect:
-		return client.api.NetworkConnect(ctx, bogus, bogus, &network.EndpointSettings{})
+		_, err := client.api.NetworkConnect(ctx, bogus, sdkClient.NetworkConnectOptions{Container: bogus, EndpointConfig: &network.EndpointSettings{}})
+		return err
 	case CapNetworkDisconnect:
-		return client.api.NetworkDisconnect(ctx, bogus, bogus, false)
+		_, err := client.api.NetworkDisconnect(ctx, bogus, sdkClient.NetworkDisconnectOptions{Container: bogus})
+		return err
 	case CapContainerRename:
-		return client.api.ContainerRename(ctx, bogus, bogus+"-renamed")
+		_, err := client.api.ContainerRename(ctx, bogus, sdkClient.ContainerRenameOptions{NewName: bogus + "-renamed"})
+		return err
 	case CapContainerExecCreate:
-		_, err := client.api.ContainerExecCreate(ctx, bogus, container.ExecOptions{Cmd: []string{"true"}})
+		_, err := client.api.ExecCreate(ctx, bogus, sdkClient.ExecCreateOptions{Cmd: []string{"true"}})
 		return err
 	case CapImageRemove:
-		_, err := client.api.ImageRemove(ctx, bogus, image.RemoveOptions{})
+		_, err := client.api.ImageRemove(ctx, bogus, sdkClient.ImageRemoveOptions{})
 		return err
 	case CapContainerWait:
 		return waitProbe(ctx, client.api, bogus)
@@ -407,9 +419,9 @@ func (client dockerClient) probe(ctx context.Context, id CapabilityID) error {
 // ContainerWait returns its result and error over channels, so we read whichever
 // fires first within the probe context.
 func waitProbe(ctx context.Context, api sdkClient.APIClient, id string) error {
-	_, errC := api.ContainerWait(ctx, id, container.WaitConditionNotRunning)
+	result := api.ContainerWait(ctx, id, sdkClient.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
 	select {
-	case err := <-errC:
+	case err := <-result.Error:
 		return err
 	case <-ctx.Done():
 		return ctx.Err()
@@ -428,16 +440,16 @@ func eventsProbe(ctx context.Context, api sdkClient.APIClient) error {
 	streamCtx, cancel := context.WithTimeout(ctx, eventsProbeWindow)
 	defer cancel()
 
-	msgC, errC := api.Events(streamCtx, events.ListOptions{})
+	result := api.Events(streamCtx, sdkClient.EventsListOptions{})
 	select {
-	case err := <-errC:
+	case err := <-result.Err:
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			// The stream stayed open for the whole window without an error —
 			// it is reachable and permitted.
 			return nil
 		}
 		return err
-	case <-msgC:
+	case <-result.Messages:
 		return nil
 	case <-streamCtx.Done():
 		return nil

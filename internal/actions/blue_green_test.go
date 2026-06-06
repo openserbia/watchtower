@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
-	dockerContainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
+	dockerContainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -40,7 +40,7 @@ var _ = Describe("the blue-green update strategy", func() {
 		config := &dockerContainer.Config{
 			Image:        "fake-image:latest",
 			Labels:       labels,
-			ExposedPorts: map[nat.Port]struct{}{},
+			ExposedPorts: network.PortSet{},
 		}
 
 		return CreateMockContainerWithConfig(id, name, "fake-image:latest", true, false, time.Now(), config)
@@ -55,7 +55,7 @@ var _ = Describe("the blue-green update strategy", func() {
 				Containers:            []types.Container{blue},
 				NextStartContainerIDs: []types.ContainerID{greenID},
 				HealthStatusByID: map[types.ContainerID]string{
-					greenID: dockerContainer.Healthy,
+					greenID: string(dockerContainer.Healthy),
 				},
 			}
 			client := CreateMockClient(data, false, false)
@@ -81,7 +81,7 @@ var _ = Describe("the blue-green update strategy", func() {
 				Containers:            []types.Container{blue},
 				NextStartContainerIDs: []types.ContainerID{greenID},
 				HealthStatusByID: map[types.ContainerID]string{
-					greenID: dockerContainer.Unhealthy,
+					greenID: string(dockerContainer.Unhealthy),
 				},
 			}
 			client := CreateMockClient(data, false, false)
@@ -102,7 +102,7 @@ var _ = Describe("the blue-green update strategy", func() {
 				Containers:            []types.Container{blue},
 				NextStartContainerIDs: []types.ContainerID{greenID},
 				HealthStatusByID: map[types.ContainerID]string{
-					greenID: dockerContainer.Unhealthy,
+					greenID: string(dockerContainer.Unhealthy),
 				},
 			}
 			client := CreateMockClient(data, false, false)
@@ -151,8 +151,8 @@ var _ = Describe("the blue-green update strategy", func() {
 			// Simulate `-p 8080:8080`: two copies cannot bind the same port,
 			// so blue-green is impossible and the container falls back to
 			// recreate.
-			blue.ContainerInfo().HostConfig.PortBindings = nat.PortMap{
-				"8080/tcp": []nat.PortBinding{{HostIP: "", HostPort: "8080"}},
+			blue.ContainerInfo().HostConfig.PortBindings = network.PortMap{
+				network.MustParsePort("8080/tcp"): []network.PortBinding{{HostPort: "8080"}},
 			}
 			data := &TestData{
 				Containers: []types.Container{blue},
@@ -181,7 +181,7 @@ var _ = Describe("the blue-green update strategy", func() {
 				Containers:            []types.Container{labeled, plain},
 				NextStartContainerIDs: []types.ContainerID{greenID},
 				HealthStatusByID: map[types.ContainerID]string{
-					greenID: dockerContainer.Healthy,
+					greenID: string(dockerContainer.Healthy),
 				},
 			}
 			// Global strategy is recreate; only the labeled container opts in.
@@ -214,7 +214,7 @@ var _ = Describe("the blue-green update strategy", func() {
 						"com.centurylinklabs.watchtower.update-strategy":  "blue-green",
 						"com.centurylinklabs.watchtower.blue-green.drain": "0s",
 					},
-					ExposedPorts: map[nat.Port]struct{}{},
+					ExposedPorts: network.PortSet{},
 				},
 			)
 			data := &TestData{
@@ -242,7 +242,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			data := &TestData{
 				Containers:            []types.Container{blue},
 				NextStartContainerIDs: []types.ContainerID{greenID},
-				HealthStatusByID:      map[types.ContainerID]string{greenID: dockerContainer.Healthy},
+				HealthStatusByID:      map[types.ContainerID]string{greenID: string(dockerContainer.Healthy)},
 				StopContainerErrors:   map[string]error{"web-stopfail": errors.New("daemon refused to stop the old container")},
 			}
 			client := CreateMockClient(data, false, false)
@@ -266,7 +266,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			data := &TestData{
 				Containers:            []types.Container{blue},
 				NextStartContainerIDs: []types.ContainerID{greenID},
-				HealthStatusByID:      map[types.ContainerID]string{greenID: dockerContainer.Healthy},
+				HealthStatusByID:      map[types.ContainerID]string{greenID: string(dockerContainer.Healthy)},
 			}
 			client := CreateMockClient(data, false, false)
 

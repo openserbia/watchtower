@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	dockerContainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/go-connections/nat"
+	dockerContainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/network"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
@@ -80,7 +80,7 @@ var _ = Describe("the update action", func() {
 			config := &dockerContainer.Config{
 				Image:        "fake-image:latest",
 				Labels:       map[string]string{},
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 				Healthcheck:  &dockerContainer.HealthConfig{Test: []string{"CMD", "true"}},
 			}
 			return CreateMockContainerWithConfig(id, id, "fake-image:latest", true, false, time.Now(), config)
@@ -94,8 +94,8 @@ var _ = Describe("the update action", func() {
 				NewestImageByName:     map[string]types.ImageID{old.Name(): newestDigest},
 				NextStartContainerIDs: []types.ContainerID{"new-id", "rollback-id"},
 				HealthStatusByID: map[types.ContainerID]string{
-					"new-id":      dockerContainer.Unhealthy,
-					"rollback-id": dockerContainer.Healthy,
+					"new-id":      string(dockerContainer.Unhealthy),
+					"rollback-id": string(dockerContainer.Healthy),
 				},
 			}
 			client := CreateMockClient(data, false, false)
@@ -120,8 +120,8 @@ var _ = Describe("the update action", func() {
 				Containers:            []types.Container{old},
 				NextStartContainerIDs: []types.ContainerID{"new-id", "rollback-id"},
 				HealthStatusByID: map[types.ContainerID]string{
-					"new-id":      dockerContainer.Unhealthy,
-					"rollback-id": dockerContainer.Unhealthy,
+					"new-id":      string(dockerContainer.Unhealthy),
+					"rollback-id": string(dockerContainer.Unhealthy),
 				},
 			}
 			client := CreateMockClient(data, false, false)
@@ -140,8 +140,8 @@ var _ = Describe("the update action", func() {
 				Containers:            []types.Container{old},
 				NextStartContainerIDs: []types.ContainerID{"new-id", "rollback-id"},
 				HealthStatusByID: map[types.ContainerID]string{
-					"new-id":      dockerContainer.Unhealthy,
-					"rollback-id": dockerContainer.Healthy,
+					"new-id":      string(dockerContainer.Unhealthy),
+					"rollback-id": string(dockerContainer.Healthy),
 				},
 			}
 			client := CreateMockClient(data, false, false)
@@ -177,7 +177,7 @@ var _ = Describe("the update action", func() {
 			old := buildHealthAwareContainer("gate-healthy-accept")
 			data := &TestData{
 				Containers:       []types.Container{old},
-				HealthStatusByID: map[types.ContainerID]string{old.ID(): dockerContainer.Healthy},
+				HealthStatusByID: map[types.ContainerID]string{old.ID(): string(dockerContainer.Healthy)},
 			}
 			client := CreateMockClient(data, false, false)
 
@@ -214,18 +214,16 @@ var _ = Describe("the update action", func() {
 				newImageID := "sha256:b00ed20a1dd0000000000000000000000000000000000000000000000000000a"
 				priorDigest := types.ImageID("sha256:older-prior")
 				containerInfo := &dockerContainer.InspectResponse{
-					ContainerJSONBase: &dockerContainer.ContainerJSONBase{
-						ID:    "post-fallback-cont",
-						Image: oldImageID,
-						Name:  "post-fallback-cont",
-						HostConfig: &dockerContainer.HostConfig{
-							PortBindings: map[nat.Port][]nat.PortBinding{},
-						},
+					ID:    "post-fallback-cont",
+					Image: oldImageID,
+					Name:  "post-fallback-cont",
+					HostConfig: &dockerContainer.HostConfig{
+						PortBindings: network.PortMap{},
 					},
 					Config: &dockerContainer.Config{
 						Image:        "registry.example.com/app:latest",
 						Labels:       map[string]string{},
-						ExposedPorts: map[nat.Port]struct{}{},
+						ExposedPorts: network.PortSet{},
 					},
 				}
 				fallbackImageInfo := &image.InspectResponse{
@@ -506,7 +504,7 @@ var _ = Describe("the update action", func() {
 										"com.centurylinklabs.watchtower.lifecycle.pre-update-timeout": "190",
 										"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn1.sh",
 									},
-									ExposedPorts: map[nat.Port]struct{}{},
+									ExposedPorts: network.PortSet{},
 								},
 							),
 						},
@@ -539,7 +537,7 @@ var _ = Describe("the update action", func() {
 										"com.centurylinklabs.watchtower.lifecycle.pre-update-timeout": "190",
 										"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn75.sh",
 									},
-									ExposedPorts: map[nat.Port]struct{}{},
+									ExposedPorts: network.PortSet{},
 								},
 							),
 						},
@@ -573,7 +571,7 @@ var _ = Describe("the update action", func() {
 										"com.centurylinklabs.watchtower.lifecycle.pre-update-timeout": "190",
 										"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn0.sh",
 									},
-									ExposedPorts: map[nat.Port]struct{}{},
+									ExposedPorts: network.PortSet{},
 								},
 							),
 						},
@@ -598,7 +596,7 @@ var _ = Describe("the update action", func() {
 					time.Now(),
 					&dockerContainer.Config{
 						Labels:       map[string]string{},
-						ExposedPorts: map[nat.Port]struct{}{},
+						ExposedPorts: network.PortSet{},
 					},
 				)
 
@@ -615,7 +613,7 @@ var _ = Describe("the update action", func() {
 						Labels: map[string]string{
 							"com.centurylinklabs.watchtower.depends-on": "test-container-provider",
 						},
-						ExposedPorts: map[nat.Port]struct{}{},
+						ExposedPorts: network.PortSet{},
 					},
 				)
 
@@ -654,7 +652,7 @@ var _ = Describe("the update action", func() {
 										"com.centurylinklabs.watchtower.lifecycle.pre-update-timeout": "190",
 										"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn1.sh",
 									},
-									ExposedPorts: map[nat.Port]struct{}{},
+									ExposedPorts: network.PortSet{},
 								},
 							),
 						},
@@ -688,7 +686,7 @@ var _ = Describe("the update action", func() {
 										"com.centurylinklabs.watchtower.lifecycle.pre-update-timeout": "190",
 										"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn1.sh",
 									},
-									ExposedPorts: map[nat.Port]struct{}{},
+									ExposedPorts: network.PortSet{},
 								},
 							),
 						},
@@ -801,12 +799,12 @@ var _ = Describe("watchtower self-update port conflict", func() {
 				Labels: map[string]string{
 					"com.centurylinklabs.watchtower": "true",
 				},
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 			},
 		)
 		// Simulate `-p 8080:8080` on the container.
-		watchtowerWithPort.ContainerInfo().HostConfig.PortBindings = nat.PortMap{
-			"8080/tcp": []nat.PortBinding{{HostIP: "", HostPort: "8080"}},
+		watchtowerWithPort.ContainerInfo().HostConfig.PortBindings = network.PortMap{
+			network.MustParsePort("8080/tcp"): []network.PortBinding{{HostPort: "8080"}},
 		}
 
 		client := CreateMockClient(&TestData{
@@ -837,7 +835,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 				Labels: map[string]string{
 					"com.centurylinklabs.watchtower": "true",
 				},
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 			},
 		)
 	}
@@ -884,7 +882,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 					"com.docker.compose.service":     "watchtower",
 					"com.docker.compose.project":     "watchtower",
 				},
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 			},
 		)
 		client := CreateMockClient(&TestData{
@@ -959,7 +957,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 				Labels: map[string]string{
 					"com.centurylinklabs.watchtower": "true",
 				},
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 			},
 		)
 		client := CreateMockClient(&TestData{
@@ -1034,7 +1032,7 @@ var _ = Describe("watchtower self-update start-failure notification dedup", func
 				Labels: map[string]string{
 					"com.centurylinklabs.watchtower": "true",
 				},
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 			},
 		)
 	}
@@ -1141,7 +1139,7 @@ var _ = Describe("startup-failure log levels", func() {
 								"com.centurylinklabs.watchtower.lifecycle.pre-update-timeout": "190",
 								"com.centurylinklabs.watchtower.lifecycle.pre-update":         "/PreUpdateReturn1.sh",
 							},
-							ExposedPorts: map[nat.Port]struct{}{},
+							ExposedPorts: network.PortSet{},
 						},
 					),
 				},

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	dockercontainer "github.com/docker/docker/api/types/container"
+	dockercontainer "github.com/moby/moby/api/types/container"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/openserbia/watchtower/internal/initrerun"
@@ -1273,6 +1273,9 @@ func waitForHealthy(client container.Client, id types.ContainerID, timeout time.
 			return nil
 		case dockercontainer.Unhealthy:
 			return fmt.Errorf("container reported unhealthy after %s", time.Since(deadline.Add(-timeout)).Round(time.Second))
+		case dockercontainer.Starting, dockercontainer.NoHealthcheck:
+			// Not a terminal verdict yet — keep polling until Healthy/Unhealthy
+			// or the deadline below fires.
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("timed out after %s waiting for healthy (last status: %s)", timeout, info.State.Health.Status)

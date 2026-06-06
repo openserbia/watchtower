@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	dockerContainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
+	dockerContainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 
 	"github.com/openserbia/watchtower/internal/actions/mocks"
 	"github.com/openserbia/watchtower/pkg/sorter"
@@ -27,7 +27,7 @@ func newComposeMock(name, project, service, dependsOn string) types.Container {
 		&dockerContainer.Config{
 			Image:        "img:latest",
 			Labels:       labels,
-			ExposedPorts: map[nat.Port]struct{}{},
+			ExposedPorts: network.PortSet{},
 		},
 	)
 }

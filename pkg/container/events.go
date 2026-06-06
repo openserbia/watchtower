@@ -3,8 +3,8 @@ package container
 import (
 	"context"
 
-	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/filters"
+	"github.com/moby/moby/api/types/events"
+	sdkClient "github.com/moby/moby/client"
 
 	"github.com/openserbia/watchtower/pkg/metrics"
 	t "github.com/openserbia/watchtower/pkg/types"
@@ -21,17 +21,16 @@ func (client dockerClient) WatchImageEvents(ctx context.Context) (<-chan t.Image
 	out := make(chan t.ImageEvent)
 	errs := make(chan error, 1)
 
-	filterArgs := filters.NewArgs()
-	filterArgs.Add("type", string(events.ImageEventType))
+	filterArgs := sdkClient.Filters{}.Add("type", string(events.ImageEventType))
 	// Tag fires on `docker build -t`, `docker pull` (after write), and
 	// `docker tag`; load fires on `docker load -i`. Those cover the local
 	// rebuild use-case. We intentionally skip "pull" because the poll loop
 	// already handles registry-driven updates and we don't want to re-scan
 	// when watchtower itself triggered the pull.
-	filterArgs.Add("event", string(events.ActionTag))
-	filterArgs.Add("event", string(events.ActionLoad))
+	filterArgs.Add("event", string(events.ActionTag), string(events.ActionLoad))
 
-	msgs, streamErrs := client.api.Events(ctx, events.ListOptions{Filters: filterArgs})
+	stream := client.api.Events(ctx, sdkClient.EventsListOptions{Filters: filterArgs})
+	msgs, streamErrs := stream.Messages, stream.Err
 
 	go func() {
 		defer close(out)

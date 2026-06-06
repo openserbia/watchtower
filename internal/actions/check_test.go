@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"time"
 
-	dockerContainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
+	dockerContainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/sirupsen/logrus"
@@ -35,7 +35,7 @@ var _ = Describe("AuditUnmanaged", func() {
 			&dockerContainer.Config{
 				Image:        "fake-image:latest",
 				Labels:       labels,
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 			},
 		)
 	}
@@ -47,7 +47,7 @@ var _ = Describe("AuditUnmanaged", func() {
 			&dockerContainer.Config{
 				Image:        "moby/buildkit:v0.12.0",
 				Labels:       map[string]string{},
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 			},
 		)
 		testData := &TestData{
@@ -169,7 +169,7 @@ var _ = Describe("CleanupOrphanSelf", func() {
 				Labels: map[string]string{
 					"com.centurylinklabs.watchtower": "true",
 				},
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 			},
 		)
 	}
@@ -212,7 +212,7 @@ var _ = Describe("CleanupOrphanSelf", func() {
 					"com.docker.compose.project":       "myproj",
 					"com.docker.compose.container-num": "1",
 				},
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 			},
 		)
 		client := CreateMockClient(&TestData{Containers: []types.Container{orphan}}, false, false)
@@ -230,7 +230,7 @@ var _ = Describe("CleanupOrphanSelf", func() {
 			&dockerContainer.Config{
 				Image:        "fake-image:latest",
 				Labels:       map[string]string{},
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 			},
 		)
 		client := CreateMockClient(&TestData{Containers: []types.Container{app}}, false, false)

@@ -6,20 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	mrand "math/rand/v2"
-	"os"
 	"strings"
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/versions"
-	sdkClient "github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/jsonmessage"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/network"
+	sdkClient "github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/versions"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/openserbia/watchtower/pkg/metrics"
@@ -73,18 +69,19 @@ type Client interface {
 //   - DOCKER_TLS_VERIFY		whether to verify tls certificates
 //   - DOCKER_API_VERSION	the docker api version to pin the client to (skips negotiation when set)
 //
-// When DOCKER_API_VERSION is unset, the client negotiates down to the daemon's
-// reported version on first use so the same binary works against both older and
-// newer daemons (including Docker Engine 29+, whose minimum API floor is 1.44).
-// We then opportunistically raise the negotiated version to reach fields the
-// vendored SDK's DefaultVersion can't; see upgradeAPIVersionForFeatures.
+// When DOCKER_API_VERSION is unset, the SDK starts the client at its
+// MaxAPIVersion (currently 1.54 — which already exposes the containerd-snapshotter
+// Identity field Watchtower consumes) and, with negotiation now on by default,
+// steps *down* to the daemon's reported version on first use, so the same binary
+// works against both older and newer daemons (including Docker Engine 29+, whose
+// minimum API floor is 1.44). Daemons below v1.53 simply can't return Identity,
+// and ImageIsLocal falls back to the RepoDigests heuristic there — no client-side
+// version bump is needed any more.
 func NewClient(opts ClientOptions) Client {
-	cli, err := sdkClient.NewClientWithOpts(sdkClient.FromEnv, sdkClient.WithAPIVersionNegotiation())
+	cli, err := sdkClient.New(sdkClient.FromEnv)
 	if err != nil {
 		log.Fatalf("Error instantiating Docker client: %s", err)
 	}
-
-	upgradeAPIVersionForFeatures(context.Background(), cli)
 
 	return dockerClient{
 		api:           cli,
@@ -97,13 +94,9 @@ const (
 	// fields Watchtower consumes through raw JSON decoding (currently: the
 	// Identity provenance record on /images/{id}/json, which lets the
 	// containerd image store distinguish locally-built images from Hub
-	// pulls). Below this, there is no point raising the version.
+	// pulls). inspectImageWithIdentity short-circuits the raw decode below
+	// this, since the daemon can't return the field.
 	minFeatureAPIVersion = "1.53"
-	// preferredFeatureAPIVersion caps the opportunistic raise to a version
-	// we have tested against. Keeping it tight avoids drifting into
-	// API territory that might introduce request-body changes the vendored
-	// SDK can't formulate correctly. Revisit when the SDK is bumped.
-	preferredFeatureAPIVersion = "1.54"
 
 	// dockerAPITimeout is an upper bound on individual Docker daemon
 	// management calls (list / inspect / create / kill / remove / rename /
@@ -133,48 +126,6 @@ const (
 	// or the image — not to silently extend forever.
 	imagePullTimeout = 30 * time.Minute
 )
-
-// upgradeAPIVersionForFeatures opportunistically raises the client's API
-// version above the SDK's DefaultVersion so we can access response fields
-// added after the SDK was vendored — currently Identity on the image-inspect
-// response (v1.53+). The mechanism is safe in the narrow sense we use it:
-//   - URLs already use client.version as a plain path component, so any
-//     well-formed version string the daemon accepts works.
-//   - Unknown fields in JSON responses are silently dropped by the SDK's
-//     typed Unmarshal; code that needs the new fields uses the raw-response
-//     option instead.
-//   - Explicit user pins via DOCKER_API_VERSION are left untouched.
-//
-// No-op when the daemon doesn't advertise a version, the ping fails, or the
-// daemon's max is already below minFeatureAPIVersion. Any error leaves the
-// negotiated version in place — best-effort only.
-func upgradeAPIVersionForFeatures(ctx context.Context, cli *sdkClient.Client) {
-	if os.Getenv(sdkClient.EnvOverrideAPIVersion) != "" {
-		// Explicit pin; respect the operator's choice even if it forgoes
-		// newer features.
-		return
-	}
-	ping, err := cli.Ping(ctx)
-	if err != nil {
-		log.WithError(err).Debug("Daemon ping failed; leaving negotiated API version in place")
-		return
-	}
-	if ping.APIVersion == "" {
-		return
-	}
-	if versions.LessThan(ping.APIVersion, minFeatureAPIVersion) {
-		return
-	}
-	target := preferredFeatureAPIVersion
-	if versions.LessThan(ping.APIVersion, target) {
-		target = ping.APIVersion
-	}
-	if err := sdkClient.WithVersion(target)(cli); err != nil {
-		log.WithError(err).Debugf("Could not pin client to API %s; leaving negotiated version", target)
-		return
-	}
-	log.Debugf("Pinned Docker client to API v%s for containerd-snapshotter Identity support (daemon advertises v%s)", target, ping.APIVersion)
-}
 
 // ClientOptions contains the options for how the docker client wrapper should behave
 type ClientOptions struct {
@@ -237,7 +188,7 @@ func (client dockerClient) ListContainers(fn t.Filter) ([]t.Container, error) {
 	}
 
 	filter := client.createListFilter()
-	containers, err := listContainersWithRetry(ctx, client.api, container.ListOptions{Filters: filter})
+	containers, err := listContainersWithRetry(ctx, client.api, sdkClient.ContainerListOptions{Filters: filter})
 	if err != nil {
 		metrics.RegisterDockerAPIError("list")
 		return nil, err
@@ -282,7 +233,7 @@ const listMaxAttempts = 3
 // on network errors and the Docker errdefs class of transient server/daemon
 // errors. Bails immediately on context cancellation, deadline, or caller-fault
 // errors that won't clear with a retry.
-func listContainersWithRetry(ctx context.Context, api sdkClient.APIClient, opts container.ListOptions) ([]container.Summary, error) {
+func listContainersWithRetry(ctx context.Context, api sdkClient.APIClient, opts sdkClient.ContainerListOptions) ([]container.Summary, error) {
 	var lastErr error
 	for attempt := range listMaxAttempts {
 		if attempt > 0 {
@@ -296,9 +247,9 @@ func listContainersWithRetry(ctx context.Context, api sdkClient.APIClient, opts 
 			}
 		}
 
-		containers, err := api.ContainerList(ctx, opts)
+		result, err := api.ContainerList(ctx, opts)
 		if err == nil {
-			return containers, nil
+			return result.Items, nil
 		}
 		lastErr = err
 
@@ -341,13 +292,11 @@ func listBackoffFor(attempt int) time.Duration {
 	return delay + jitter
 }
 
-func (client dockerClient) createListFilter() filters.Args {
-	filterArgs := filters.NewArgs()
-	filterArgs.Add("status", "running")
+func (client dockerClient) createListFilter() sdkClient.Filters {
+	filterArgs := sdkClient.Filters{}.Add("status", "running")
 
 	if client.IncludeStopped {
-		filterArgs.Add("status", "created")
-		filterArgs.Add("status", "exited")
+		filterArgs.Add("status", "created", "exited")
 	}
 
 	if client.IncludeRestarting {
@@ -361,15 +310,16 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 	ctx, cancel := context.WithTimeout(context.Background(), dockerAPITimeout)
 	defer cancel()
 
-	containerInfo, err := client.api.ContainerInspect(ctx, string(containerID))
+	inspect, err := client.api.ContainerInspect(ctx, string(containerID), sdkClient.ContainerInspectOptions{})
 	if err != nil {
 		recordDaemonError("inspect", err, cerrdefs.IsNotFound)
 		return &Container{}, err
 	}
+	containerInfo := inspect.Container
 
 	netType, netContainerID, found := strings.Cut(string(containerInfo.HostConfig.NetworkMode), ":")
 	if found && netType == "container" {
-		parentContainer, err := client.api.ContainerInspect(ctx, netContainerID)
+		parentInspect, err := client.api.ContainerInspect(ctx, netContainerID, sdkClient.ContainerInspectOptions{})
 		if err != nil {
 			recordDaemonError("inspect", err, cerrdefs.IsNotFound)
 			log.WithError(err).WithFields(log.Fields{
@@ -379,7 +329,7 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 			}).Warn("Unable to resolve network container")
 		} else {
 			// Replace the container ID with a container name to allow it to reference the re-created network container
-			containerInfo.HostConfig.NetworkMode = container.NetworkMode("container:" + parentContainer.Name)
+			containerInfo.HostConfig.NetworkMode = container.NetworkMode("container:" + parentInspect.Container.Name)
 		}
 	}
 
@@ -486,14 +436,14 @@ func recordDaemonError(operation string, err error, expected ...func(error) bool
 func (client dockerClient) inspectImageWithIdentity(ctx context.Context, imageRef string) (image.InspectResponse, *ImageIdentity, error) {
 	if versions.LessThan(client.api.ClientVersion(), minFeatureAPIVersion) {
 		info, err := client.api.ImageInspect(ctx, imageRef)
-		return info, nil, err
+		return info.InspectResponse, nil, err
 	}
 	var raw bytes.Buffer
 	info, err := client.api.ImageInspect(ctx, imageRef, sdkClient.ImageInspectWithRawResponse(&raw))
 	if err != nil {
-		return info, nil, err
+		return info.InspectResponse, nil, err
 	}
-	return info, decodeImageIdentity(raw.Bytes()), nil
+	return info.InspectResponse, decodeImageIdentity(raw.Bytes()), nil
 }
 
 // decodeImageIdentity pulls the "Identity" object out of an /images/{id}/json
@@ -550,7 +500,7 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 
 	if c.IsRunning() {
 		log.Infof("Stopping %s (%s) with %s", c.Name(), shortID, signal)
-		if err := client.api.ContainerKill(ctx, idStr, signal); err != nil {
+		if _, err := client.api.ContainerKill(ctx, idStr, sdkClient.ContainerKillOptions{Signal: signal}); err != nil {
 			if cerrdefs.IsNotFound(err) {
 				log.Debugf("Container %s already gone before kill, nothing to stop.", shortID)
 				return ErrContainerNotFound
@@ -582,7 +532,7 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 	} else {
 		log.Debugf("Removing container %s", shortID)
 
-		if err := client.api.ContainerRemove(ctx, idStr, container.RemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
+		if _, err := client.api.ContainerRemove(ctx, idStr, sdkClient.ContainerRemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
 			if cerrdefs.IsNotFound(err) {
 				log.Debugf("Container %s not found, skipping removal.", shortID)
 				return ErrContainerNotFound
@@ -657,7 +607,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 	// removed the previous container, so the tiny window between tag and
 	// create can no longer be widened by a slow stop.
 	if target := c.TargetImageID(); target != "" {
-		if err := client.api.ImageTag(ctx, string(target), config.Image); err != nil {
+		if _, err := client.api.ImageTag(ctx, sdkClient.ImageTagOptions{Source: string(target), Target: config.Image}); err != nil {
 			// A failure here is non-fatal: ContainerCreate will surface the
 			// real problem (or succeed if the tag was already correct). Log
 			// and count, but don't abort the recreate — the existing
@@ -680,7 +630,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 
 	if !hostConfig.NetworkMode.IsHost() {
 		for k := range simpleNetworkConfig.EndpointsConfig {
-			err = client.api.NetworkDisconnect(ctx, k, createdContainer.ID, true)
+			_, err = client.api.NetworkDisconnect(ctx, k, sdkClient.NetworkDisconnectOptions{Container: createdContainer.ID, Force: true})
 			if err != nil {
 				metrics.RegisterDockerAPIError("network_disconnect")
 				client.cleanupPartialCreate(ctx, createdContainer.ID, name)
@@ -689,7 +639,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 		}
 
 		for k, v := range networkConfig.EndpointsConfig {
-			err = client.api.NetworkConnect(ctx, k, createdContainer.ID, v)
+			_, err = client.api.NetworkConnect(ctx, k, sdkClient.NetworkConnectOptions{Container: createdContainer.ID, EndpointConfig: v})
 			if err != nil {
 				metrics.RegisterDockerAPIError("network_connect")
 				client.cleanupPartialCreate(ctx, createdContainer.ID, name)
@@ -722,7 +672,7 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 // the caller is already returning the original, more actionable error.
 func (client dockerClient) cleanupPartialCreate(ctx context.Context, createdID, name string) {
 	log.WithField("container", name).Debug("Recreate failed after create; removing the just-created container to avoid leaving an orphan")
-	if err := client.api.ContainerRemove(ctx, createdID, container.RemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
+	if _, err := client.api.ContainerRemove(ctx, createdID, sdkClient.ContainerRemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
 		if cerrdefs.IsNotFound(err) {
 			return
 		}
@@ -742,8 +692,14 @@ func (client dockerClient) cleanupPartialCreate(ctx context.Context, createdID, 
 // name (see clearConflictingWatchtower) and retry the create once. The
 // docker_api_errors counter is left to the caller so a recovered create isn't
 // double-counted.
-func (client dockerClient) createWithConflictRecovery(ctx context.Context, c t.Container, config *container.Config, hostConfig *container.HostConfig, networkConfig *network.NetworkingConfig, name string) (container.CreateResponse, error) {
-	created, err := client.api.ContainerCreate(ctx, config, hostConfig, networkConfig, nil, name)
+func (client dockerClient) createWithConflictRecovery(ctx context.Context, c t.Container, config *container.Config, hostConfig *container.HostConfig, networkConfig *network.NetworkingConfig, name string) (sdkClient.ContainerCreateResult, error) {
+	opts := sdkClient.ContainerCreateOptions{
+		Config:           config,
+		HostConfig:       hostConfig,
+		NetworkingConfig: networkConfig,
+		Name:             name,
+	}
+	created, err := client.api.ContainerCreate(ctx, opts)
 	if err == nil {
 		return created, nil
 	}
@@ -752,7 +708,7 @@ func (client dockerClient) createWithConflictRecovery(ctx context.Context, c t.C
 		// still held the canonical name; clearConflictingWatchtower removed it.
 		// Retry once so the self-update lands instead of wedging every poll with
 		// the same conflict.
-		return client.api.ContainerCreate(ctx, config, hostConfig, networkConfig, nil, name)
+		return client.api.ContainerCreate(ctx, opts)
 	}
 	return created, err
 }
@@ -775,13 +731,14 @@ func (client dockerClient) createWithConflictRecovery(ctx context.Context, c t.C
 // the very container we are recreating from. Best-effort throughout: any
 // inspect/remove failure returns false and the original conflict stands.
 func (client dockerClient) clearConflictingWatchtower(ctx context.Context, name string, selfID t.ContainerID) bool {
-	inspected, err := client.api.ContainerInspect(ctx, strings.TrimPrefix(name, "/"))
+	inspect, err := client.api.ContainerInspect(ctx, strings.TrimPrefix(name, "/"), sdkClient.ContainerInspectOptions{})
 	if err != nil {
 		// NotFound means the blocker vanished between the failed create and
 		// this inspect — the name is free now, so a retry is still worthwhile.
 		return cerrdefs.IsNotFound(err)
 	}
-	if inspected.ContainerJSONBase == nil || inspected.Config == nil {
+	inspected := inspect.Container
+	if inspected.Config == nil {
 		return false
 	}
 	if !ContainsWatchtowerLabel(inspected.Config.Labels) {
@@ -800,7 +757,7 @@ func (client dockerClient) clearConflictingWatchtower(ctx context.Context, name 
 		"name":    name,
 		"blocker": blockerID.ShortID(),
 	}).Warn("Recreate name conflict: a stale watchtower container still holds the name; force-removing it and retrying the create")
-	if err := client.api.ContainerRemove(ctx, inspected.ID, container.RemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
+	if _, err := client.api.ContainerRemove(ctx, inspected.ID, sdkClient.ContainerRemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
 		if cerrdefs.IsNotFound(err) {
 			// Already gone (a concurrent cleanup or the daemon tore it down).
 			// The name is free; a retry is warranted.
@@ -813,11 +770,11 @@ func (client dockerClient) clearConflictingWatchtower(ctx context.Context, name 
 	return true
 }
 
-func (client dockerClient) doStartContainer(ctx context.Context, c t.Container, creation container.CreateResponse) error {
+func (client dockerClient) doStartContainer(ctx context.Context, c t.Container, creation sdkClient.ContainerCreateResult) error {
 	name := c.Name()
 
 	log.Debugf("Starting container %s (%s)", name, t.ContainerID(creation.ID).ShortID())
-	err := client.api.ContainerStart(ctx, creation.ID, container.StartOptions{})
+	_, err := client.api.ContainerStart(ctx, creation.ID, sdkClient.ContainerStartOptions{})
 	if err != nil {
 		metrics.RegisterDockerAPIError("start")
 		return err
@@ -861,7 +818,7 @@ func (client dockerClient) RerunInitContainer(c t.Container, timeout time.Durati
 	}
 
 	if target := c.TargetImageID(); target != "" {
-		if err := client.api.ImageTag(ctx, string(target), config.Image); err != nil {
+		if _, err := client.api.ImageTag(ctx, sdkClient.ImageTagOptions{Source: string(target), Target: config.Image}); err != nil {
 			metrics.RegisterDockerAPIError("image_tag")
 			log.WithError(err).WithFields(log.Fields{
 				"image":  config.Image,
@@ -872,7 +829,12 @@ func (client dockerClient) RerunInitContainer(c t.Container, timeout time.Durati
 
 	log.Infof("Re-running init container %s", c.Name())
 
-	created, err := client.api.ContainerCreate(ctx, config, hostConfig, simpleNetworkConfig, nil, c.Name())
+	created, err := client.api.ContainerCreate(ctx, sdkClient.ContainerCreateOptions{
+		Config:           config,
+		HostConfig:       hostConfig,
+		NetworkingConfig: simpleNetworkConfig,
+		Name:             c.Name(),
+	})
 	if err != nil {
 		metrics.RegisterDockerAPIError("create")
 		return -1, fmt.Errorf("create init container %q: %w", c.Name(), err)
@@ -880,13 +842,13 @@ func (client dockerClient) RerunInitContainer(c t.Container, timeout time.Durati
 
 	if !hostConfig.NetworkMode.IsHost() {
 		for k := range simpleNetworkConfig.EndpointsConfig {
-			if err := client.api.NetworkDisconnect(ctx, k, created.ID, true); err != nil {
+			if _, err := client.api.NetworkDisconnect(ctx, k, sdkClient.NetworkDisconnectOptions{Container: created.ID, Force: true}); err != nil {
 				metrics.RegisterDockerAPIError("network_disconnect")
 				return -1, fmt.Errorf("network disconnect for init container %q: %w", c.Name(), err)
 			}
 		}
 		for k, v := range networkConfig.EndpointsConfig {
-			if err := client.api.NetworkConnect(ctx, k, created.ID, v); err != nil {
+			if _, err := client.api.NetworkConnect(ctx, k, sdkClient.NetworkConnectOptions{Container: created.ID, EndpointConfig: v}); err != nil {
 				metrics.RegisterDockerAPIError("network_connect")
 				return -1, fmt.Errorf("network connect for init container %q: %w", c.Name(), err)
 			}
@@ -896,19 +858,19 @@ func (client dockerClient) RerunInitContainer(c t.Container, timeout time.Durati
 	// Unconditional start — bypasses StartContainer's c.IsRunning() gate
 	// because init containers were Exited(0) on entry and we *want* to run
 	// them again.
-	if err := client.api.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
+	if _, err := client.api.ContainerStart(ctx, created.ID, sdkClient.ContainerStartOptions{}); err != nil {
 		metrics.RegisterDockerAPIError("start")
 		return -1, fmt.Errorf("start init container %q: %w", c.Name(), err)
 	}
 
-	statusC, errC := client.api.ContainerWait(ctx, created.ID, container.WaitConditionNotRunning)
+	waitResult := client.api.ContainerWait(ctx, created.ID, sdkClient.ContainerWaitOptions{Condition: container.WaitConditionNotRunning})
 	select {
-	case st := <-statusC:
+	case st := <-waitResult.Result:
 		if st.Error != nil {
 			return int(st.StatusCode), fmt.Errorf("init container %q wait error: %s", c.Name(), st.Error.Message)
 		}
 		return int(st.StatusCode), nil
-	case err := <-errC:
+	case err := <-waitResult.Error:
 		return -1, fmt.Errorf("init container %q wait failed: %w", c.Name(), err)
 	case <-ctx.Done():
 		return -1, fmt.Errorf("init container %q did not exit within %s: %w", c.Name(), timeout, ctx.Err())
@@ -919,7 +881,7 @@ func (client dockerClient) RenameContainer(c t.Container, newName string) error 
 	ctx, cancel := context.WithTimeout(context.Background(), dockerAPITimeout)
 	defer cancel()
 	log.Debugf("Renaming container %s (%s) to %s", c.Name(), c.ID().ShortID(), newName)
-	if err := client.api.ContainerRename(ctx, string(c.ID()), newName); err != nil {
+	if _, err := client.api.ContainerRename(ctx, string(c.ID()), sdkClient.ContainerRenameOptions{NewName: newName}); err != nil {
 		metrics.RegisterDockerAPIError("rename")
 		return err
 	}
@@ -1190,17 +1152,14 @@ func (client dockerClient) PullImage(ctx context.Context, container t.Container)
 	// newline-delimited JSON stream that ImagePull returns — a 401/404 on the
 	// manifest, a layer that 500s mid-download, or a partial-content abort all
 	// arrive as a JSONMessage carrying an Error/errorDetail field, not as the
-	// immediate err from ImagePull above. The old code read the body with
-	// io.ReadAll purely to keep the daemon from aborting the pull, then
-	// returned nil regardless of content, silently swallowing those failures.
-	// DisplayJSONMessagesStream both drains the stream (so the pull completes)
-	// and returns a *jsonmessage.JSONError when the stream reported one.
-	if streamErr := jsonmessage.DisplayJSONMessagesStream(response, io.Discard, 0, false, nil); streamErr != nil {
+	// immediate err from ImagePull above. Wait drains the stream to completion
+	// (so the pull finishes) and returns the first in-stream error if one was
+	// reported, mapping it back through the daemon's HTTP status so cerrdefs
+	// classification (IsUnauthorized / IsNotFound) survives on the returned
+	// error — better than the old jsonmessage path, where in-stream errors lost
+	// their class and only the substring safeguard could recover them.
+	if streamErr := response.Wait(ctx); streamErr != nil {
 		log.WithError(streamErr).WithFields(fields).Debug("Image pull stream reported an error")
-		// Route through classifyPullError so cerrdefs classification still
-		// applies where the error survives as a typed daemon error; in-stream
-		// JSONErrors arrive as plain strings, which classifyPullError returns
-		// untouched for the substring-based safeguard to inspect.
 		return classifyPullError(imageName, streamErr)
 	}
 	return nil
@@ -1212,10 +1171,10 @@ func (client dockerClient) RemoveImageByID(id t.ImageID) error {
 	ctx, cancel := context.WithTimeout(context.Background(), imageRemoveTimeout)
 	defer cancel()
 
-	items, err := client.api.ImageRemove(
+	result, err := client.api.ImageRemove(
 		ctx,
 		string(id),
-		image.RemoveOptions{
+		sdkClient.ImageRemoveOptions{
 			Force: true,
 		},
 	)
@@ -1246,7 +1205,7 @@ func (client dockerClient) RemoveImageByID(id t.ImageID) error {
 	if log.IsLevelEnabled(log.DebugLevel) {
 		deleted := strings.Builder{}
 		untagged := strings.Builder{}
-		for _, item := range items {
+		for _, item := range result.Items {
 			if item.Deleted != "" {
 				if deleted.Len() > 0 {
 					deleted.WriteString(`, `)
@@ -1272,29 +1231,26 @@ func (client dockerClient) ExecuteCommand(containerID t.ContainerID, command str
 	clog := log.WithField("containerID", containerID)
 
 	// Create the exec
-	execConfig := container.ExecOptions{
-		Tty:    true,
-		Detach: false,
-		Cmd:    []string{"sh", "-c", command},
+	execConfig := sdkClient.ExecCreateOptions{
+		TTY: true,
+		Cmd: []string{"sh", "-c", command},
 	}
 
-	exec, err := client.api.ContainerExecCreate(bg, string(containerID), execConfig)
+	exec, err := client.api.ExecCreate(bg, string(containerID), execConfig)
 	if err != nil {
 		return false, err
 	}
 
-	response, attachErr := client.api.ContainerExecAttach(bg, exec.ID, container.ExecStartOptions{
-		Tty:    true,
-		Detach: false,
+	response, attachErr := client.api.ExecAttach(bg, exec.ID, sdkClient.ExecAttachOptions{
+		TTY: true,
 	})
 	if attachErr != nil {
 		clog.Errorf("Failed to extract command exec logs: %v", attachErr)
 	}
 
 	// Run the exec
-	execStartCheck := container.ExecStartOptions{Detach: false, Tty: true}
-	err = client.api.ContainerExecStart(bg, exec.ID, execStartCheck)
-	if err != nil {
+	execStartCheck := sdkClient.ExecStartOptions{Detach: false, TTY: true}
+	if _, err = client.api.ExecStart(bg, exec.ID, execStartCheck); err != nil {
 		return false, err
 	}
 
@@ -1333,12 +1289,12 @@ func (client dockerClient) waitForExecOrTimeout(bg context.Context, execID, exec
 	}
 
 	for {
-		execInspect, err := client.api.ContainerExecInspect(ctx, execID)
+		execInspect, err := client.api.ExecInspect(ctx, execID, sdkClient.ExecInspectOptions{})
 
 		//goland:noinspection GoNilness
 		log.WithFields(log.Fields{
 			"exit-code":    execInspect.ExitCode,
-			"exec-id":      execInspect.ExecID,
+			"exec-id":      execInspect.ID,
 			"running":      execInspect.Running,
 			"container-id": execInspect.ContainerID,
 		}).Debug("Awaiting timeout or completion")
@@ -1379,9 +1335,9 @@ func (client dockerClient) waitForStopOrTimeout(ctx context.Context, c t.Contain
 			// stop didn't complete cleanly.
 			return ctx.Err()
 		default:
-			if ci, err := client.api.ContainerInspect(ctx, string(c.ID())); err != nil {
+			if ci, err := client.api.ContainerInspect(ctx, string(c.ID()), sdkClient.ContainerInspectOptions{}); err != nil {
 				return err
-			} else if !ci.State.Running {
+			} else if !ci.Container.State.Running {
 				return nil
 			}
 		}

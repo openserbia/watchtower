@@ -3,8 +3,8 @@ package actions_test
 import (
 	"time"
 
-	dockerContainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
+	dockerContainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -37,7 +37,7 @@ var _ = Describe("Preflight", func() {
 				Labels: map[string]string{
 					"com.centurylinklabs.watchtower.lifecycle.pre-update": "/pre.sh",
 				},
-				ExposedPorts: map[nat.Port]struct{}{},
+				ExposedPorts: network.PortSet{},
 			},
 		)
 	}

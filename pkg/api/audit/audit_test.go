@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	dockerContainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
+	dockerContainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 
 	"github.com/openserbia/watchtower/internal/actions/mocks"
 	apiAudit "github.com/openserbia/watchtower/pkg/api/audit"
@@ -22,7 +22,7 @@ func newMock(name string, labels map[string]string) types.Container {
 		&dockerContainer.Config{
 			Image:        "fake-image:latest",
 			Labels:       labels,
-			ExposedPorts: map[nat.Port]struct{}{},
+			ExposedPorts: network.PortSet{},
 		},
 	)
 }
@@ -81,19 +81,19 @@ func TestAudit_ClassifiesInfrastructureSeparately(t *testing.T) {
 	buildkit := mocks.CreateMockContainerWithConfig(
 		"buildx_buildkit_default0", "buildx_buildkit_default0",
 		"moby/buildkit:v0.12.0", true, false, time.Now(),
-		&dockerContainer.Config{Image: "moby/buildkit:v0.12.0", Labels: map[string]string{}, ExposedPorts: map[nat.Port]struct{}{}},
+		&dockerContainer.Config{Image: "moby/buildkit:v0.12.0", Labels: map[string]string{}, ExposedPorts: network.PortSet{}},
 	)
 	// desktop: matched by image prefix
 	desktop := mocks.CreateMockContainerWithConfig(
 		"docker-desktop-kubernetes", "docker-desktop-kubernetes",
 		"docker/desktop-kubernetes:v1.28.2", true, false, time.Now(),
-		&dockerContainer.Config{Image: "docker/desktop-kubernetes:v1.28.2", Labels: map[string]string{}, ExposedPorts: map[nat.Port]struct{}{}},
+		&dockerContainer.Config{Image: "docker/desktop-kubernetes:v1.28.2", Labels: map[string]string{}, ExposedPorts: network.PortSet{}},
 	)
 	// labeled infrastructure: matched by label prefix, even if image is unrelated
 	buildxLabeled := mocks.CreateMockContainerWithConfig(
 		"some-buildx-helper", "some-buildx-helper",
 		"alpine:3.18", true, false, time.Now(),
-		&dockerContainer.Config{Image: "alpine:3.18", Labels: map[string]string{"com.docker.buildx.refresh": "true"}, ExposedPorts: map[nat.Port]struct{}{}},
+		&dockerContainer.Config{Image: "alpine:3.18", Labels: map[string]string{"com.docker.buildx.refresh": "true"}, ExposedPorts: network.PortSet{}},
 	)
 	containers := []types.Container{
 		buildkit, desktop, buildxLabeled,

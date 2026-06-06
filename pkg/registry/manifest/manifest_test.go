@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/image"
+	"github.com/moby/moby/api/types/image"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 

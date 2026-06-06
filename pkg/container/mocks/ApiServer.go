@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	sdkClient "github.com/moby/moby/client"
 	"github.com/onsi/ginkgo/v2"
 	O "github.com/onsi/gomega"
 	"github.com/onsi/gomega/ghttp"
@@ -64,8 +64,8 @@ func GetContainerHandlers(containerRefs ...*ContainerRef) []http.HandlerFunc {
 	return handlers
 }
 
-func createFilterArgs(statuses []string) filters.Args {
-	args := filters.NewArgs()
+func createFilterArgs(statuses []string) sdkClient.Filters {
+	args := sdkClient.Filters{}
 	for _, status := range statuses {
 		args.Add("status", status)
 	}
@@ -188,7 +188,7 @@ func GetImageHandler(imageInfo *image.InspectResponse) http.HandlerFunc {
 // ListContainersHandler mocks the GET containers/json endpoint, filtering the returned containers based on statuses
 func ListContainersHandler(statuses ...string) http.HandlerFunc {
 	filterArgs := createFilterArgs(statuses)
-	bytes, err := filterArgs.MarshalJSON()
+	bytes, err := json.Marshal(filterArgs)
 	O.ExpectWithOffset(1, err).ShouldNot(O.HaveOccurred())
 	query := url.Values{
 		"filters": []string{string(bytes)},
@@ -199,15 +199,15 @@ func ListContainersHandler(statuses ...string) http.HandlerFunc {
 	)
 }
 
-func respondWithFilteredContainers(filters filters.Args) http.HandlerFunc {
+func respondWithFilteredContainers(filterArgs sdkClient.Filters) http.HandlerFunc {
 	containersJSON, err := getMockJSONFile("./mocks/data/containers.json")
 	O.ExpectWithOffset(2, err).ShouldNot(O.HaveOccurred())
 	var filteredContainers []container.Summary
 	var containers []container.Summary
 	O.ExpectWithOffset(2, json.Unmarshal(containersJSON, &containers)).To(O.Succeed())
 	for _, v := range containers {
-		for _, key := range filters.Get("status") {
-			if v.State == key {
+		for status := range filterArgs["status"] {
+			if string(v.State) == status {
 				filteredContainers = append(filteredContainers, v)
 			}
 		}

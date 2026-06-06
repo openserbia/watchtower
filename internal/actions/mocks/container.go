@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	dockerContainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/go-connections/nat"
+	dockerContainer "github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/network"
 
 	"github.com/openserbia/watchtower/pkg/container"
 	wt "github.com/openserbia/watchtower/pkg/types"
@@ -17,19 +17,17 @@ import (
 // CreateMockContainer creates a container substitute valid for testing
 func CreateMockContainer(id, name, imageName string, created time.Time) wt.Container {
 	content := dockerContainer.InspectResponse{
-		ContainerJSONBase: &dockerContainer.ContainerJSONBase{
-			ID:      id,
-			Image:   imageName,
-			Name:    name,
-			Created: created.String(),
-			HostConfig: &dockerContainer.HostConfig{
-				PortBindings: map[nat.Port][]nat.PortBinding{},
-			},
+		ID:      id,
+		Image:   imageName,
+		Name:    name,
+		Created: created.String(),
+		HostConfig: &dockerContainer.HostConfig{
+			PortBindings: network.PortMap{},
 		},
 		Config: &dockerContainer.Config{
 			Image:        imageName,
 			Labels:       make(map[string]string),
-			ExposedPorts: map[nat.Port]struct{}{},
+			ExposedPorts: network.PortSet{},
 		},
 	}
 	return container.NewContainer(
@@ -56,12 +54,10 @@ func CreateMockContainerWithImageInfo(id, name, imageName string, created time.T
 // CreateMockContainerWithImageInfoP should only be used for testing
 func CreateMockContainerWithImageInfoP(id, name, imageName string, created time.Time, imageInfo *image.InspectResponse) wt.Container {
 	content := dockerContainer.InspectResponse{
-		ContainerJSONBase: &dockerContainer.ContainerJSONBase{
-			ID:      id,
-			Image:   imageName,
-			Name:    name,
-			Created: created.String(),
-		},
+		ID:      id,
+		Image:   imageName,
+		Name:    name,
+		Created: created.String(),
 		Config: &dockerContainer.Config{
 			Image:  imageName,
 			Labels: make(map[string]string),
@@ -83,18 +79,16 @@ func CreateMockContainerWithDigest(id, name, imageName string, created time.Time
 // CreateMockContainerWithConfig creates a container substitute valid for testing
 func CreateMockContainerWithConfig(id, name, imageName string, running, restarting bool, created time.Time, config *dockerContainer.Config) wt.Container {
 	content := dockerContainer.InspectResponse{
-		ContainerJSONBase: &dockerContainer.ContainerJSONBase{
-			ID:    id,
-			Image: imageName,
-			Name:  name,
-			State: &dockerContainer.State{
-				Running:    running,
-				Restarting: restarting,
-			},
-			Created: created.String(),
-			HostConfig: &dockerContainer.HostConfig{
-				PortBindings: map[nat.Port][]nat.PortBinding{},
-			},
+		ID:    id,
+		Image: imageName,
+		Name:  name,
+		State: &dockerContainer.State{
+			Running:    running,
+			Restarting: restarting,
+		},
+		Created: created.String(),
+		HostConfig: &dockerContainer.HostConfig{
+			PortBindings: network.PortMap{},
 		},
 		Config: config,
 	}
@@ -123,14 +117,12 @@ func CreateContainerForProgress(index, idPrefix int, nameFormat string) (wt.Cont
 // CreateMockContainerWithLinks should only be used for testing
 func CreateMockContainerWithLinks(id, name, imageName string, created time.Time, links []string, imageInfo *image.InspectResponse) wt.Container {
 	content := dockerContainer.InspectResponse{
-		ContainerJSONBase: &dockerContainer.ContainerJSONBase{
-			ID:      id,
-			Image:   imageName,
-			Name:    name,
-			Created: created.String(),
-			HostConfig: &dockerContainer.HostConfig{
-				Links: links,
-			},
+		ID:      id,
+		Image:   imageName,
+		Name:    name,
+		Created: created.String(),
+		HostConfig: &dockerContainer.HostConfig{
+			Links: links,
 		},
 		Config: &dockerContainer.Config{
 			Image:  imageName,
@@ -148,19 +140,17 @@ func CreateMockContainerWithLinks(id, name, imageName string, created time.Time,
 // tests. Pass an empty string to simulate "no HEALTHCHECK defined".
 func ContainerWithHealthStatus(id wt.ContainerID, status string) wt.Container {
 	content := dockerContainer.InspectResponse{
-		ContainerJSONBase: &dockerContainer.ContainerJSONBase{
-			ID:    string(id),
-			Name:  string(id),
-			Image: "fake-image:latest",
-			State: &dockerContainer.State{Running: true},
-			HostConfig: &dockerContainer.HostConfig{
-				PortBindings: map[nat.Port][]nat.PortBinding{},
-			},
+		ID:    string(id),
+		Name:  string(id),
+		Image: "fake-image:latest",
+		State: &dockerContainer.State{Running: true},
+		HostConfig: &dockerContainer.HostConfig{
+			PortBindings: network.PortMap{},
 		},
 		Config: &dockerContainer.Config{Image: "fake-image:latest", Labels: map[string]string{}},
 	}
 	if status != "" {
-		content.State.Health = &dockerContainer.Health{Status: status}
+		content.State.Health = &dockerContainer.Health{Status: dockerContainer.HealthStatus(status)}
 	}
 	return container.NewContainer(&content, CreateMockImageInfo("fake-image:latest"))
 }

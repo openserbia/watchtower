@@ -9,11 +9,10 @@ import (
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/backend"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
-	cli "github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/network"
+	cli "github.com/moby/moby/client"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
@@ -32,7 +31,7 @@ var _ = Describe("the client", func() {
 	var mockServer *ghttp.Server
 	BeforeEach(func() {
 		mockServer = ghttp.NewServer()
-		docker, _ = cli.NewClientWithOpts(
+		docker, _ = cli.New(
 			cli.WithHost(mockServer.URL()),
 			cli.WithHTTPClient(mockServer.HTTPTestServer.Client()),
 			// Pin to the API version NewClient opportunistically upgrades
@@ -40,7 +39,7 @@ var _ = Describe("the client", func() {
 			// the GetContainer tests below matches real daemon behavior.
 			// Tests that want to cover the pre-v1.53 short-circuit set
 			// their own version.
-			cli.WithVersion("1.54"),
+			cli.WithAPIVersion("1.54"),
 		)
 	})
 	AfterEach(func() {
@@ -446,10 +445,8 @@ var _ = Describe("the client", func() {
 					// API.ContainerExecCreate
 					ghttp.CombineHandlers(
 						ghttp.VerifyRequest("POST", HaveSuffix("containers/%v/exec", containerID)),
-						ghttp.VerifyJSONRepresenting(container.ExecOptions{
-							User:   user,
-							Detach: false,
-							Tty:    true,
+						ghttp.VerifyJSONRepresenting(container.ExecCreateRequest{
+							Tty: true,
 							Cmd: []string{
 								"sh",
 								"-c",
@@ -461,7 +458,7 @@ var _ = Describe("the client", func() {
 					// API.ContainerExecStart
 					ghttp.CombineHandlers(
 						ghttp.VerifyRequest("POST", HaveSuffix("exec/%v/start", execID)),
-						ghttp.VerifyJSONRepresenting(container.ExecStartOptions{
+						ghttp.VerifyJSONRepresenting(container.ExecStartRequest{
 							Detach: false,
 							Tty:    true,
 						}),
@@ -470,11 +467,11 @@ var _ = Describe("the client", func() {
 					// API.ContainerExecInspect
 					ghttp.CombineHandlers(
 						ghttp.VerifyRequest("GET", HaveSuffix("exec/ex-exec-id/json")),
-						ghttp.RespondWithJSONEncoded(http.StatusOK, backend.ExecInspect{
+						ghttp.RespondWithJSONEncoded(http.StatusOK, container.ExecInspectResponse{
 							ID:       execID,
 							Running:  false,
 							ExitCode: nil,
-							ProcessConfig: &backend.ExecProcessConfig{
+							ProcessConfig: &container.ExecProcessConfig{
 								Entrypoint: "sh",
 								Arguments:  []string{"-c", cmd},
 								User:       user,
@@ -567,10 +564,8 @@ var _ = Describe("the client", func() {
 			It(`force-removes the stale blocker and retries the create so the self-update lands`, func() {
 				removed := false
 				blocker := container.InspectResponse{
-					ContainerJSONBase: &container.ContainerJSONBase{
-						ID:   "stale-orphan-id",
-						Name: "/watchtower",
-					},
+					ID:   "stale-orphan-id",
+					Name: "/watchtower",
 					Config: &container.Config{
 						Labels: map[string]string{"com.centurylinklabs.watchtower": "true"},
 					},
@@ -616,10 +611,8 @@ var _ = Describe("the client", func() {
 		When(`ContainerCreate conflicts with a non-watchtower container`, func() {
 			It(`leaves the other container untouched and surfaces the conflict`, func() {
 				blocker := container.InspectResponse{
-					ContainerJSONBase: &container.ContainerJSONBase{
-						ID:   "operator-container-id",
-						Name: "/watchtower",
-					},
+					ID:     "operator-container-id",
+					Name:   "/watchtower",
 					Config: &container.Config{Labels: map[string]string{}},
 				}
 
@@ -671,13 +664,11 @@ var _ = Describe("the client", func() {
 
 			newContainerInfo := func(id string) *container.InspectResponse {
 				return &container.InspectResponse{
-					ContainerJSONBase: &container.ContainerJSONBase{
-						ID:         id,
-						Image:      missingImageID,
-						Name:       "/" + id,
-						HostConfig: &container.HostConfig{},
-					},
-					Config: &container.Config{Image: imageRef},
+					ID:         id,
+					Image:      missingImageID,
+					Name:       "/" + id,
+					HostConfig: &container.HostConfig{},
+					Config:     &container.Config{Image: imageRef},
 				}
 			}
 			notFound := ghttp.RespondWithJSONEncoded(http.StatusNotFound, struct{ Message string }{Message: "No such image"})
@@ -730,13 +721,11 @@ var _ = Describe("the client", func() {
 			imageID := "sha256:1819191d2b49b6b6f21d3179cfcae0228390728031eccee76b9e21e7e65490c5"
 			newContainerInfo := func(id string) *container.InspectResponse {
 				return &container.InspectResponse{
-					ContainerJSONBase: &container.ContainerJSONBase{
-						ID:         id,
-						Image:      imageID,
-						Name:       "/" + id,
-						HostConfig: &container.HostConfig{},
-					},
-					Config: &container.Config{Image: "tg-antispam:latest"},
+					ID:         id,
+					Image:      imageID,
+					Name:       "/" + id,
+					HostConfig: &container.HostConfig{},
+					Config:     &container.Config{Image: "tg-antispam:latest"},
 				}
 			}
 
@@ -812,10 +801,10 @@ var _ = Describe("the client", func() {
 			It(`short-circuits the Identity decode when the negotiated API is below v1.53`, func() {
 				// Older client: even if the daemon response happened to
 				// include Identity, we shouldn't waste an unmarshal on it.
-				legacyClient, _ := cli.NewClientWithOpts(
+				legacyClient, _ := cli.New(
 					cli.WithHost(mockServer.URL()),
 					cli.WithHTTPClient(mockServer.HTTPTestServer.Client()),
-					cli.WithVersion("1.50"),
+					cli.WithAPIVersion("1.50"),
 				)
 
 				rawBody := []byte(`{
@@ -1026,10 +1015,10 @@ var _ = Describe("the client", func() {
 		// JSONMessages carrying an errorDetail, NOT as the immediate error
 		// from ImagePull. PullImage must decode the stream and surface those.
 		newDockerFor := func(srv *ghttp.Server) *cli.Client {
-			c, _ := cli.NewClientWithOpts(
+			c, _ := cli.New(
 				cli.WithHost(srv.URL()),
 				cli.WithHTTPClient(srv.HTTPTestServer.Client()),
-				cli.WithVersion("1.54"),
+				cli.WithAPIVersion("1.54"),
 			)
 			return c
 		}
@@ -1069,10 +1058,10 @@ var _ = Describe("the client", func() {
 
 	Describe(`IsContainerStale pull-failure handling`, func() {
 		newDockerFor := func(srv *ghttp.Server) *cli.Client {
-			c, _ := cli.NewClientWithOpts(
+			c, _ := cli.New(
 				cli.WithHost(srv.URL()),
 				cli.WithHTTPClient(srv.HTTPTestServer.Client()),
-				cli.WithVersion("1.54"),
+				cli.WithAPIVersion("1.54"),
 			)
 			return c
 		}
