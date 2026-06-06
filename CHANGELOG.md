@@ -6,7 +6,8 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Cross-references with a leading `upstream#` link to issues on
 [containrrr/watchtower](https://github.com/containrrr/watchtower/issues) that
-this fork has addressed (upstream archived in late 2024 without shipping a fix).
+this fork has addressed (upstream went dormant after 2023 and was archived on
+2025-12-17 without shipping a fix).
 
 ## [Unreleased]
 
