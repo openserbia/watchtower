@@ -15,7 +15,7 @@
   [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/openserbia/watchtower/badge)](https://scorecard.dev/viewer/?uri=github.com/openserbia/watchtower)
   [![Known Vulnerabilities](https://snyk.io/test/github/openserbia/watchtower/badge.svg)](https://snyk.io/test/github/openserbia/watchtower)
   <!-- Register the project at https://www.bestpractices.dev/ to get a numeric ID, then replace <ID> below and uncomment. -->
-  <!-- [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/<ID>/badge)](https://www.bestpractices.dev/projects/<ID>) -->
+  [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13123/badge)](https://www.bestpractices.dev/projects/13123)
   [![Latest release](https://img.shields.io/github/v/release/openserbia/watchtower?sort=semver)](https://github.com/openserbia/watchtower/releases)
   [![Docker Hub](https://img.shields.io/docker/v/openserbia/watchtower?label=Docker%20Hub&logo=docker&sort=semver)](https://hub.docker.com/r/openserbia/watchtower)
   [![Docker pulls](https://img.shields.io/docker/pulls/openserbia/watchtower.svg?logo=docker)](https://hub.docker.com/r/openserbia/watchtower)
