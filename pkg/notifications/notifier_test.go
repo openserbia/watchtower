@@ -275,15 +275,10 @@ var _ = Describe("notifications", func() {
 				command := cmd.NewRootCommand()
 				flags.RegisterNotificationFlags(command)
 
-				tokenA := "11111111-4444-4444-8444-cccccccccccc@22222222-4444-4444-8444-cccccccccccc"
-				tokenB := "33333333012222222222333333333344"
-				tokenC := "44444444-4444-4444-8444-cccccccccccc"
-				color := url.QueryEscape(notifications.ColorHex)
-
-				tokenD := "55555555-4444-4444-8444-cccccccccccc"
-				org := "example"
-				hookURL := fmt.Sprintf("https://%s.webhook.office.com/webhookb2/%s/IncomingWebhook/%s/%s/%s", org, tokenA, tokenB, tokenC, tokenD)
-				expectedOutput := fmt.Sprintf("teams://%s/%s/%s/%s?color=%s&host=%s.webhook.office.com", tokenA, tokenB, tokenC, tokenD, color, org)
+				// shoutrrr v0.16 only accepts Power Automate workflow webhook
+				// URLs; the full URL is carried verbatim in the `host` field.
+				hookURL := "https://example.logic.azure.com/workflows/abc123/triggers/manual/paths/invoke?api-version=2016-06-01&sig=secret"
+				expectedOutput := "teams:?host=" + url.QueryEscape(hookURL)
 
 				args := []string{
 					"--notifications",

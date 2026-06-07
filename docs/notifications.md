@@ -300,6 +300,9 @@ To receive notifications in MSTeams channel, add `msteams` to the `--notificatio
 
 Additionally, you should set the MSTeams webhook URL using the `--notification-msteams-hook` option or the `WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL` environment variable. This option can also reference a file, in which case the contents of the file are used.
 
+!!! warning "Power Automate workflow URLs only"
+    The bundled shoutrrr (v0.16+) accepts only **Power Automate workflow** incoming-webhook URLs for MS Teams — either `https://<name>.logic.azure.com/…/workflows/…` or the `https://<name>.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/…` form. The legacy Office 365 *connector* webhooks (`https://outlook.office.com/webhook/…`) are **no longer accepted**: Microsoft has retired them in favour of Power Automate workflows. A stale connector URL now fails fast at startup with a clear validation error rather than silently dropping notifications. See Microsoft's [Create incoming webhooks with Workflows for Microsoft Teams](https://support.microsoft.com/office/creating-incoming-webhooks-with-workflows-for-microsoft-teams-8ae491c7-0394-4861-ba59-055e33f75498) guide to mint a workflow URL.
+
 MSTeams notifier could send keys/values filled by `log.WithField` or `log.WithFields` as MSTeams message facts. To enable this feature add `--notification-msteams-data` flag or set `WATCHTOWER_NOTIFICATION_MSTEAMS_USE_LOG_DATA=true` environment variable.
 
 Example:
@@ -309,7 +312,7 @@ docker run -d \
   --name watchtower \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -e WATCHTOWER_NOTIFICATIONS=msteams \
-  -e WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL="https://outlook.office.com/webhook/xxxxxxxx@xxxxxxx/IncomingWebhook/yyyyyyyy/zzzzzzzzzz" \
+  -e WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL="https://prod-00.westeurope.logic.azure.com/workflows/xxxxxxxx/triggers/manual/paths/invoke?api-version=2016-06-01&sig=yyyyyyyy" \
   -e WATCHTOWER_NOTIFICATION_MSTEAMS_USE_LOG_DATA=true \
   openserbia/watchtower
 ```
