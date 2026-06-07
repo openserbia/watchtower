@@ -11,6 +11,27 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+### Security
+- **Release signatures are now published with a `.sigstore.json` extension
+  instead of `.bundle`.** The keyless cosign signature over `checksums.txt` is
+  unchanged in content (it was always a Sigstore bundle), but the asset is now
+  named `watchtower_<version>_checksums.txt.sigstore.json` so OpenSSF
+  Scorecard's Signed-Releases probe recognises it — that probe only credits the
+  `.asc`/`.minisig`/`.sig`/`.sign`/`.sigstore`/`.sigstore.json` suffixes, so the
+  prior `.bundle` asset was scored as unsigned despite being a valid signature.
+  Verification is otherwise identical (`cosign verify-blob --bundle <file>
+  …`); the README example is updated to the new filename. **Action required**
+  only if you pinned the literal `.bundle` asset name in a verification script.
+- **Supply-chain hardening across the CI/release workflows** (no runtime
+  behaviour change). Every GitHub Actions workflow now declares a least-
+  privilege top-level `permissions:` block with per-job escalation; all action
+  references are pinned by commit SHA (kept current by Dependabot); the
+  cross-compiling builder base image is pinned to the `golang:1.26-alpine`
+  multi-arch index digest; and a native Go fuzz target was added for the
+  attacker-influenceable `com.docker.compose.depends_on` label parser. These
+  close the OpenSSF Scorecard Token-Permissions, Pinned-Dependencies, and
+  Fuzzing findings.
+
 ## [1.17.0] - 2026-06-07
 
 ### ⚠ Breaking Changes

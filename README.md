@@ -91,7 +91,7 @@ sha256sum -c watchtower_<version>_checksums.txt --ignore-missing
 
 # Verify the checksums file's keyless cosign signature (Sigstore bundle)
 cosign verify-blob \
-    --bundle watchtower_<version>_checksums.txt.bundle \
+    --bundle watchtower_<version>_checksums.txt.sigstore.json \
     --certificate-identity-regexp '^https://github.com/openserbia/watchtower/' \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
     watchtower_<version>_checksums.txt

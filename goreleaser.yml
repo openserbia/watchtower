@@ -75,9 +75,12 @@ signs:
   - cmd: cosign
     artifacts: checksum
     # cosign 3.x defaults to the new Sigstore bundle (sig + cert in one file) and
-    # ignores the old --output-signature/--output-certificate flags, so emit a
-    # single .bundle. Verify with: cosign verify-blob --bundle <file>.bundle …
-    signature: "${artifact}.bundle"
+    # ignores the old --output-signature/--output-certificate flags. Emit it with
+    # the `.sigstore.json` suffix so OpenSSF Scorecard's Signed-Releases probe
+    # recognises the release asset (it only credits .asc/.minisig/.sig/.sign/
+    # .sigstore/.sigstore.json — a bare `.bundle` was scored as unsigned).
+    # Verify with: cosign verify-blob --bundle <file>.sigstore.json …
+    signature: "${artifact}.sigstore.json"
     args:
       - sign-blob
       - "--bundle=${signature}"

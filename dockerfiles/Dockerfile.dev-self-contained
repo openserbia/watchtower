@@ -2,7 +2,7 @@
 # Builder
 #
 
-FROM golang:alpine AS builder
+FROM golang:1.26-alpine@sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f AS builder
 
 # Version string baked into the binary via ldflags. Pass it with
 # --build-arg VERSION=$(git describe --tags); `task docker:build` does exactly

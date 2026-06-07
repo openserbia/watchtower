@@ -5,7 +5,10 @@
 # Pin the builder to the native BUILDPLATFORM so multi-arch builds cross-compile
 # instead of running the toolchain under QEMU emulation (CGO is disabled, so a
 # plain GOOS/GOARCH cross build is sufficient).
-FROM --platform=$BUILDPLATFORM golang:alpine AS builder
+# Builder base pinned to the multi-arch manifest-list (index) digest of
+# golang:1.26-alpine so buildx still selects the right per-platform image under
+# --platform; Dependabot's docker ecosystem keeps the tag+digest current.
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine@sha256:f23e8b227fb4493eabe03bede4d5a32d04092da71962f1fb79b5f7d1e6c2a17f AS builder
 
 # use version (for example "v0.3.3") or "main"
 ARG WATCHTOWER_VERSION=main
