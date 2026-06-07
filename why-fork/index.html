@@ -1360,6 +1360,10 @@ may work but aren't tested and are out of scope for bug reports.</p>
 <li><strong>Notification backends</strong> — shoutrrr, email, Slack, MS Teams, Gotify, and the legacy shims.</li>
 </ul>
 <p>No config migration. No flag rename. No label rewrite.</p>
+<div class="admonition note">
+<p class="admonition-title">One MS Teams exception (v1.17.0+)</p>
+<p>The <code>--notification-msteams-hook</code> URL must now be a <strong>Power Automate workflow</strong> webhook — Microsoft retired the Office 365 <em>connector</em> webhooks the older format relied on, and the bundled shoutrrr (v0.16) dropped support for them. The flag and env var are unchanged; only the URL you supply differs. See the <a href="../notifications/#microsoft-teams">notification docs</a>.</p>
+</div>
 <h2 id="what_changed">What changed<a class="headerlink" href="#what_changed" title="Permanent link">&para;</a></h2>
 <h3 id="project_health">Project health<a class="headerlink" href="#project_health" title="Permanent link">&para;</a></h3>
 <table>
@@ -1419,7 +1423,12 @@ may work but aren't tested and are out of scope for bug reports.</p>
 <tr>
 <td>Shoutrrr library</td>
 <td><code>containrrr/shoutrrr</code> (paused)</td>
-<td><strong><code>nicholas-fedor/shoutrrr</code></strong> v0.15 (active fork, URL-compatible)</td>
+<td><strong><code>nicholas-fedor/shoutrrr</code></strong> v0.16 (active fork, URL-compatible)</td>
+</tr>
+<tr>
+<td>Docker Engine SDK</td>
+<td><code>github.com/docker/docker</code> (deprecated, <code>+incompatible</code>)</td>
+<td><strong><code>github.com/moby/moby/{api,client}</code></strong> — the maintained, semver'd Docker v29 SDK (post-v29 engine and CVE fixes land only here)</td>
 </tr>
 </tbody>
 </table>
@@ -1471,7 +1480,7 @@ may work but aren't tested and are out of scope for bug reports.</p>
 <tr>
 <td>Local builds on containerd image store</td>
 <td>Noisy <code>pull access denied for app</code> on every poll (heuristic ignores containerd-snapshotter RepoDigest synthesis)</td>
-<td><strong>Reads the daemon's per-image <code>Identity</code> provenance record</strong> on API v1.53+ (client auto-upgrades past the SDK's DefaultVersion cap) with a bare-name pull-error safeguard for older daemons</td>
+<td><strong>Reads the daemon's per-image <code>Identity</code> provenance record</strong> on API v1.53+ (the v29 SDK client defaults to API 1.54 and negotiates down to the daemon) with a bare-name pull-error safeguard for older daemons</td>
 </tr>
 <tr>
 <td>Stuck on GC'd source image</td>
@@ -1657,6 +1666,22 @@ first intentional break of upstream compatibility (CLI flags, labels, or HTTP AP
   holds the name and, only when that holder is a <em>different watchtower-labeled</em> container, force-removes it and retries
   the create once. Scoped narrowly — an operator's container or a Compose recreate that races the name is left
   untouched, and the container being recreated from is never removed.</p>
+</li>
+<li>
+<p><strong>A self-update could strand the live watchtower under an unrecoverable random name</strong> — the rename-and-respawn renamed
+  the running self to an opaque 32-character <code>util.RandName()</code> before recreating the replacement. That name embeds
+  nothing, so once it crept in — a non-Compose <code>docker run --name watchtower</code> with no <code>com.docker.compose.service</code> label
+  to recover from, a respawn that failed <em>after</em> the rename, or a <code>--no-restart</code> cycle that renamed without respawning —
+  the operator-chosen name existed nowhere recoverable, and watchtower could run indefinitely as e.g.
+  <code>pmGEucoAmWufDGCRjdiooekxKbtHMNkU</code> with no <code>watchtower</code> container at all. The outgoing self is now renamed to a
+  <em>structured</em> temp name that embeds the canonical name, <code>&lt;canonical&gt;-wt-self-XXXXXXXX</code> (the twin of the blue-green
+  <code>&lt;canonical&gt;-wt-bluegreen-XXXXXXXX</code> pattern), so the real name is always recoverable from the daemon-side container
+  name with zero dependence on Compose labels or <code>os.Hostname()</code>-to-short-ID matching. The next poll re-derives the
+  canonical name from the temp name, a <code>CleanupOrphanSelf</code> startup sweep promotes a stranded self (or removes it when
+  the canonical self already exists), and a failed respawn renames the live self straight back. The fragile
+  Compose-label rescue and the post-create re-rename — both defeated by the cases above — are removed. <code>--no-restart</code>
+  now skips the self-rename entirely (mirroring the blue-green <code>NoRestart</code> short-circuit). The <code>-wt-self-</code> suffix is a
+  reserved container-name pattern, like <code>-wt-bluegreen-</code>.</p>
 </li>
 <li>
 <p><strong>A Docker daemon outage mid-scan crashed watchtower with a nil-pointer panic</strong> — when the daemon (or a socket proxy

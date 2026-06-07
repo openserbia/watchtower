@@ -1333,13 +1333,17 @@ The types of notifications to send are set by passing a comma-separated list of 
 <h3 id="microsoft_teams">Microsoft Teams<a class="headerlink" href="#microsoft_teams" title="Permanent link">&para;</a></h3>
 <p>To receive notifications in MSTeams channel, add <code>msteams</code> to the <code>--notifications</code> option or the <code>WATCHTOWER_NOTIFICATIONS</code> environment variable.</p>
 <p>Additionally, you should set the MSTeams webhook URL using the <code>--notification-msteams-hook</code> option or the <code>WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL</code> environment variable. This option can also reference a file, in which case the contents of the file are used.</p>
+<div class="admonition warning">
+<p class="admonition-title">Power Automate workflow URLs only</p>
+<p>The bundled shoutrrr (v0.16+) accepts only <strong>Power Automate workflow</strong> incoming-webhook URLs for MS Teams — either <code>https://&lt;name&gt;.logic.azure.com/…/workflows/…</code> or the <code>https://&lt;name&gt;.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/…</code> form. The legacy Office 365 <em>connector</em> webhooks (<code>https://outlook.office.com/webhook/…</code>) are <strong>no longer accepted</strong>: Microsoft has retired them in favour of Power Automate workflows. A stale connector URL now fails fast at startup with a clear validation error rather than silently dropping notifications. See Microsoft's <a href="https://support.microsoft.com/office/creating-incoming-webhooks-with-workflows-for-microsoft-teams-8ae491c7-0394-4861-ba59-055e33f75498">Create incoming webhooks with Workflows for Microsoft Teams</a> guide to mint a workflow URL.</p>
+</div>
 <p>MSTeams notifier could send keys/values filled by <code>log.WithField</code> or <code>log.WithFields</code> as MSTeams message facts. To enable this feature add <code>--notification-msteams-data</code> flag or set <code>WATCHTOWER_NOTIFICATION_MSTEAMS_USE_LOG_DATA=true</code> environment variable.</p>
 <p>Example:</p>
 <div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>--name<span class="w"> </span>watchtower<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>-v<span class="w"> </span>/var/run/docker.sock:/var/run/docker.sock<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>-e<span class="w"> </span><span class="nv">WATCHTOWER_NOTIFICATIONS</span><span class="o">=</span>msteams<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>-e<span class="w"> </span><span class="nv">WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL</span><span class="o">=</span><span class="s2">&quot;https://outlook.office.com/webhook/xxxxxxxx@xxxxxxx/IncomingWebhook/yyyyyyyy/zzzzzzzzzz&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-e<span class="w"> </span><span class="nv">WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL</span><span class="o">=</span><span class="s2">&quot;https://prod-00.westeurope.logic.azure.com/workflows/xxxxxxxx/triggers/manual/paths/invoke?api-version=2016-06-01&amp;sig=yyyyyyyy&quot;</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>-e<span class="w"> </span><span class="nv">WATCHTOWER_NOTIFICATION_MSTEAMS_USE_LOG_DATA</span><span class="o">=</span><span class="nb">true</span><span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>openserbia/watchtower
 </code></pre></div>
