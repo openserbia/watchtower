@@ -1,0 +1,50 @@
+name: DCO
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  dco-check:
+    name: DCO sign-off
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          fetch-depth: 0
+      - name: Verify Signed-off-by on every PR commit
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          fail=0
+          # Check each non-merge commit unique to this PR for a DCO sign-off.
+          for sha in $(git rev-list --no-merges "${BASE_SHA}..${HEAD_SHA}"); do
+            author="$(git show -s --format='%an <%ae>' "$sha")"
+            if git show -s --format='%B' "$sha" | grep -qiE '^Signed-off-by: .+ <.+@.+>'; then
+              echo "ok   $sha  $author"
+            else
+              echo "::error::Commit ${sha} by ${author} is missing a Signed-off-by line (DCO)."
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "All commits must carry a Developer Certificate of Origin sign-off."
+            echo "Add one with:  git commit -s   (or for existing commits:  git rebase --signoff ${BASE_SHA})"
+            echo "See CONTRIBUTING.md and https://developercertificate.org/"
+            exit 1
+          fi
+          echo "All PR commits carry a Signed-off-by trailer."

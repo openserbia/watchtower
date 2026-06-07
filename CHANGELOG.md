@@ -31,6 +31,16 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   attacker-influenceable `com.docker.compose.depends_on` label parser. These
   close the OpenSSF Scorecard Token-Permissions, Pinned-Dependencies, and
   Fuzzing findings.
+- **Contributions now require a Developer Certificate of Origin (DCO)
+  sign-off.** Every commit in a pull request must carry a `Signed-off-by`
+  trailer (`git commit -s`); a new [DCO workflow](.github/workflows/dco.yml)
+  enforces it. See CONTRIBUTING.md and <https://developercertificate.org/>.
+- **Release tags are now GPG-signed.** Tag signing is enabled
+  (`tag.gpgsign`), so annotated release tags are signed and verifiable with
+  `git tag -v`, complementing the existing cosign artifact signatures. The
+  release process is documented in [RELEASING.md](./RELEASING.md). Governance
+  and the project's security assurance case are documented in
+  [GOVERNANCE.md](./GOVERNANCE.md) and [ASSURANCE-CASE.md](./ASSURANCE-CASE.md).
 
 ## [1.17.0] - 2026-06-07
 

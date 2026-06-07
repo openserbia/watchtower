@@ -47,6 +47,37 @@ docker compose up --build
 - [ ] You're editing flags in `internal/flags/` (the single source of truth) — not inline in `cmd/`.
 - [ ] Commit message is a short imperative ("Fix X when Y" / "Add Z support for W"). No noise like "update code". The full PR description is where the *why* belongs.
 - [ ] You haven't reintroduced `github.com/containrrr/watchtower` as a Go import path — the module path is `github.com/openserbia/watchtower`.
+- [ ] Every commit is signed off (`git commit -s`) — see *Developer Certificate of Origin* below. A CI check enforces this on pull requests.
+
+## Developer Certificate of Origin (DCO)
+
+Contributions to this project require a **Developer Certificate of Origin**
+sign-off. The DCO is a lightweight, legally meaningful statement — read the full
+text at <https://developercertificate.org/> — that certifies you wrote the
+patch, or otherwise have the right to submit it under the project's Apache-2.0
+license. It is *not* a copyright assignment.
+
+You sign off by adding a `Signed-off-by` trailer to each commit message:
+
+```
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+Git adds it for you with the `-s` flag:
+
+```bash
+git commit -s -m "Fix X when Y"
+```
+
+The name and email must be real and match your commit author identity. If you
+forgot to sign off, add it retroactively across a branch with:
+
+```bash
+git rebase --signoff <base>
+```
+
+The [DCO workflow](./.github/workflows/dco.yml) verifies that every commit in a
+pull request carries a sign-off; PRs without it will fail the check.
 
 ## Architecture orientation
 
