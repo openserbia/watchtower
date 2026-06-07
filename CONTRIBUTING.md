@@ -56,6 +56,10 @@ For a deeper tour of the codebase — package boundaries, the Cobra/cron schedul
 
 Do **not** file public issues for security bugs — use [GitHub Security Advisories](https://github.com/openserbia/watchtower/security/advisories/new) instead. See [SECURITY.md](./SECURITY.md) for the full policy.
 
+## Governance
+
+Roles, responsibilities, decision-making, and how to become a maintainer are documented in [GOVERNANCE.md](./GOVERNANCE.md).
+
 ## Code of conduct
 
 By participating, you agree to follow the [code of conduct](./code_of_conduct.md).

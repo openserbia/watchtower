@@ -38,3 +38,7 @@ Out of scope:
 ## Disclosure
 
 After a fix ships in a new release, we'll publish the advisory with credit (or anonymously, if you prefer).
+
+## Assurance case
+
+For the project's threat model, trust boundaries, and the argument for how its security requirements are met, see [ASSURANCE-CASE.md](./ASSURANCE-CASE.md).
