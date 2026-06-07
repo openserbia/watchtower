@@ -303,6 +303,14 @@ Additionally, you should set the MSTeams webhook URL using the `--notification-m
 !!! warning "Power Automate workflow URLs only"
     The bundled shoutrrr (v0.16+) accepts only **Power Automate workflow** incoming-webhook URLs for MS Teams — either `https://<name>.logic.azure.com/…/workflows/…` or the `https://<name>.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/…` form. The legacy Office 365 *connector* webhooks (`https://outlook.office.com/webhook/…`) are **no longer accepted**: Microsoft has retired them in favour of Power Automate workflows. A stale connector URL now fails fast at startup with a clear validation error rather than silently dropping notifications. See Microsoft's [Create incoming webhooks with Workflows for Microsoft Teams](https://support.microsoft.com/office/creating-incoming-webhooks-with-workflows-for-microsoft-teams-8ae491c7-0394-4861-ba59-055e33f75498) guide to mint a workflow URL.
 
+To mint a workflow webhook URL:
+
+1. In Microsoft Teams, open the **Workflows** app — or, on the target channel, choose **••• (More options) → Workflows**.
+2. Select the **"Post to a channel when a webhook request is received"** template.
+3. Give the workflow a name, confirm the sign-in connection it prompts for, then pick the **Team** and **Channel** the notifications should post to.
+4. Create the workflow and **copy the generated HTTP POST URL**. It looks like `https://prod-NN.<region>.logic.azure.com/workflows/<id>/triggers/manual/paths/invoke?api-version=2016-06-01&sp=...&sv=...&sig=...` (or the `https://<name>.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/...` form).
+5. Pass that URL to `--notification-msteams-hook` (or `WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL`).
+
 MSTeams notifier could send keys/values filled by `log.WithField` or `log.WithFields` as MSTeams message facts. To enable this feature add `--notification-msteams-data` flag or set `WATCHTOWER_NOTIFICATION_MSTEAMS_USE_LOG_DATA=true` environment variable.
 
 Example:
