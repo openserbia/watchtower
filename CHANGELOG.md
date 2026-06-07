@@ -53,6 +53,19 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   a just-promoted self — which keeps its older `CreatedAt` across the rename —
   is not reaped by the keep-newest rule. The `-wt-self-` suffix joins
   `-wt-bluegreen-` as a reserved container-name pattern operators should avoid.
+- **Migrated the Docker Engine Go SDK from the deprecated
+  `github.com/docker/docker` module to the split `github.com/moby/moby/api` +
+  `github.com/moby/moby/client` modules (the Docker v29 SDK).** Upstream froze
+  `github.com/docker/docker` as of Docker v29 — future engine-SDK fixes, including
+  CVE patches, land only on the new modules — and its `+incompatible`
+  pseudo-versioning never sat well with Go module tooling. The entire Docker client
+  layer was rewritten onto v29's uniform `(ctx, options) (Result, error)` API. This
+  is **internal only**: CLI flags, container labels, the HTTP API, and notification
+  backends are unchanged, and existing deployments upgrade in place. A side benefit
+  is that the opportunistic API-version-negotiation workaround is gone — the v29
+  client already defaults to API 1.54 and negotiates down to the daemon — and
+  `--preflight` was re-validated live against a Docker 29.x daemon with every
+  capability probe reporting available.
 
 ## [1.15.1] - 2026-06-06
 
