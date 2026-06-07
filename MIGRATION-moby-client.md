@@ -2,11 +2,11 @@
 
 > **Status: MERGED to `main` on 2026-06-06** (fast-forward to `0a55d9e`), against
 > `moby/moby/client v0.4.1` + `moby/moby/api v1.54.2`. The tree builds, lints clean
-> (0 issues), and passes the full `-race` suite. Shipped **ahead of the original
-> v1.0 gate** at the maintainer's direction. Two caveats remain open (see "Still
-> outstanding" below): the client is still **pre-stable (v0.4.1)** so its API can
-> shift before v1.0, and the **live `--preflight` validation on a real v29 daemon
-> was never run** — do it before tagging a release.
+> (0 issues), and passes the full `-race` suite. Live `--preflight` was validated on
+> a real v29 daemon on 2026-06-07 (all 16 capabilities available, no panic — see
+> below). Shipped **ahead of the original v1.0 gate** at the maintainer's direction.
+> One caveat remains: the client is still **pre-stable (v0.4.1)**, so re-verify if
+> it bumps to v1.0 before tagging a release.
 
 ## What this migration actually is
 
@@ -81,15 +81,20 @@ github.com/docker/cli       v29.5.2+incompatible   // unchanged (credential conf
 ```
 `vendor/` is gitignored; CI re-vendors via `task deps`.
 
-## Verification done in the spike
+## Verification
 
 - `task build` ✓ · `task lint` ✓ (0 issues) · `task test` (`-race` + coverage) ✓ · `go mod verify` ✓.
+- **Live `--preflight` on a real v29 daemon (Server 29.5.2 / API 1.54, min 1.40), 2026-06-07** ✓
+  — full-flag, scope-isolated run-once. **All 16 capabilities reported "available," no
+  panic, exit 0**, including the `container_create` probe that triggered the original
+  startup SIGSEGV. Version negotiation reached 1.54 via the migrated `New(FromEnv)`.
+  The 15-cap pass touched zero real containers (scope-isolated; `Session done
+  Failed=0/Scanned=0`); `container_exec_create` was exercised in a second run against
+  one throwaway in-scope, lifecycle-labeled, `monitor-only`+`no-pull` container (then
+  removed), confirming `Updated=0`.
 
-## Still outstanding (post-merge, before release)
+## Still outstanding (before release)
 
-- **Live `--preflight` full-flag throwaway run on AX41** against a real **v29 daemon**
-  (and one older daemon at the 1.44 floor) — merged without a daemon in the loop, so
-  the `capabilities.go` probe rewrite and version negotiation are only unit-verified.
 - **Re-verify when `moby/moby/client` reaches v1.0** — it was pre-stable (v0.4.1) at
   merge time; a v1.0 bump may carry further API changes to absorb.
 - **Docs sweep before the next tag:** CHANGELOG.md, docs/why-fork.md (off
