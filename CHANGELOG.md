@@ -11,6 +11,22 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+## [1.17.0] - 2026-06-07
+
+### ⚠ Breaking Changes
+- **MS Teams notifications now require a Power Automate workflow webhook URL.**
+  Bumping the vendored shoutrrr to v0.16 replaced its MS Teams service: the
+  legacy Office 365 *connector* parser (`teams.ConfigFromWebhookURL`, which
+  accepted `https://outlook.office.com/webhook/…`) is gone, and the new service
+  accepts only Power Automate workflow URLs (`*.logic.azure.com/…/workflows/…`
+  or `*.environment.api.powerplatform.com/powerautomate/…`) — tracking
+  Microsoft's retirement of O365 connectors. The `--notification-msteams-hook` /
+  `WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL` flag is unchanged, but a stale
+  connector URL now fails fast at startup with a validation error instead of
+  silently failing at send time. **Action required:** MS Teams users must mint a
+  Power Automate workflow URL — see the
+  [notification docs](https://openserbia.github.io/watchtower/notifications/#microsoft-teams).
+
 ### Fixed
 - **Self-update can no longer strand the live watchtower under an
   unrecoverable random name.** The self-update rename-and-respawn renamed the
@@ -66,17 +82,6 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   client already defaults to API 1.54 and negotiates down to the daemon — and
   `--preflight` was re-validated live against a Docker 29.x daemon with every
   capability probe reporting available.
-- **MS Teams notifications now require a Power Automate workflow webhook URL.**
-  Bumping the vendored shoutrrr to v0.16 replaced its MS Teams service: the
-  legacy Office 365 *connector* parser (`teams.ConfigFromWebhookURL`, which
-  accepted `https://outlook.office.com/webhook/…`) is gone, and the new service
-  accepts only Power Automate workflow URLs (`*.logic.azure.com/…/workflows/…`
-  or `*.environment.api.powerplatform.com/powerautomate/…`) — tracking
-  Microsoft's retirement of O365 connectors. The `--notification-msteams-hook` /
-  `WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL` flag is unchanged, but a stale
-  connector URL now fails fast at startup with a validation error instead of
-  silently failing at send time. MS Teams users must mint a workflow URL — see
-  the [notification docs](https://openserbia.github.io/watchtower/notifications/#microsoft-teams).
 - Routine dependency refresh shipped alongside the above: `docker/cli`
   v29.5.2 → v29.5.3, plus indirect bumps `google/pprof` and `prometheus/common`
   v0.68.0 → v0.68.1.
@@ -1205,7 +1210,16 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged.
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.12.1...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.17.0...HEAD
+[1.17.0]: https://github.com/openserbia/watchtower/compare/v1.15.1...v1.17.0
+[1.15.1]: https://github.com/openserbia/watchtower/compare/v1.15.0...v1.15.1
+[1.15.0]: https://github.com/openserbia/watchtower/compare/v1.14.3...v1.15.0
+[1.14.3]: https://github.com/openserbia/watchtower/compare/v1.14.2...v1.14.3
+[1.14.2]: https://github.com/openserbia/watchtower/compare/v1.14.1...v1.14.2
+[1.14.1]: https://github.com/openserbia/watchtower/compare/v1.14.0...v1.14.1
+[1.14.0]: https://github.com/openserbia/watchtower/compare/v1.13.0...v1.14.0
+[1.13.0]: https://github.com/openserbia/watchtower/compare/v1.12.2...v1.13.0
+[1.12.2]: https://github.com/openserbia/watchtower/compare/v1.12.1...v1.12.2
 [1.12.1]: https://github.com/openserbia/watchtower/compare/v1.12.0...v1.12.1
 [1.12.0]: https://github.com/openserbia/watchtower/compare/v1.11.2...v1.12.0
 [1.11.2]: https://github.com/openserbia/watchtower/compare/v1.11.1...v1.11.2
