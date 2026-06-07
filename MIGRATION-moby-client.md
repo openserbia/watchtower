@@ -1,11 +1,12 @@
 # Migration: `github.com/docker/docker` → `github.com/moby/moby/{client,api}`
 
-> **Status: SPIKE COMPLETE on branch `worktree-moby-client-migration`, NOT merged.**
-> Implemented against `moby/moby/client v0.4.1` + `moby/moby/api v1.54.2`. The tree
-> builds, lints clean (0 issues), and passes the full `-race` suite. It is still
-> **gated on `moby/moby/client` reaching v1.0** before merge — the client API is
-> pre-stable and can still shift. Treat this branch as a validated reference, and
-> re-verify against v1.0 (and on a live daemon — see Phase 5) before shipping.
+> **Status: MERGED to `main` on 2026-06-06** (fast-forward to `0a55d9e`), against
+> `moby/moby/client v0.4.1` + `moby/moby/api v1.54.2`. The tree builds, lints clean
+> (0 issues), and passes the full `-race` suite. Shipped **ahead of the original
+> v1.0 gate** at the maintainer's direction. Two caveats remain open (see "Still
+> outstanding" below): the client is still **pre-stable (v0.4.1)** so its API can
+> shift before v1.0, and the **live `--preflight` validation on a real v29 daemon
+> was never run** — do it before tagging a release.
 
 ## What this migration actually is
 
@@ -84,14 +85,15 @@ github.com/docker/cli       v29.5.2+incompatible   // unchanged (credential conf
 
 - `task build` ✓ · `task lint` ✓ (0 issues) · `task test` (`-race` + coverage) ✓ · `go mod verify` ✓.
 
-## Still outstanding before merge
+## Still outstanding (post-merge, before release)
 
-- **Gate:** wait for `moby/moby/client` v1.0 and re-run the migration against it.
 - **Live `--preflight` full-flag throwaway run on AX41** against a real **v29 daemon**
-  (and one older daemon at the 1.44 floor) — the spike has no daemon, so the
-  `capabilities.go` probe rewrite and version negotiation are only unit-verified.
-- **Docs sweep at merge time:** CHANGELOG.md, docs/why-fork.md (off `+incompatible`
-  onto a semver'd, CVE-patched SDK), docs/required-capabilities.md.
+  (and one older daemon at the 1.44 floor) — merged without a daemon in the loop, so
+  the `capabilities.go` probe rewrite and version negotiation are only unit-verified.
+- **Re-verify when `moby/moby/client` reaches v1.0** — it was pre-stable (v0.4.1) at
+  merge time; a v1.0 bump may carry further API changes to absorb.
+- **Docs sweep before the next tag:** CHANGELOG.md, docs/why-fork.md (off
+  `+incompatible` onto a semver'd, CVE-patched SDK), docs/required-capabilities.md.
 
 ## References
 
