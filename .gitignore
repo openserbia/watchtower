@@ -18,5 +18,8 @@ docs/assets/*.wasm
 # Added by code-review-graph
 .code-review-graph/
 
+# Local architecture-review artifact (generated triage register; kept out of the fork)
+ARCHITECTURE-REVIEW.md
+
 /.trivycache/
 /build/security/
