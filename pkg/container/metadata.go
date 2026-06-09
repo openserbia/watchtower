@@ -271,7 +271,7 @@ func (c Container) BlueGreenDrain() (time.Duration, bool) {
 // the consumer whether it contains a valid watchtower instance label
 func ContainsWatchtowerLabel(labels map[string]string) bool {
 	val, ok := labels[watchtowerLabel]
-	return ok && val == "true"
+	return ok && val == valueTrue
 }
 
 func (c Container) getLabelValueOrEmpty(label string) string {

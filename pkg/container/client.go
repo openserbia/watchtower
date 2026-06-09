@@ -26,6 +26,19 @@ import (
 
 const defaultStopSignal = "SIGTERM"
 
+// Shared structured-log/struct field keys and literal values used across the
+// container package (extracted to satisfy goconst).
+const (
+	fieldContainer = "container"
+	fieldImage     = "image"
+	valueTrue      = "true"
+
+	// ProxyVar values declaring the docker-socket-proxy permission each
+	// capability requires (see capabilities.go).
+	proxyVarContainersPost = "CONTAINERS+POST"
+	proxyVarImagesPost     = "IMAGES+POST"
+)
+
 // A Client is the interface through which watchtower interacts with the
 // Docker API.
 type Client interface {
@@ -318,13 +331,13 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 	containerInfo := inspect.Container
 
 	netType, netContainerID, found := strings.Cut(string(containerInfo.HostConfig.NetworkMode), ":")
-	if found && netType == "container" {
+	if found && netType == fieldContainer {
 		parentInspect, err := client.api.ContainerInspect(ctx, netContainerID, sdkClient.ContainerInspectOptions{})
 		if err != nil {
 			recordDaemonError("inspect", err, cerrdefs.IsNotFound)
 			log.WithError(err).WithFields(log.Fields{
-				"container":         containerInfo.Name,
-				"image":             containerInfo.Image,
+				fieldContainer:      containerInfo.Name,
+				fieldImage:          containerInfo.Image,
 				"network-container": netContainerID,
 			}).Warn("Unable to resolve network container")
 		} else {
@@ -347,8 +360,8 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 			if fallbackInfo, fallbackIdentity, fallbackErr := client.inspectImageWithIdentity(ctx, ref); fallbackErr == nil {
 				metrics.RegisterImageFallback()
 				log.WithFields(log.Fields{
-					"container":      containerInfo.Name,
-					"image":          containerInfo.Image,
+					fieldContainer:   containerInfo.Name,
+					fieldImage:       containerInfo.Image,
 					"fallback_image": ref,
 				}).Warn("Container image missing locally; falling back to configured ref")
 				c := &Container{containerInfo: &containerInfo, imageInfo: &fallbackInfo}
@@ -364,8 +377,8 @@ func (client dockerClient) GetContainer(containerID t.ContainerID) (t.Container,
 		}
 		recordDaemonError("image_inspect", err, cerrdefs.IsNotFound)
 		log.WithError(err).WithFields(log.Fields{
-			"container": containerInfo.Name,
-			"image":     containerInfo.Image,
+			fieldContainer: containerInfo.Name,
+			fieldImage:     containerInfo.Image,
 		}).Warn("Failed to retrieve container image info")
 		return &Container{containerInfo: &containerInfo, imageInfo: nil}, nil
 	}
@@ -614,8 +627,8 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 			// behavior is to lean on ContainerCreate's error path.
 			metrics.RegisterDockerAPIError("image_tag")
 			log.WithError(err).WithFields(log.Fields{
-				"image":  config.Image,
-				"digest": string(target),
+				fieldImage: config.Image,
+				"digest":   string(target),
 			}).Debug("Image retag before create failed; proceeding with original tag")
 		}
 	}
@@ -671,15 +684,15 @@ func (client dockerClient) StartContainer(c t.Container) (t.ContainerID, error) 
 // fully materialized), and any other removal failure is logged at Debug because
 // the caller is already returning the original, more actionable error.
 func (client dockerClient) cleanupPartialCreate(ctx context.Context, createdID, name string) {
-	log.WithField("container", name).Debug("Recreate failed after create; removing the just-created container to avoid leaving an orphan")
+	log.WithField(fieldContainer, name).Debug("Recreate failed after create; removing the just-created container to avoid leaving an orphan")
 	if _, err := client.api.ContainerRemove(ctx, createdID, sdkClient.ContainerRemoveOptions{Force: true, RemoveVolumes: client.RemoveVolumes}); err != nil {
 		if cerrdefs.IsNotFound(err) {
 			return
 		}
 		metrics.RegisterDockerAPIError("remove")
 		log.WithError(err).WithFields(log.Fields{
-			"container": name,
-			"id":        t.ContainerID(createdID).ShortID(),
+			fieldContainer: name,
+			"id":           t.ContainerID(createdID).ShortID(),
 		}).Debug("Failed to remove the partially-created container; it may need manual cleanup")
 	}
 }
@@ -821,8 +834,8 @@ func (client dockerClient) RerunInitContainer(c t.Container, timeout time.Durati
 		if _, err := client.api.ImageTag(ctx, sdkClient.ImageTagOptions{Source: string(target), Target: config.Image}); err != nil {
 			metrics.RegisterDockerAPIError("image_tag")
 			log.WithError(err).WithFields(log.Fields{
-				"image":  config.Image,
-				"digest": string(target),
+				fieldImage: config.Image,
+				"digest":   string(target),
 			}).Debug("Init container image retag before create failed; proceeding with original tag")
 		}
 	}
@@ -1069,19 +1082,19 @@ func (client dockerClient) HasNewImage(ctx context.Context, container t.Containe
 	newImageID := t.ImageID(newImageInfo.ID)
 	if newImageID == currentImageID {
 		log.WithFields(log.Fields{
-			"container":  container.Name(),
-			"image_name": imageName,
-			"current_id": string(currentImageID),
-			"latest_id":  string(newImageID),
+			fieldContainer: container.Name(),
+			"image_name":   imageName,
+			"current_id":   string(currentImageID),
+			"latest_id":    string(newImageID),
 		}).Debug("No new images found")
 		return false, currentImageID, nil
 	}
 
 	log.WithFields(log.Fields{
-		"container":  container.Name(),
-		"image_name": imageName,
-		"current_id": string(currentImageID),
-		"latest_id":  string(newImageID),
+		fieldContainer: container.Name(),
+		"image_name":   imageName,
+		"current_id":   string(currentImageID),
+		"latest_id":    string(newImageID),
 	}).Debug("Found new image")
 	return true, newImageID, nil
 }
@@ -1093,8 +1106,8 @@ func (client dockerClient) PullImage(ctx context.Context, container t.Container)
 	imageName := container.ImageName()
 
 	fields := log.Fields{
-		"image":     imageName,
-		"container": containerName,
+		fieldImage:     imageName,
+		fieldContainer: containerName,
 	}
 
 	if strings.HasPrefix(imageName, "sha256:") {
@@ -1197,7 +1210,7 @@ func (client dockerClient) RemoveImageByID(id t.ImageID) error {
 		// rather than an error so strict NOTIFICATIONS_LEVEL=error feeds
 		// don't page on routine overlap, and don't count it as a daemon
 		// API failure.
-		log.WithField("image", id.ShortID()).Debugf("Image still in use, deferring removal: %v", err)
+		log.WithField(fieldImage, id.ShortID()).Debugf("Image still in use, deferring removal: %v", err)
 		return nil
 	}
 	recordDaemonError("image_remove", err, cerrdefs.IsNotFound, cerrdefs.IsConflict)

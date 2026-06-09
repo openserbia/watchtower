@@ -11,7 +11,12 @@ import (
 	"github.com/openserbia/watchtower/pkg/types"
 )
 
-const metricChannelBuffer = 10
+const (
+	metricChannelBuffer = 10
+	// labelOperation is the shared Prometheus label key for the registry/docker
+	// API metric vectors.
+	labelOperation = "operation"
+)
 
 var metrics *Metrics
 
@@ -136,7 +141,7 @@ func Default() *Metrics {
 		registryRequests: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "watchtower_registry_requests_total",
 			Help: "Outbound requests to container registries, labeled by registry host, logical operation (challenge|token|digest), and outcome (success|error|retried).",
-		}, []string{"host", "operation", "outcome"}),
+		}, []string{"host", labelOperation, "outcome"}),
 		registryRetries: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "watchtower_registry_retries_total",
 			Help: "Bounded-backoff retry attempts (pkg/registry/retry). Zero is healthy; sustained non-zero means a flaky registry.",
@@ -144,11 +149,11 @@ func Default() *Metrics {
 		dockerAPIErrors: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "watchtower_docker_api_errors_total",
 			Help: "Errors returned by calls into the Docker engine API, labeled by logical operation (list|inspect|kill|start|create|remove|image_inspect|image_remove|image_pull|rename|exec).",
-		}, []string{"operation"}),
+		}, []string{labelOperation}),
 		dockerAPIRetries: promauto.NewCounterVec(prometheus.CounterOpts{
 			Name: "watchtower_docker_api_retries_total",
 			Help: "Bounded-backoff retry attempts against the Docker engine API, labeled by logical operation. Zero is healthy; sustained non-zero means the daemon is flaky or restarting during polls.",
-		}, []string{"operation"}),
+		}, []string{labelOperation}),
 		authCacheHits: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "watchtower_auth_cache_hits_total",
 			Help: "Bearer-token cache hits since startup. High hit rate means the v1.9 in-memory cache is sparing the oauth endpoint.",

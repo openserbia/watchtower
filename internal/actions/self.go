@@ -44,8 +44,8 @@ func DetectSelfContainerID(client container.Client) types.ContainerID {
 	for _, c := range candidates {
 		if strings.HasPrefix(string(c.ID()), hostname) {
 			log.WithFields(log.Fields{
-				"container": c.Name(),
-				"id":        c.ID().ShortID(),
+				fieldContainer: c.Name(),
+				"id":           c.ID().ShortID(),
 			}).Debug("Self-detection: identified own container")
 			return c.ID()
 		}

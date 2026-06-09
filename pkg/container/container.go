@@ -717,7 +717,7 @@ func (c Container) VerifyConfiguration() error {
 	// range" whose root cause was upstream of watchtower.
 	for port := range hostConfig.PortBindings {
 		if !port.IsValid() || port.Port() == "" {
-			logrus.WithFields(logrus.Fields{"container": c.Name(), "port": port.String()}).
+			logrus.WithFields(logrus.Fields{fieldContainer: c.Name(), "port": port.String()}).
 				Warn("Dropping malformed port binding before recreate")
 			delete(hostConfig.PortBindings, port)
 			delete(containerConfig.ExposedPorts, port)

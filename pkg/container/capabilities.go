@@ -112,42 +112,42 @@ var capabilityCatalog = []Capability{
 	{
 		ID:       CapImagePull,
 		Endpoint: "POST /images/create",
-		ProxyVar: "IMAGES+POST",
+		ProxyVar: proxyVarImagesPost,
 		Kind:     KindWrite,
 		Reason:   "Pulls the candidate image during staleness detection. Not needed with --no-pull (or WATCHTOWER_NO_PULL).",
 	},
 	{
 		ID:       CapContainerKill,
 		Endpoint: "POST /containers/{id}/kill",
-		ProxyVar: "CONTAINERS+POST",
+		ProxyVar: proxyVarContainersPost,
 		Kind:     KindWrite,
 		Reason:   "Sends the stop signal to a stale container before it is removed and recreated.",
 	},
 	{
 		ID:       CapContainerRemove,
 		Endpoint: "DELETE /containers/{id}",
-		ProxyVar: "CONTAINERS+POST",
+		ProxyVar: proxyVarContainersPost,
 		Kind:     KindWrite,
 		Reason:   "Removes the old container after it has stopped so the replacement can take its name.",
 	},
 	{
 		ID:       CapContainerCreate,
 		Endpoint: "POST /containers/create",
-		ProxyVar: "CONTAINERS+POST",
+		ProxyVar: proxyVarContainersPost,
 		Kind:     KindWrite,
 		Reason:   "Recreates the container from the new image, carrying its previous config forward.",
 	},
 	{
 		ID:       CapContainerStart,
 		Endpoint: "POST /containers/{id}/start",
-		ProxyVar: "CONTAINERS+POST",
+		ProxyVar: proxyVarContainersPost,
 		Kind:     KindWrite,
 		Reason:   "Starts the freshly recreated container.",
 	},
 	{
 		ID:       CapImageTag,
 		Endpoint: "POST /images/{name}/tag",
-		ProxyVar: "IMAGES+POST",
+		ProxyVar: proxyVarImagesPost,
 		Kind:     KindWrite,
 		Reason:   "Re-binds the original tag to the resolved digest just before recreate, so a CI retag between scan and create cannot strand the container on a missing image.",
 	},
@@ -168,7 +168,7 @@ var capabilityCatalog = []Capability{
 	{
 		ID:       CapContainerRename,
 		Endpoint: "POST /containers/{id}/rename",
-		ProxyVar: "CONTAINERS+POST",
+		ProxyVar: proxyVarContainersPost,
 		Kind:     KindWrite,
 		Reason:   "Renames Watchtower's own container during a self-update so the replacement can claim the canonical name.",
 	},
@@ -182,14 +182,14 @@ var capabilityCatalog = []Capability{
 	{
 		ID:       CapImageRemove,
 		Endpoint: "DELETE /images/{name}",
-		ProxyVar: "IMAGES+POST",
+		ProxyVar: proxyVarImagesPost,
 		Kind:     KindWrite,
 		Reason:   "Deletes the superseded image after a successful update. Only needed with --cleanup (or WATCHTOWER_CLEANUP).",
 	},
 	{
 		ID:       CapContainerWait,
 		Endpoint: "POST /containers/{id}/wait",
-		ProxyVar: "CONTAINERS+POST",
+		ProxyVar: proxyVarContainersPost,
 		Kind:     KindWrite,
 		Reason:   "Blocks until a re-run Compose init container exits. Only needed with --rerun-init-deps (or WATCHTOWER_RERUN_INIT_DEPS).",
 	},
@@ -401,7 +401,7 @@ func (client dockerClient) probe(ctx context.Context, id CapabilityID) error {
 		_, err := client.api.ContainerRename(ctx, bogus, sdkClient.ContainerRenameOptions{NewName: bogus + "-renamed"})
 		return err
 	case CapContainerExecCreate:
-		_, err := client.api.ExecCreate(ctx, bogus, sdkClient.ExecCreateOptions{Cmd: []string{"true"}})
+		_, err := client.api.ExecCreate(ctx, bogus, sdkClient.ExecCreateOptions{Cmd: []string{valueTrue}})
 		return err
 	case CapImageRemove:
 		_, err := client.api.ImageRemove(ctx, bogus, sdkClient.ImageRemoveOptions{})

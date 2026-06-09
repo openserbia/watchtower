@@ -139,8 +139,8 @@ func AuditUnmanaged(client container.Client, scope string, logWarnings bool) err
 			continue
 		}
 		log.WithFields(log.Fields{
-			"container": name,
-			"image":     c.ImageName(),
+			fieldContainer: name,
+			fieldImage:     c.ImageName(),
 		}).Warn("Container has no com.centurylinklabs.watchtower.enable label — silently skipped under --label-enable. Set the label to true or false to make the intent explicit.")
 	}
 
@@ -148,7 +148,7 @@ func AuditUnmanaged(client container.Client, scope string, logWarnings bool) err
 		if _, still := unmanagedNow[name]; still {
 			continue
 		}
-		log.WithField("container", name).Info("Previously-unmanaged container is now labeled or removed — audit cleared")
+		log.WithField(fieldContainer, name).Info("Previously-unmanaged container is now labeled or removed — audit cleared")
 	}
 
 	knownUnmanaged = make(map[string]struct{}, len(unmanagedNow))
@@ -198,7 +198,7 @@ func CleanupOrphanBlueGreen(client container.Client, scope string) error {
 			continue
 		}
 		canonical := match[1]
-		clog := log.WithFields(log.Fields{"green": bare, "canonical": canonical})
+		clog := log.WithFields(log.Fields{fieldGreen: bare, fieldCanonical: canonical})
 
 		if _, ok := present[canonical]; ok {
 			clog.Info("blue-green: removing orphan green container left by an interrupted cutover; the canonical container is still present")
@@ -302,11 +302,11 @@ func CleanupOrphanSelf(client container.Client, scope string, selfID types.Conta
 			stopOrphanSelf(client, c, canonical, "promoting a newer stranded self for this canonical name")
 		}
 
-		log.WithFields(log.Fields{"self": strings.TrimPrefix(promote.Name(), "/"), "canonical": canonical}).Info(
+		log.WithFields(log.Fields{fieldSelf: strings.TrimPrefix(promote.Name(), "/"), fieldCanonical: canonical}).Info(
 			"self-update: promoting stranded self to its canonical name; an earlier self-update renamed it but never restored the name",
 		)
 		if err := client.RenameContainer(promote, canonical); err != nil {
-			log.WithError(err).WithFields(log.Fields{"self": strings.TrimPrefix(promote.Name(), "/"), "canonical": canonical}).Warn(
+			log.WithError(err).WithFields(log.Fields{fieldSelf: strings.TrimPrefix(promote.Name(), "/"), fieldCanonical: canonical}).Warn(
 				"self-update: failed to rename stranded self to its canonical name; it keeps the temporary name until the next update",
 			)
 
@@ -322,11 +322,11 @@ func CleanupOrphanSelf(client container.Client, scope string, selfID types.Conta
 // vanished container. Best-effort: a failure is logged and never returned so it
 // cannot block the startup sweep.
 func stopOrphanSelf(client container.Client, c types.Container, canonical, reason string) {
-	log.WithFields(log.Fields{"self": strings.TrimPrefix(c.Name(), "/"), "canonical": canonical}).Infof(
+	log.WithFields(log.Fields{fieldSelf: strings.TrimPrefix(c.Name(), "/"), fieldCanonical: canonical}).Infof(
 		"self-update: removing orphan self-update temporary container — %s", reason,
 	)
 	if err := client.StopContainer(c, stopTimeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
-		log.WithError(err).WithField("self", strings.TrimPrefix(c.Name(), "/")).Warn(
+		log.WithError(err).WithField(fieldSelf, strings.TrimPrefix(c.Name(), "/")).Warn(
 			"self-update: failed to remove orphan self-update temporary container; it will be retried on the next startup",
 		)
 	}
@@ -388,7 +388,7 @@ func cleanupExcessWatchtowers(containers []types.Container, client container.Cli
 		}
 		if err := client.StopContainer(c, stopTimeout); err != nil {
 			if errors.Is(err, container.ErrContainerNotFound) {
-				log.WithField("container", c.Name()).Debug("Excess watchtower vanished before stop — skipping")
+				log.WithField(fieldContainer, c.Name()).Debug("Excess watchtower vanished before stop — skipping")
 				continue
 			}
 			// logging the original here as we're just returning a count
@@ -402,7 +402,7 @@ func cleanupExcessWatchtowers(containers []types.Container, client container.Cli
 			// it now would yank the image out from under the surviving
 			// instance and break its next restart.
 			if c.SourceImageID() == keep.SourceImageID() || c.SourceImageID() == keep.SafeImageID() {
-				log.WithField("image", c.SourceImageID().ShortID()).Debug("Skipping image cleanup: still in use by the kept watchtower instance")
+				log.WithField(fieldImage, c.SourceImageID().ShortID()).Debug("Skipping image cleanup: still in use by the kept watchtower instance")
 				continue
 			}
 			if err := client.RemoveImageByID(c.SourceImageID()); err != nil {
