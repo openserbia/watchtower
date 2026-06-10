@@ -12,6 +12,26 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 ## [Unreleased]
 
 ### Security
+- **The HTTP API server now sets explicit read/idle timeouts.** The API
+  listener previously used a bare `http.ListenAndServe` with no timeouts, so a
+  slow or idle client could hold connections open and exhaust the accept loop /
+  file descriptors (Slowloris). It now uses an explicit `http.Server` with
+  `ReadHeaderTimeout` (5s, the key mitigation), `ReadTimeout` (15s) and
+  `IdleTimeout` (60s). `WriteTimeout` is intentionally left unset because
+  `/v1/update` is synchronous — it pulls images and recreates containers inside
+  the handler before responding, which legitimately takes minutes on a large
+  fleet, so a write deadline would truncate that response.
+- **Fork-reachable `pull_request` CI now runs on ephemeral GitHub-hosted
+  runners.** The lint/test/build jobs in
+  [`pull-request.yml`](.github/workflows/pull-request.yml) previously ran on the
+  self-hosted org runner pool, so a pull request from any fork could execute
+  PR-controlled Taskfile/test/build code on a host with a rootful Docker socket
+  — a pwn-request path to host compromise and theft of the release credentials
+  co-located on that runner. They now run on `ubuntu-latest`, with the
+  `devbox.lock`-pinned toolchain reproduced via the SHA-pinned
+  `devbox-install-action`. Image build and publish still run on the self-hosted
+  runner, but only on trusted `push`/tag events (`release.yml`,
+  `release-dev.yaml`).
 - **Release signatures are now published with a `.sigstore.json` extension
   instead of `.bundle`.** The keyless cosign signature over `checksums.txt` is
   unchanged in content (it was always a Sigstore bundle), but the asset is now
