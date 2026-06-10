@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"net/http"
 	"strconv"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -139,5 +140,23 @@ func (api *API) Start(block bool) error {
 }
 
 func runHTTPServer(addr string) {
-	log.Fatal(http.ListenAndServe(addr, nil))
+	// Explicit server with read/idle deadlines so a slow or idle client can't
+	// hold connections open and exhaust the accept loop / file descriptors
+	// (Slowloris). ReadHeaderTimeout is the key mitigation — request headers
+	// must arrive promptly; ReadTimeout bounds the (tiny) request bodies these
+	// endpoints accept; IdleTimeout reaps idle keep-alive connections.
+	//
+	// WriteTimeout is deliberately left unset: /v1/update is SYNCHRONOUS — it
+	// pulls images and recreates containers inside the handler before writing
+	// its JSON response, which legitimately takes minutes on a large fleet. A
+	// fixed write deadline would truncate that response and break operator
+	// tooling that reads the scan result. Handler is nil → http.DefaultServeMux,
+	// which the Register* methods populate.
+	srv := &http.Server{
+		Addr:              addr,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	log.Fatal(srv.ListenAndServe())
 }
