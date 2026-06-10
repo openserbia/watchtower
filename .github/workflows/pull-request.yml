@@ -1,5 +1,14 @@
 name: Pull Request
 
+# SECURITY: this workflow triggers on `pull_request`, so a PR from ANY fork can
+# run the (PR-controlled) Taskfile / test code here. It MUST run on
+# GitHub-hosted, ephemeral `ubuntu-latest` runners — NEVER on the self-hosted
+# org pool (label `self-hosted`/`x64`), which has a rootful Docker socket and is
+# root-equivalent on the production build/publish host. Standard runners are
+# free with unlimited minutes on public repos. Image build + publish (which
+# needs registry credentials) lives in release.yml / release-dev.yaml and runs
+# self-hosted only on trusted push/tag events.
+
 on:
   workflow_dispatch: {}
   pull_request:
@@ -19,22 +28,32 @@ env:
 jobs:
   lint:
     name: Lint
-    runs-on: [self-hosted, x64]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with:
           fetch-depth: 0
+      - name: Install devbox
+        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7  # v0.15.0
+        with:
+          devbox-version: 0.16.0
+          enable-cache: 'true'
       - name: Lint
         run: devbox run -- task lint
   test:
     name: Test
-    runs-on: [self-hosted, x64]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with:
           fetch-depth: 0
+      - name: Install devbox
+        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7  # v0.15.0
+        with:
+          devbox-version: 0.16.0
+          enable-cache: 'true'
       - name: Run tests
         run: devbox run -- task test
       - name: Publish coverage
@@ -44,11 +63,16 @@ jobs:
           files: coverage.out
   build:
     name: Build
-    runs-on: [self-hosted, x64]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with:
           fetch-depth: 0
+      - name: Install devbox
+        uses: jetify-com/devbox-install-action@8c6a66ed6273138b1915457069de78cb52fe3bd7  # v0.15.0
+        with:
+          devbox-version: 0.16.0
+          enable-cache: 'true'
       - name: Build binary
         run: devbox run -- task build
