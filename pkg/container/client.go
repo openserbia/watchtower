@@ -43,6 +43,14 @@ const (
 // Docker API.
 type Client interface {
 	ListContainers(t.Filter) ([]t.Container, error)
+	// ListAllContainers lists every container the daemon knows about —
+	// whatever its state — and applies the given filter. Unlike
+	// ListContainers it ignores the client's IncludeStopped /
+	// IncludeRestarting scan options: callers use it to LOOK UP containers
+	// (e.g. --rerun-init-deps resolving an Exited(0) migrate/pg-ready
+	// sibling that is deliberately label-disabled), not to pick update
+	// candidates.
+	ListAllContainers(t.Filter) ([]t.Container, error)
 	GetContainer(containerID t.ContainerID) (t.Container, error)
 	StopContainer(t.Container, time.Duration) error
 	StartContainer(t.Container) (t.ContainerID, error)
@@ -185,7 +193,6 @@ func (client dockerClient) WarnOnHeadPullFailed(container t.Container) bool {
 }
 
 func (client dockerClient) ListContainers(fn t.Filter) ([]t.Container, error) {
-	cs := []t.Container{}
 	ctx, cancel := context.WithTimeout(context.Background(), dockerAPITimeout)
 	defer cancel()
 
@@ -201,7 +208,27 @@ func (client dockerClient) ListContainers(fn t.Filter) ([]t.Container, error) {
 	}
 
 	filter := client.createListFilter()
-	containers, err := listContainersWithRetry(ctx, client.api, sdkClient.ContainerListOptions{Filters: filter})
+	return client.listAndInspect(ctx, sdkClient.ContainerListOptions{Filters: filter}, fn)
+}
+
+// ListAllContainers implements the Client interface. See the interface doc:
+// dep-lookup variant of ListContainers — every container state, scan options
+// deliberately not consulted.
+func (client dockerClient) ListAllContainers(fn t.Filter) ([]t.Container, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dockerAPITimeout)
+	defer cancel()
+
+	log.Debug("Retrieving all containers for dependency lookup")
+
+	return client.listAndInspect(ctx, sdkClient.ContainerListOptions{All: true}, fn)
+}
+
+// listAndInspect is the shared back half of ListContainers/ListAllContainers:
+// list with the given options, inspect each entry, keep the ones the filter
+// accepts.
+func (client dockerClient) listAndInspect(ctx context.Context, opts sdkClient.ContainerListOptions, fn t.Filter) ([]t.Container, error) {
+	cs := []t.Container{}
+	containers, err := listContainersWithRetry(ctx, client.api, opts)
 	if err != nil {
 		metrics.RegisterDockerAPIError("list")
 		return nil, err

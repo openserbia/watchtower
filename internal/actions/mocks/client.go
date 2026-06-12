@@ -23,7 +23,13 @@ type TestData struct {
 	TriedToRemoveImageIDs   []t.ImageID
 	NameOfContainerToKeep   string
 	Containers              []t.Container
-	Staleness               map[string]bool
+	// AllContainers backs ListAllContainers — the unfiltered, every-state
+	// dep-lookup view used by --rerun-init-deps. When nil, ListAllContainers
+	// falls back to Containers so legacy tests see identical scan and lookup
+	// views. Seed it with a superset of Containers to model label-disabled
+	// or stopped init deps that the scan filter hides.
+	AllContainers []t.Container
+	Staleness     map[string]bool
 	// HealthStatusByID lets tests return specific health states from
 	// GetContainer — used by --health-check-gated rollback tests.
 	HealthStatusByID  map[t.ContainerID]string
@@ -106,6 +112,17 @@ func CreateMockClient(data *TestData, pullImages, removeVolumes bool) MockClient
 
 // ListContainers is a mock method returning the provided container testdata
 func (client MockClient) ListContainers(_ t.Filter) ([]t.Container, error) {
+	return client.TestData.Containers, nil
+}
+
+// ListAllContainers is a mock method backing the --rerun-init-deps dep
+// lookup. Returns AllContainers when seeded, else falls back to Containers
+// so tests that don't care about the scan/lookup distinction keep working
+// unchanged.
+func (client MockClient) ListAllContainers(_ t.Filter) ([]t.Container, error) {
+	if client.TestData.AllContainers != nil {
+		return client.TestData.AllContainers, nil
+	}
 	return client.TestData.Containers, nil
 }
 

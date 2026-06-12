@@ -18,6 +18,10 @@ func (c *clientAdapter) ListContainers(_ t.Filter) ([]t.Container, error) {
 	panic("unexpected call: ListContainers")
 }
 
+func (c *clientAdapter) ListAllContainers(_ t.Filter) ([]t.Container, error) {
+	panic("unexpected call: ListAllContainers")
+}
+
 func (c *clientAdapter) GetContainer(_ t.ContainerID) (t.Container, error) {
 	panic("unexpected call: GetContainer")
 }

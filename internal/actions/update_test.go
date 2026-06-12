@@ -69,6 +69,63 @@ func getLinkedTestData(withImageInfo bool) *TestData {
 }
 
 var _ = Describe("the update action", func() {
+	When("--rerun-init-deps is enabled", func() {
+		params := types.UpdateParams{RerunInitDeps: true}
+
+		buildComposeContainer := func(name, service, dependsOn string) types.Container {
+			labels := map[string]string{
+				"com.docker.compose.project": "rerun-test",
+				"com.docker.compose.service": service,
+			}
+			if dependsOn != "" {
+				labels["com.docker.compose.depends_on"] = dependsOn
+			}
+			config := &dockerContainer.Config{
+				Image:        "fake-image:latest",
+				Labels:       labels,
+				ExposedPorts: network.PortSet{},
+			}
+			return CreateMockContainerWithConfig(name, name, "fake-image:latest", true, false, time.Now(), config)
+		}
+
+		It("resolves init deps the scan filter hides (label-disabled one-shots)", func() {
+			target := buildComposeContainer("rerun-dep-hidden-target", "api",
+				"migrate:service_completed_successfully:true")
+			dep := buildComposeContainer("rerun-dep-hidden-migrate", "migrate", "")
+			data := &TestData{
+				// Scan view: the dep carries enable=false (or no label) and is
+				// filtered out — only the target is an update candidate.
+				Containers: []types.Container{target},
+				// Daemon view: the Exited(0) carcass exists and must be found.
+				AllContainers:     []types.Container{target, dep},
+				NewestImageByName: map[string]types.ImageID{target.Name(): "sha256:rerun-dep-hidden-digest"},
+			}
+			client := CreateMockClient(data, false, false)
+
+			report, err := actions.Update(client, params)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.RerunInitContainers).To(HaveLen(1))
+			Expect(client.TestData.RerunInitContainers[0].Name()).To(Equal(dep.Name()))
+			Expect(report.Updated()).To(HaveLen(1))
+		})
+
+		It("rejects the digest when the init dep exists nowhere on the daemon", func() {
+			target := buildComposeContainer("rerun-dep-missing-target", "api",
+				"migrate:service_completed_successfully:true")
+			data := &TestData{
+				Containers:        []types.Container{target},
+				AllContainers:     []types.Container{target},
+				NewestImageByName: map[string]types.ImageID{target.Name(): "sha256:rerun-dep-missing-digest"},
+			}
+			client := CreateMockClient(data, false, false)
+
+			report, err := actions.Update(client, params)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.RerunInitContainers).To(BeEmpty())
+			Expect(report.Updated()).To(BeEmpty())
+		})
+	})
+
 	When("--health-check-gated is enabled", func() {
 		const healthCheckParamsTimeout = 100 * time.Millisecond
 		params := types.UpdateParams{

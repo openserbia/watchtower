@@ -11,6 +11,23 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+### Fixed
+- **`--rerun-init-deps` now resolves init dependencies against the full
+  daemon container list instead of the scan-filtered one.** With
+  `WATCHTOWER_LABEL_ENABLE`, init one-shots that operators deliberately
+  label `com.centurylinklabs.watchtower.enable=false` (so an exited
+  `migrate`/`pg-ready` sibling is neither an update candidate nor
+  unmanaged-container noise) were invisible to the dep lookup: every new
+  digest of their parent was rejected with `init dep not found`
+  (`exit_code:-1`) and cached, silently stopping auto-updates for that
+  service until a manual `docker compose up`. The same applied to deps
+  hidden by scope/name filters, and — before `WATCHTOWER_INCLUDE_STOPPED` —
+  to every Exited(0) init container. Dep *discovery* now uses a dedicated
+  `ListAllContainers` lookup (every container state, no filter, independent
+  of `WATCHTOWER_INCLUDE_STOPPED`); which containers get *updated* is still
+  governed solely by the configured scan filters. Targets whose init dep
+  genuinely does not exist on the daemon are still rejected as before.
+
 ### Security
 - **Release signatures are now published with a `.sigstore.json` extension
   instead of `.bundle`.** The keyless cosign signature over `checksums.txt` is

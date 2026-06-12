@@ -14,6 +14,7 @@ import (
 	"github.com/openserbia/watchtower/internal/initrerun"
 	"github.com/openserbia/watchtower/internal/util"
 	"github.com/openserbia/watchtower/pkg/container"
+	"github.com/openserbia/watchtower/pkg/filters"
 	"github.com/openserbia/watchtower/pkg/lifecycle"
 	"github.com/openserbia/watchtower/pkg/metrics"
 	"github.com/openserbia/watchtower/pkg/session"
@@ -487,6 +488,16 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 	// newer one appears. Runs after the staleness loop so each target's
 	// TargetImageID is already pinned to a resolved digest.
 	if params.RerunInitDeps {
+		// Dep-lookup list, fetched lazily on first need. The scan list
+		// (`containers`) is shaped by enable-label/scope/name filters —
+		// operators deliberately run migrate/pg-ready one-shots with
+		// com.centurylinklabs.watchtower.enable=false so they are neither
+		// update candidates nor unmanaged-container noise, which makes them
+		// invisible HERE. Resolving deps against the scan list therefore
+		// rejected every digest of such a target (dep "not found", exit -1)
+		// even though the init container sat Exited(0) on the daemon. Dep
+		// DISCOVERY must see the whole daemon: every state, no filter.
+		var depLookup []types.Container
 		for i := range containers {
 			if !containers[i].IsStale() {
 				continue
@@ -495,7 +506,15 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 			if len(target.ComposeInitDependencies()) == 0 {
 				continue
 			}
-			results := initrerun.Run(client, target, containers, initrerun.DefaultTimeout)
+			if depLookup == nil {
+				all, listErr := client.ListAllContainers(filters.NoFilter)
+				if listErr != nil {
+					log.WithError(listErr).Warn("--rerun-init-deps: listing all containers for dep lookup failed; falling back to the scan-filtered list")
+					all = containers
+				}
+				depLookup = all
+			}
+			results := initrerun.Run(client, target, depLookup, initrerun.DefaultTimeout)
 			if len(results) == 0 {
 				continue
 			}
