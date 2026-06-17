@@ -11,6 +11,23 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+### Added
+- **`watchtower_stranded_init_deps_total` metric and a `WARN` when
+  `--rerun-init-deps` finds a stranded init dependency.** A blue-green cutover
+  recreates the "green" container by inheriting the old container's labels and
+  never re-derives Compose metadata, so once `com.docker.compose.depends_on`
+  goes empty (a drop that originates in an earlier cutover) it stays empty
+  across every subsequent cutover. `ComposeInitDependencies()` then returns
+  nothing and the rerun silently skips the target — the new image runs against
+  an un-migrated schema with no log and no rejection ("new code, old schema").
+  Watchtower now detects the signature — a stale, Compose-managed target with
+  no declared init deps whose project still holds a one-shot init sibling (a
+  `migrate`/`pg-ready` container with restart policy `no`) — logs a `WARN`
+  naming the offending siblings, and increments
+  `watchtower_stranded_init_deps_total`. Detection only; update behaviour is
+  unchanged. Recovery is `docker compose up -d --force-recreate <service>`,
+  which rewrites the label from the Compose file.
+
 ### Fixed
 - **`--rerun-init-deps` now resolves init dependencies against the full
   daemon container list instead of the scan-filtered one.** With
