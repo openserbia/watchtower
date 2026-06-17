@@ -498,14 +498,7 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 		// even though the init container sat Exited(0) on the daemon. Dep
 		// DISCOVERY must see the whole daemon: every state, no filter.
 		var depLookup []types.Container
-		for i := range containers {
-			if !containers[i].IsStale() {
-				continue
-			}
-			target := containers[i]
-			if len(target.ComposeInitDependencies()) == 0 {
-				continue
-			}
+		ensureDepLookup := func() []types.Container {
 			if depLookup == nil {
 				all, listErr := client.ListAllContainers(filters.NoFilter)
 				if listErr != nil {
@@ -514,7 +507,28 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 				}
 				depLookup = all
 			}
-			results := initrerun.Run(client, target, depLookup, initrerun.DefaultTimeout)
+			return depLookup
+		}
+		for i := range containers {
+			if !containers[i].IsStale() {
+				continue
+			}
+			target := containers[i]
+			if len(target.ComposeInitDependencies()) == 0 {
+				// No declared init deps is normal for most services. But if the
+				// target is compose-managed and its project still holds one-shot
+				// init siblings (migrate/pg-ready), its
+				// com.docker.compose.depends_on label was almost certainly
+				// dropped by a prior blue-green cutover (green inherits blue's
+				// labels and never re-derives them). With no declared deps the
+				// rerun skips the target and the new image runs against the old
+				// schema with NO other signal — make it loud.
+				if target.ComposeProject() != "" {
+					warnIfStrandedInitDeps(target, ensureDepLookup())
+				}
+				continue
+			}
+			results := initrerun.Run(client, target, ensureDepLookup(), initrerun.DefaultTimeout)
 			if len(results) == 0 {
 				continue
 			}
@@ -577,6 +591,67 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 		lifecycle.ExecutePostChecks(client, params)
 	}
 	return progress.Report(), nil
+}
+
+// warnIfStrandedInitDeps surfaces the silent-skip trap behind "new code, old
+// schema": a stale, compose-managed target that declares no
+// service_completed_successfully deps even though its compose project still
+// contains one-shot init siblings (migrate, pg-ready, bootstrap). The usual
+// cause is a com.docker.compose.depends_on label lost when an earlier
+// blue-green cutover recreated the container — Watchtower only inherits labels
+// green<-blue, never re-derives them, so once the value is empty it stays empty
+// across every cutover. With no declared deps --rerun-init-deps skips the
+// target entirely and migrations never run. Redeploying the target via
+// `docker compose up -d --force-recreate <service>` rewrites the label from the
+// compose file and restores the contract.
+func warnIfStrandedInitDeps(target types.Container, all []types.Container) {
+	project := target.ComposeProject()
+	if project == "" {
+		return
+	}
+
+	var siblings []string
+	for _, c := range all {
+		if c.ComposeProject() != project || c.ComposeService() == target.ComposeService() {
+			continue
+		}
+		if isOneShotInitSibling(c) {
+			siblings = append(siblings, c.ComposeService())
+		}
+	}
+	if len(siblings) == 0 {
+		return
+	}
+
+	metrics.RegisterStrandedInitDeps()
+	log.WithFields(log.Fields{
+		fieldContainer: target.Name(),
+		"project":      project,
+		"siblings":     strings.Join(siblings, ","),
+	}).Warn("--rerun-init-deps: stale target declares no init deps but its compose project has one-shot init siblings; the com.docker.compose.depends_on label was likely dropped by a prior blue-green cutover, so migrations will NOT be re-run. Redeploy with `docker compose up -d --force-recreate <service>` to restore the label.")
+}
+
+// isOneShotInitSibling reports whether c looks like a Compose one-shot init
+// container (migrate / pg-ready / bootstrap): compose-managed with a "no"
+// restart policy. Long-lived services carry unless-stopped/always/on-failure,
+// so the restart policy discriminates init gates from a project's main
+// service(s) without hardcoding service names.
+func isOneShotInitSibling(c types.Container) bool {
+	if c.ComposeService() == "" {
+		return false
+	}
+
+	info := c.ContainerInfo()
+	if info == nil || info.HostConfig == nil {
+		return false
+	}
+
+	switch info.HostConfig.RestartPolicy.Name {
+	case "", "no":
+		return true
+	default:
+		return false
+	}
 }
 
 // partitionByStrategy splits the containers slated for update into the

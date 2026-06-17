@@ -48,6 +48,7 @@ type Metrics struct {
 	authCacheHits    prometheus.Counter
 	authCacheMisses  prometheus.Counter
 	imageFallback    prometheus.Counter
+	strandedInitDeps prometheus.Counter
 	lastScanTime     prometheus.Gauge
 	pollInterval     prometheus.Gauge
 	pollDuration     prometheus.Histogram
@@ -166,6 +167,10 @@ func Default() *Metrics {
 			Name: "watchtower_image_fallback_total",
 			Help: "Times Container.GetContainer fell back to inspecting by image reference because the source image ID was missing locally — usually the GC'd-source-image scenario (see upstream#1217).",
 		}),
+		strandedInitDeps: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "watchtower_stranded_init_deps_total",
+			Help: "Times --rerun-init-deps found a stale compose-managed target with no declared service_completed_successfully deps while its project still held one-shot init siblings (migrate/pg-ready) — the signature of a com.docker.compose.depends_on label dropped by a prior blue-green cutover. Non-zero means a service ran new code against an un-migrated schema; redeploy it via compose to restore the label.",
+		}),
 		lastScanTime: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "watchtower_last_scan_timestamp_seconds",
 			Help: "Unix timestamp of the most recent completed scan. Staleness alert: (time() - watchtower_last_scan_timestamp_seconds) > expected_interval.",
@@ -272,6 +277,12 @@ func RegisterAuthCacheMiss() { Default().authCacheMisses.Inc() }
 // when GetContainer fell back to inspecting by image reference because the
 // source image ID was missing locally.
 func RegisterImageFallback() { Default().imageFallback.Inc() }
+
+// RegisterStrandedInitDeps increments watchtower_stranded_init_deps_total. Fires
+// when --rerun-init-deps detects a stale compose target whose depends_on label
+// was stripped (typically by a prior blue-green cutover) yet whose project still
+// holds one-shot init siblings — migrations would otherwise be silently skipped.
+func RegisterStrandedInitDeps() { Default().strandedInitDeps.Inc() }
 
 // SetLastScanTimestamp records the completion time of the latest scan cycle.
 func SetLastScanTimestamp(t time.Time) {
