@@ -98,6 +98,9 @@ type Container interface {
 	ComposeService() string
 	ComposeDependencies() []string
 	ComposeInitDependencies() []string
+	// HasNoInitDepsLabel reports whether the container opts out of stranded
+	// init-deps detection via com.centurylinklabs.watchtower.no-init-deps=true.
+	HasNoInitDepsLabel() bool
 	GetLifecyclePreCheckCommand() string
 	GetLifecyclePostCheckCommand() string
 	GetLifecyclePreUpdateCommand() string

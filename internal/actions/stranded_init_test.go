@@ -135,6 +135,31 @@ func TestWarnIfStrandedInitDeps(t *testing.T) {
 		}
 	})
 
+	t.Run("silent when the target opts out via no-init-deps label", func(t *testing.T) {
+		// A frontend in a project with migrate/pg-ready siblings owned by a
+		// sibling API tier: empty depends_on is by design, not a dropped label.
+		target := container.NewContainer(&dockercontainer.InspectResponse{
+			ID:   "web",
+			Name: "web",
+			HostConfig: &dockercontainer.HostConfig{
+				RestartPolicy: dockercontainer.RestartPolicy{Name: "unless-stopped"},
+			},
+			Config: &dockercontainer.Config{Labels: map[string]string{
+				"com.docker.compose.project":                  strandedTestProject,
+				"com.docker.compose.service":                  "web",
+				"com.centurylinklabs.watchtower.no-init-deps": "true",
+			}},
+		}, nil)
+		migrate := newStrandedFixture("migrate", "no")
+
+		out := captureWarn(t, func() {
+			warnIfStrandedInitDeps(target, []types.Container{target, migrate})
+		})
+		if strings.Contains(out, marker) {
+			t.Fatalf("did not expect a warning for a no-init-deps opt-out target, got: %q", out)
+		}
+	})
+
 	t.Run("silent when the target is not compose-managed", func(t *testing.T) {
 		bare := container.NewContainer(&dockercontainer.InspectResponse{
 			ID:         "bare",

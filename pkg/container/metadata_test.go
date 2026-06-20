@@ -64,3 +64,38 @@ var _ = Describe("ComposeDependencies / ComposeInitDependencies", func() {
 		})
 	})
 })
+
+var _ = Describe("HasNoInitDepsLabel", func() {
+	When("the no-init-deps label is absent", func() {
+		It("returns false", func() {
+			Expect(MockContainer().HasNoInitDepsLabel()).To(BeFalse())
+		})
+	})
+
+	When("the label is set to true", func() {
+		It("returns true", func() {
+			c := MockContainer(WithLabels(map[string]string{
+				"com.centurylinklabs.watchtower.no-init-deps": "true",
+			}))
+			Expect(c.HasNoInitDepsLabel()).To(BeTrue())
+		})
+	})
+
+	When("the label is explicitly false", func() {
+		It("returns false", func() {
+			c := MockContainer(WithLabels(map[string]string{
+				"com.centurylinklabs.watchtower.no-init-deps": "false",
+			}))
+			Expect(c.HasNoInitDepsLabel()).To(BeFalse())
+		})
+	})
+
+	When("the label holds a non-boolean value", func() {
+		It("returns false", func() {
+			c := MockContainer(WithLabels(map[string]string{
+				"com.centurylinklabs.watchtower.no-init-deps": "yes-please",
+			}))
+			Expect(c.HasNoInitDepsLabel()).To(BeFalse())
+		})
+	})
+})

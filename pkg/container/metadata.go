@@ -25,6 +25,7 @@ const (
 	imageCooldownLabel      = "com.centurylinklabs.watchtower.image-cooldown"
 	updateStrategyLabel     = "com.centurylinklabs.watchtower.update-strategy"
 	blueGreenDrainLabel     = "com.centurylinklabs.watchtower.blue-green.drain"
+	noInitDepsLabel         = "com.centurylinklabs.watchtower.no-init-deps"
 
 	// composeProjectLabel / composeServiceLabel / composeDependsOnLabel are
 	// written by `docker compose` (and Docker Desktop) on every container it
@@ -265,6 +266,19 @@ func (c Container) BlueGreenDrain() (time.Duration, bool) {
 		return 0, false
 	}
 	return d, true
+}
+
+// HasNoInitDepsLabel reports whether the container opts out of stranded
+// init-deps detection via com.centurylinklabs.watchtower.no-init-deps=true.
+// Frontend services often share a Compose project with one-shot init
+// containers (migrate/pg-ready) that belong to a sibling API tier; they
+// legitimately declare no init deps of their own, so an empty
+// com.docker.compose.depends_on is NOT the dropped-label signal
+// warnIfStrandedInitDeps looks for. The label affirms "no init deps by
+// design" and suppresses that false positive.
+func (c Container) HasNoInitDepsLabel() bool {
+	v, err := c.getBoolLabelValue(noInitDepsLabel)
+	return err == nil && v
 }
 
 // ContainsWatchtowerLabel takes a map of labels and values and tells

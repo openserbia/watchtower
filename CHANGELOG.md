@@ -27,6 +27,20 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `watchtower_stranded_init_deps_total`. Detection only; update behaviour is
   unchanged. Recovery is `docker compose up -d --force-recreate <service>`,
   which rewrites the label from the Compose file.
+- **`com.centurylinklabs.watchtower.no-init-deps=true` opt-out label for the
+  stranded-init-deps warning.** `WatchtowerStrandedInitDeps`
+  (`watchtower_stranded_init_deps_total` + the WARN) flags a stale,
+  compose-managed target that declares no `service_completed_successfully`
+  deps while its project still holds one-shot init siblings (migrate/pg-ready)
+  — the signature of a `com.docker.compose.depends_on` label dropped by a
+  blue-green cutover. But a frontend that shares a Compose project with init
+  one-shots owned by a sibling API tier (e.g. a web tier whose only
+  `depends_on` is the API) legitimately has no init deps of its own, so its
+  empty `depends_on` is a false positive, not a dropped label. Setting
+  `com.centurylinklabs.watchtower.no-init-deps=true` on such a service affirms
+  "no init deps by design" and suppresses the warning/metric **for that
+  service only** — every sibling that genuinely depends on the one-shots keeps
+  the detector, so a real dropped-label stranding is still surfaced.
 
 ### Fixed
 - **`--rerun-init-deps` now resolves init dependencies against the full

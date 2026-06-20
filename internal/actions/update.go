@@ -605,6 +605,16 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 // `docker compose up -d --force-recreate <service>` rewrites the label from the
 // compose file and restores the contract.
 func warnIfStrandedInitDeps(target types.Container, all []types.Container) {
+	// Opt-out: a target that legitimately has no init deps — e.g. a frontend
+	// sharing a Compose project with migrate/pg-ready one-shots owned by a
+	// sibling API tier — sets com.centurylinklabs.watchtower.no-init-deps=true
+	// to affirm the empty depends_on is by design, not a dropped-label signal.
+	// Suppress the false positive without touching the real-stranding path: a
+	// backend that genuinely lost its label won't carry the opt-out.
+	if target.HasNoInitDepsLabel() {
+		return
+	}
+
 	project := target.ComposeProject()
 	if project == "" {
 		return
