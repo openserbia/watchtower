@@ -750,13 +750,18 @@ func performBlueGreenUpdate(blue types.Container, scanView []types.Container, cl
 	}
 
 	if err := client.StopContainer(blue, params.Timeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
-		// Green is live and healthy but blue refuses to stop. Without arming the
+		// Green is live and healthy but blue refuses to stop (StopContainer
+		// already exhausted its transient-error retries). Without arming the
 		// cooldown here the next poll re-runs the entire cutover — starting yet
 		// another green — and orphan greens pile up. Back this container off like
 		// a failed rollback so the poll loop skips it for rollbackCooldown; the
 		// startup CleanupOrphanBlueGreen sweep reconciles the leftover green.
+		// This is a promotion abort, NOT a rollback: the new image is already
+		// live via green, so it increments watchtower_promotion_aborts_total
+		// (not watchtower_rollbacks_total). recordRollback only arms the shared
+		// per-container cooldown — the name is historical, not the metric.
 		recordRollback(blue.Name())
-		metrics.RegisterRollback()
+		metrics.RegisterPromotionAbort()
 		log.WithError(err).WithFields(log.Fields{fieldContainer: bareName, fieldImage: blue.ImageName(), fieldGreen: greenName}).Errorf("blue-green: failed to stop the old container %s (image %s): %v; green is live but the old one remains and green keeps its temporary name — backing off for %s", bareName, blue.ImageName(), err, rollbackCooldown)
 
 		return err

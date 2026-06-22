@@ -36,6 +36,7 @@ type Metrics struct {
 	total            prometheus.Counter
 	skipped          prometheus.Counter
 	rollbacks        prometheus.Counter
+	promotionAborts  prometheus.Counter
 	managed          prometheus.Gauge
 	excluded         prometheus.Gauge
 	unmanaged        prometheus.Gauge
@@ -117,7 +118,11 @@ func Default() *Metrics {
 		}),
 		rollbacks: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "watchtower_rollbacks_total",
-			Help: "Number of update rollbacks triggered by --health-check-gated since watchtower started. Each increment means a replacement container was created but reverted because it did not become healthy.",
+			Help: "Number of update rollbacks triggered by --health-check-gated since watchtower started. Each increment means a replacement container was created but reverted because it did not become healthy. Distinct from watchtower_promotion_aborts_total, where the replacement WAS healthy but the old container could not be retired.",
+		}),
+		promotionAborts: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "watchtower_promotion_aborts_total",
+			Help: "Number of blue-green cutovers that brought up a healthy replacement (\"green\") but could not retire the old container, since watchtower started. Unlike a rollback the new image IS live — green keeps a temporary name and the old container lingers — so this is tracked separately from watchtower_rollbacks_total. Non-zero means a cutover needs manual reconciliation: `docker compose up -d --force-recreate <service>`.",
 		}),
 		managed: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "watchtower_containers_managed",
@@ -219,6 +224,16 @@ func RegisterScan(metric *Metric) {
 // was restored.
 func RegisterRollback() {
 	Default().rollbacks.Inc()
+}
+
+// RegisterPromotionAbort increments watchtower_promotion_aborts_total. Called by
+// the blue-green path when the replacement ("green") container came up healthy
+// but the old container could not be stopped (e.g. a transient Docker API error
+// survived retries). Unlike a rollback the new image is live — green keeps a
+// temporary name and the old container lingers until manual reconciliation — so
+// it is counted separately from watchtower_rollbacks_total.
+func RegisterPromotionAbort() {
+	Default().promotionAborts.Inc()
 }
 
 // SetAuditCounts updates the managed / excluded / unmanaged / infrastructure

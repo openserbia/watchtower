@@ -12,6 +12,17 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 ## [Unreleased]
 
 ### Added
+- **`watchtower_promotion_aborts_total` metric — blue-green cutovers that bring
+  up a healthy replacement but cannot retire the old container are now counted
+  separately from rollbacks.** Previously a failed stop of the old ("blue")
+  container during a cutover incremented `watchtower_rollbacks_total`,
+  conflating it with a genuine health-gated rollback even though the outcomes
+  are opposite: a rollback means the new image was rejected and the old one
+  restored, whereas a promotion abort means the new image IS live (served by the
+  healthy "green" container on a temporary name) and the old container merely
+  lingers. The two now have distinct counters so alerting can describe each
+  accurately. Reconcile a promotion abort with
+  `docker compose up -d --force-recreate <service>`.
 - **`watchtower_stranded_init_deps_total` metric and a `WARN` when
   `--rerun-init-deps` finds a stranded init dependency.** A blue-green cutover
   recreates the "green" container by inheriting the old container's labels and
@@ -43,6 +54,21 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   the detector, so a real dropped-label stranding is still surfaced.
 
 ### Fixed
+- **`StopContainer` now retries `ContainerKill` on transient connection
+  errors, so a proxy keep-alive race no longer strands a blue-green cutover.**
+  The kill is a single non-idempotent POST, so Go's `net/http` transport does
+  not transparently retry it when it reuses a pooled keep-alive connection the
+  server has already closed — the call surfaces a bare `EOF` while concurrent
+  GET inspects (which are replayable) succeed. Against a docker-socket-proxy
+  (HAProxy) whose `timeout http-keep-alive` is shorter than the SDK's idle
+  timeout this race is routine, and it aborted an otherwise-complete stop — most
+  visibly a blue-green cutover that already had a healthy green, which left the
+  old container running and green stuck on its temporary name. The kill now runs
+  under the same bounded backoff as the list-retry path (3 attempts, transient
+  errors only; `NotFound`/permission/invalid-argument bail immediately),
+  incrementing `watchtower_docker_api_retries_total{operation="kill"}` per
+  retry. Re-sending the signal is safe — a terminating container ignores the
+  duplicate, an already-gone one returns `NotFound`.
 - **`--rerun-init-deps` now resolves init dependencies against the full
   daemon container list instead of the scan-filtered one.** With
   `WATCHTOWER_LABEL_ENABLE`, init one-shots that operators deliberately

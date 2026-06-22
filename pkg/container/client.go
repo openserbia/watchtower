@@ -332,6 +332,52 @@ func listBackoffFor(attempt int) time.Duration {
 	return delay + jitter
 }
 
+// killMaxAttempts bounds the retry on ContainerKill. The kill is a single
+// non-idempotent POST, so Go's net/http transport will NOT transparently retry
+// it when it hands back a pooled keep-alive connection the server has already
+// closed — the call surfaces a bare `EOF` even though concurrent GET inspects
+// sail through (GETs are replayable, this POST is not). A docker-socket-proxy
+// (HAProxy) with a short `timeout http-keep-alive` reaps idle connections well
+// before the SDK's longer idle timeout, so this race is routine, not rare.
+const killMaxAttempts = 3
+
+// killContainerWithRetry wraps ContainerKill in the same bounded backoff as
+// listContainersWithRetry so a transient connection error on the kill POST
+// (proxy keep-alive reap, daemon blip) doesn't abort an otherwise-complete
+// stop — most visibly a blue-green cutover that already has a healthy green.
+// Re-sending the signal is safe: a still-terminating container ignores the
+// duplicate, and an already-gone one returns NotFound, which isTransientDockerErr
+// classifies as non-transient so the loop bails immediately and the caller can
+// still detect the already-gone case.
+func killContainerWithRetry(ctx context.Context, api sdkClient.APIClient, idStr, signal string) error {
+	var lastErr error
+	for attempt := range killMaxAttempts {
+		if attempt > 0 {
+			metrics.RegisterDockerAPIRetry("kill")
+			delay := listBackoffFor(attempt)
+			log.Debugf("Retrying Docker ContainerKill after %s (attempt %d/%d)", delay, attempt+1, killMaxAttempts)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
+		if _, err := api.ContainerKill(ctx, idStr, sdkClient.ContainerKillOptions{Signal: signal}); err != nil {
+			lastErr = err
+			if !isTransientDockerErr(err) {
+				return err
+			}
+
+			continue
+		}
+
+		return nil
+	}
+
+	return lastErr
+}
+
 func (client dockerClient) createListFilter() sdkClient.Filters {
 	filterArgs := sdkClient.Filters{}.Add("status", "running")
 
@@ -540,7 +586,7 @@ func (client dockerClient) StopContainer(c t.Container, timeout time.Duration) e
 
 	if c.IsRunning() {
 		log.Infof("Stopping %s (%s) with %s", c.Name(), shortID, signal)
-		if _, err := client.api.ContainerKill(ctx, idStr, sdkClient.ContainerKillOptions{Signal: signal}); err != nil {
+		if err := killContainerWithRetry(ctx, client.api, idStr, signal); err != nil {
 			if cerrdefs.IsNotFound(err) {
 				log.Debugf("Container %s already gone before kill, nothing to stop.", shortID)
 				return ErrContainerNotFound

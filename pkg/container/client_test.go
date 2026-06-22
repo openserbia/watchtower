@@ -424,6 +424,54 @@ var _ = Describe("the client", func() {
 			})
 		})
 	})
+	Describe(`killContainerWithRetry`, func() {
+		const containerID = "c79e9b3b9b3bdeadbeef"
+		var origBase, origMax time.Duration
+		BeforeEach(func() {
+			// Shrink backoff so the 3-attempt path doesn't cost real time.
+			origBase, origMax = listBackoffBase, listBackoffMax
+			listBackoffBase = time.Millisecond
+			listBackoffMax = 2 * time.Millisecond
+		})
+		AfterEach(func() {
+			listBackoffBase, listBackoffMax = origBase, origMax
+		})
+		When(`the kill POST fails transiently then succeeds`, func() {
+			It(`retries and returns no error`, func() {
+				// First attempt mimics the proxy keep-alive reap surfacing as a
+				// transient failure; the kill lands cleanly on the retry.
+				mockServer.AppendHandlers(ghttp.RespondWith(http.StatusServiceUnavailable, `{"message":"daemon restarting"}`))
+				mockServer.AppendHandlers(mocks.KillContainerHandler(containerID, mocks.Found))
+
+				err := killContainerWithRetry(context.Background(), docker, containerID, "SIGTERM")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(mockServer.ReceivedRequests()).To(HaveLen(2))
+			})
+		})
+		When(`the kill POST fails transiently on every attempt`, func() {
+			It(`surfaces the error after exhausting all attempts`, func() {
+				for range killMaxAttempts {
+					mockServer.AppendHandlers(ghttp.RespondWith(http.StatusServiceUnavailable, `{"message":"daemon restarting"}`))
+				}
+
+				err := killContainerWithRetry(context.Background(), docker, containerID, "SIGTERM")
+				Expect(err).To(HaveOccurred())
+				Expect(mockServer.ReceivedRequests()).To(HaveLen(killMaxAttempts))
+			})
+		})
+		When(`the container is already gone`, func() {
+			It(`returns NotFound without retrying`, func() {
+				// Single handler only — a retry would consume a second handler
+				// and ghttp panics when more are consumed than registered, so
+				// this also asserts the non-transient bail-out.
+				mockServer.AppendHandlers(mocks.KillContainerHandler(containerID, mocks.Missing))
+
+				err := killContainerWithRetry(context.Background(), docker, containerID, "SIGTERM")
+				Expect(cerrdefs.IsNotFound(err)).To(BeTrue())
+				Expect(mockServer.ReceivedRequests()).To(HaveLen(1))
+			})
+		})
+	})
 	Describe(`ExecuteCommand`, func() {
 		When(`logging`, func() {
 			It("should include container id field", func() {
