@@ -38,6 +38,13 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.out
+          # The Chainguard Wolfi self-hosted runner ships no gpg, so the
+          # action's dependency precheck exit 1's BEFORE upload (bypassing
+          # fail_ci_if_error), failing the test job and gating the publish job
+          # that needs it. Skip the uploader-binary signature check (the binary
+          # is still fetched over TLS) so coverage uploads and publish proceeds.
+          # The PR workflow runs on ubuntu-latest (has gpg) and is unaffected.
+          skip_validation: true
   publish:
     needs:
       - build
