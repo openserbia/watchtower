@@ -53,6 +53,19 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   service only** — every sibling that genuinely depends on the one-shots keeps
   the detector, so a real dropped-label stranding is still surfaced.
 
+### Changed
+- **Dependency refresh.** Routine bump of Go module dependencies (direct and
+  indirect) via `go get -u ./...`, then tidy + re-vendor. Direct: `moby/moby/api`
+  v1.54.2 → v1.55.0 and `moby/moby/client` v0.4.1 → v0.5.0 (the Docker v29 SDK;
+  still pre-stable, but the minor bump needed no changes in `pkg/container`),
+  `docker/cli` v29.5.3 → v29.6.0, `nicholas-fedor/shoutrrr` v0.16.0 → v0.16.1,
+  `onsi/ginkgo/v2` v2.29.0 → v2.32.0, `onsi/gomega` v1.41.0 → v1.42.1,
+  `golang.org/x/text` v0.37.0 → v0.38.0. Notable indirect:
+  `docker/docker-credential-helpers` v0.9.7 → v0.9.8, `felixge/httpsnoop`
+  v1.0.4 → v1.1.0, `prometheus/common` v0.68.1 → v0.69.0, and the
+  `golang.org/x/{net,sys,mod,sync,term,tools}` set. Build, tests (`-race`), and
+  lint all pass; no source changes required.
+
 ### Fixed
 - **`StopContainer` now retries `ContainerKill` on transient connection
   errors, so a proxy keep-alive race no longer strands a blue-green cutover.**
