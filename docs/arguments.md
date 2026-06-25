@@ -821,6 +821,25 @@ gets a new digest, Watchtower:
     readable by the old code — add columns/tables in one release, remove the old ones in a later release.
     Breaking schema changes need a planned downtime window instead, not this flag.
 
+**Stranded init dependencies.** A blue-green cutover recreates the "green" container by inheriting the
+old container's labels and never re-derives Compose metadata, so once `com.docker.compose.depends_on`
+goes empty it stays empty across every subsequent cutover. `--rerun-init-deps` then sees no init deps
+and silently skips the migration — new code runs against an un-migrated schema, with no log and no
+rejection. Watchtower detects this signature (a stale, Compose-managed target with no declared init
+deps whose project still holds a one-shot init sibling — a `migrate`/`pg-ready` container with restart
+policy `no`), logs a `WARN` naming the offending siblings, and increments
+`watchtower_stranded_init_deps_total`. This is **detection only** — update behaviour is unchanged.
+Recover by redeploying the service through Compose, which rewrites the label from the Compose file:
+`docker compose up -d --force-recreate <service>`.
+
+**Opting out (`com.centurylinklabs.watchtower.no-init-deps=true`).** A service can legitimately have no
+init deps of its own — e.g. a web tier that shares a Compose project with init one-shots owned by a
+sibling API tier and whose only `depends_on` is the API. Its empty `depends_on` is a real state, not a
+dropped label, so the stranded-init-deps warning is a false positive. Set
+`com.centurylinklabs.watchtower.no-init-deps=true` on such a service to affirm "no init deps expected"
+and suppress both the `WARN` and the metric increment **for that service only** — siblings that
+genuinely depend on the one-shots keep the detector.
+
 ## Image cooldown (supply-chain gate)
 After a new image digest is detected, defer applying it until the digest has been stable for this
 duration. Protects against the "broken `:latest` push reaches every host in one poll interval" failure
