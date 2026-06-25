@@ -11,6 +11,8 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+## [1.18.3] - 2026-06-25
+
 ### Changed
 - **GitHub release notes are now sourced from `CHANGELOG.md`.** The Release
   (Production) workflow extracts the tagged version's CHANGELOG section,
@@ -19,7 +21,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   — replacing the previous auto-generated raw commit-SHA list with curated
   prose *plus* the precise commit refs. The notes file is written under
   `RUNNER_TEMP` so it doesn't re-trip GoReleaser's git-state check, and the
-  step fails fast if the tag has no matching CHANGELOG section.
+  step fails fast if the tag has no matching CHANGELOG section. ([3721b57](https://github.com/openserbia/watchtower/commit/3721b57))
 
 ## [1.18.2] - 2026-06-25
 
@@ -1379,7 +1381,8 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged. ([9fa9e44](https://github.com/openserbia/watchtower/commit/9fa9e44))
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.18.2...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.18.3...HEAD
+[1.18.3]: https://github.com/openserbia/watchtower/compare/v1.18.2...v1.18.3
 [1.18.2]: https://github.com/openserbia/watchtower/compare/v1.17.0...v1.18.2
 [1.17.0]: https://github.com/openserbia/watchtower/compare/v1.15.1...v1.17.0
 [1.15.1]: https://github.com/openserbia/watchtower/compare/v1.15.0...v1.15.1
