@@ -11,6 +11,17 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+### Security
+- **The HTTP API server now sets explicit read/idle timeouts.** The API
+  listener previously used a bare `http.ListenAndServe` with no timeouts, so a
+  slow or idle client could hold connections open and exhaust the accept loop /
+  file descriptors (Slowloris). It now uses an explicit `http.Server` with
+  `ReadHeaderTimeout` (5s, the key mitigation), `ReadTimeout` (15s) and
+  `IdleTimeout` (60s). `WriteTimeout` is intentionally left unset because
+  `/v1/update` is synchronous — it pulls images and recreates containers inside
+  the handler before responding, which legitimately takes minutes on a large
+  fleet, so a write deadline would truncate that response.
+
 ## [1.18.0] - 2026-06-25
 
 ### Added
