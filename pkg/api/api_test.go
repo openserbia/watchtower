@@ -79,6 +79,21 @@ var _ = Describe("API", func() {
 			Expect(rec.Code).To(Equal(http.StatusOK))
 		})
 	})
+
+	Describe("HTTP server timeouts", func() {
+		It("sets the Slowloris read/idle deadlines on the constructed server", func() {
+			srv := newHTTPServer(":8080")
+
+			Expect(srv.Addr).To(Equal(":8080"))
+			Expect(srv.ReadHeaderTimeout).To(Equal(readHeaderTimeout))
+			Expect(srv.ReadTimeout).To(Equal(readTimeout))
+			Expect(srv.IdleTimeout).To(Equal(idleTimeout))
+		})
+
+		It("leaves WriteTimeout unset so a synchronous /v1/update response isn't truncated", func() {
+			Expect(newHTTPServer(":8080").WriteTimeout).To(BeZero())
+		})
+	})
 })
 
 func testHandler(w http.ResponseWriter, req *http.Request) {
