@@ -11,6 +11,19 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+## [1.18.2] - 2026-06-25
+
+### Fixed
+- **Release pipeline: GoReleaser no longer aborts on a dirty `devbox.lock`.**
+  The Build job runs `devbox run -- goreleaser …`, and `devbox run`
+  re-resolves the `"latest"`-pinned tools and rewrites `devbox.lock`, so
+  GoReleaser's git-state guard saw a dirty tree and aborted before building
+  anything — the **v1.18.0 and v1.18.1 releases failed to publish any
+  images for this reason**. The Build step now restores `devbox.lock` inside
+  the devbox shell before invoking GoReleaser. The v1.18.0 and v1.18.1
+  changes (the metrics/label/dependency work and the HTTP API Slowloris
+  hardening) ship unchanged in this release.
+
 ## [1.18.1] - 2026-06-25
 
 ### Security
@@ -1356,7 +1369,8 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged.
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.18.1...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.18.2...HEAD
+[1.18.2]: https://github.com/openserbia/watchtower/compare/v1.18.1...v1.18.2
 [1.18.1]: https://github.com/openserbia/watchtower/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/openserbia/watchtower/compare/v1.17.0...v1.18.0
 [1.17.0]: https://github.com/openserbia/watchtower/compare/v1.15.1...v1.17.0

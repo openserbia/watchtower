@@ -67,7 +67,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build
-        run: devbox run -- goreleaser release --clean
+        # `devbox run` re-resolves the "latest"-pinned tools and rewrites
+        # devbox.lock, which would make GoReleaser abort on a dirty git state.
+        # Restore the lock inside the devbox shell before invoking GoReleaser.
+        run: devbox run -- bash -c 'git checkout -- devbox.lock && goreleaser release --clean'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Trivy CVE scan (observation mode — exit-code: 0 = never fail.
