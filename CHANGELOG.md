@@ -11,6 +11,16 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+### Changed
+- **GitHub release notes are now sourced from `CHANGELOG.md`.** The Release
+  (Production) workflow extracts the tagged version's CHANGELOG section,
+  appends a linked commit list (and a full-diff link) for the commits since
+  the previous tag, and passes the result to GoReleaser via `--release-notes`
+  — replacing the previous auto-generated raw commit-SHA list with curated
+  prose *plus* the precise commit refs. The notes file is written under
+  `RUNNER_TEMP` so it doesn't re-trip GoReleaser's git-state check, and the
+  step fails fast if the tag has no matching CHANGELOG section.
+
 ## [1.18.2] - 2026-06-25
 
 ### Fixed
