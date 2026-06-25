@@ -564,15 +564,15 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#blue-green_zero-downtime_deploys_update-strategy-blue-green" class="md-nav__link">
+  <a href="#update-strategy-blue-green" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Blue-green (zero-downtime) deploys {#update-strategy-blue-green}
+        Blue-green (zero-downtime) deploys
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Blue-green (zero-downtime) deploys {#update-strategy-blue-green}">
+    <nav class="md-nav" aria-label="Blue-green (zero-downtime) deploys">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -933,15 +933,15 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#blue-green_zero-downtime_deploys_update-strategy-blue-green" class="md-nav__link">
+  <a href="#update-strategy-blue-green" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Blue-green (zero-downtime) deploys {#update-strategy-blue-green}
+        Blue-green (zero-downtime) deploys
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Blue-green (zero-downtime) deploys {#update-strategy-blue-green}">
+    <nav class="md-nav" aria-label="Blue-green (zero-downtime) deploys">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1065,7 +1065,7 @@ Watchtower instance.</p>
 <code>com.centurylinklabs.watchtower.blue-green.drain</code> label (a Go duration such as <code>10s</code>, <code>30s</code>, <code>2m</code>;
 overrides the global <a href="https://openserbia.github.io/watchtower/arguments/#blue_green_drain_window"><code>--blue-green-drain</code></a>;
 <code>0</code> disables the drain window).</p>
-<h3 id="blue-green_zero-downtime_deploys_update-strategy-blue-green">Blue-green (zero-downtime) deploys {#update-strategy-blue-green}<a class="headerlink" href="#blue-green_zero-downtime_deploys_update-strategy-blue-green" title="Permanent link">&para;</a></h3>
+<h3 id="update-strategy-blue-green">Blue-green (zero-downtime) deploys<a class="headerlink" href="#update-strategy-blue-green" title="Permanent link">&para;</a></h3>
 <p>With <code>update-strategy=blue-green</code>, Watchtower brings the new ("green") container up <em>alongside</em> the
 running ("blue") one, waits for green to report <code>healthy</code>, lets the drain window elapse so the reverse
 proxy registers green and in-flight requests on blue finish, then stops blue and renames green to

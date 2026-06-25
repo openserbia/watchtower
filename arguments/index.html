@@ -2756,6 +2756,23 @@ gets a new digest, Watchtower:</p>
 readable by the old code — add columns/tables in one release, remove the old ones in a later release.
 Breaking schema changes need a planned downtime window instead, not this flag.</p>
 </div>
+<p><strong>Stranded init dependencies.</strong> A blue-green cutover recreates the "green" container by inheriting the
+old container's labels and never re-derives Compose metadata, so once <code>com.docker.compose.depends_on</code>
+goes empty it stays empty across every subsequent cutover. <code>--rerun-init-deps</code> then sees no init deps
+and silently skips the migration — new code runs against an un-migrated schema, with no log and no
+rejection. Watchtower detects this signature (a stale, Compose-managed target with no declared init
+deps whose project still holds a one-shot init sibling — a <code>migrate</code>/<code>pg-ready</code> container with restart
+policy <code>no</code>), logs a <code>WARN</code> naming the offending siblings, and increments
+<code>watchtower_stranded_init_deps_total</code>. This is <strong>detection only</strong> — update behaviour is unchanged.
+Recover by redeploying the service through Compose, which rewrites the label from the Compose file:
+<code>docker compose up -d --force-recreate &lt;service&gt;</code>.</p>
+<p><strong>Opting out (<code>com.centurylinklabs.watchtower.no-init-deps=true</code>).</strong> A service can legitimately have no
+init deps of its own — e.g. a web tier that shares a Compose project with init one-shots owned by a
+sibling API tier and whose only <code>depends_on</code> is the API. Its empty <code>depends_on</code> is a real state, not a
+dropped label, so the stranded-init-deps warning is a false positive. Set
+<code>com.centurylinklabs.watchtower.no-init-deps=true</code> on such a service to affirm "no init deps expected"
+and suppress both the <code>WARN</code> and the metric increment <strong>for that service only</strong> — siblings that
+genuinely depend on the one-shots keep the detector.</p>
 <h2 id="image_cooldown_supply-chain_gate">Image cooldown (supply-chain gate)<a class="headerlink" href="#image_cooldown_supply-chain_gate" title="Permanent link">&para;</a></h2>
 <p>After a new image digest is detected, defer applying it until the digest has been stable for this
 duration. Protects against the "broken <code>:latest</code> push reaches every host in one poll interval" failure
@@ -2765,7 +2782,7 @@ anything. If the registry serves a different digest during the window (author re
 <p>Set <code>0</code> (the default) to disable — matches pre-v1.12 behavior. Per-container override via the
 <code>com.centurylinklabs.watchtower.image-cooldown</code> label: production services get a longer grace period
 than dev containers inheriting the fleet-wide default.</p>
-<p>Pairs naturally with <a href="./#health_check_gated_updates"><code>--health-check-gated</code></a>. Cooldown gates
+<p>Pairs naturally with <a href="./#health-check_gated_updates"><code>--health-check-gated</code></a>. Cooldown gates
 <em>when</em> to apply; health-check gates <em>whether</em> the applied container works. The cooldown state is
 in-memory and resets on daemon restart — operators who want to force an immediate apply can just
 restart Watchtower.</p>

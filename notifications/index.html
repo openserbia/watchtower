@@ -1337,6 +1337,14 @@ The types of notifications to send are set by passing a comma-separated list of 
 <p class="admonition-title">Power Automate workflow URLs only</p>
 <p>The bundled shoutrrr (v0.16+) accepts only <strong>Power Automate workflow</strong> incoming-webhook URLs for MS Teams — either <code>https://&lt;name&gt;.logic.azure.com/…/workflows/…</code> or the <code>https://&lt;name&gt;.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/…</code> form. The legacy Office 365 <em>connector</em> webhooks (<code>https://outlook.office.com/webhook/…</code>) are <strong>no longer accepted</strong>: Microsoft has retired them in favour of Power Automate workflows. A stale connector URL now fails fast at startup with a clear validation error rather than silently dropping notifications. See Microsoft's <a href="https://support.microsoft.com/office/creating-incoming-webhooks-with-workflows-for-microsoft-teams-8ae491c7-0394-4861-ba59-055e33f75498">Create incoming webhooks with Workflows for Microsoft Teams</a> guide to mint a workflow URL.</p>
 </div>
+<p>To mint a workflow webhook URL:</p>
+<ol>
+<li>In Microsoft Teams, open the <strong>Workflows</strong> app — or, on the target channel, choose <strong>••• (More options) → Workflows</strong>.</li>
+<li>Select the <strong>"Post to a channel when a webhook request is received"</strong> template.</li>
+<li>Give the workflow a name, confirm the sign-in connection it prompts for, then pick the <strong>Team</strong> and <strong>Channel</strong> the notifications should post to.</li>
+<li>Create the workflow and <strong>copy the generated HTTP POST URL</strong>. It looks like <code>https://prod-NN.&lt;region&gt;.logic.azure.com/workflows/&lt;id&gt;/triggers/manual/paths/invoke?api-version=2016-06-01&amp;sp=...&amp;sv=...&amp;sig=...</code> (or the <code>https://&lt;name&gt;.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/...</code> form).</li>
+<li>Pass that URL to <code>--notification-msteams-hook</code> (or <code>WATCHTOWER_NOTIFICATION_MSTEAMS_HOOK_URL</code>).</li>
+</ol>
 <p>MSTeams notifier could send keys/values filled by <code>log.WithField</code> or <code>log.WithFields</code> as MSTeams message facts. To enable this feature add <code>--notification-msteams-data</code> flag or set <code>WATCHTOWER_NOTIFICATION_MSTEAMS_USE_LOG_DATA=true</code> environment variable.</p>
 <p>Example:</p>
 <div class="highlight"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>

@@ -1143,7 +1143,7 @@ trusted networks), and map port <code>8080</code> from the container.</p>
 <span class="w">    </span><span class="nt">bearer_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">demotoken</span>
 <span class="w">    </span><span class="nt">static_configs</span><span class="p">:</span>
 <span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">targets</span><span class="p">:</span>
-<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;watchtower:8080&#39;</span>
+<span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;watchtower:8080&#39;</span>
 </code></pre></div>
 <p>Replace <code>demotoken</code> with the token you set via <code>--http-api-token</code>. Drop the
 <code>bearer_token</code> line entirely if <code>--http-api-metrics-no-auth</code> is active.</p>
@@ -1228,7 +1228,7 @@ change once per scan.</p>
 <tr>
 <td><code>watchtower_containers_unmanaged</code></td>
 <td>gauge</td>
-<td>Containers with no <code>enable</code> label at all. Under <code>--label-enable</code> these are silently skipped — hit <a href="../arguments/#watch_status_audit_endpoint"><code>/v1/audit</code></a> for names or enable <a href="../arguments/#audit_unmanaged_containers"><code>--audit-unmanaged</code></a> for log warnings. Excludes Docker-managed infrastructure (buildkit etc.), which is tracked separately in <code>watchtower_containers_infrastructure</code>.</td>
+<td>Containers with no <code>enable</code> label at all. Under <code>--label-enable</code> these are silently skipped — hit <a href="../arguments/#watch-status_audit_endpoint"><code>/v1/audit</code></a> for names or enable <a href="../arguments/#audit_unmanaged_containers"><code>--audit-unmanaged</code></a> for log warnings. Excludes Docker-managed infrastructure (buildkit etc.), which is tracked separately in <code>watchtower_containers_infrastructure</code>.</td>
 </tr>
 <tr>
 <td><code>watchtower_containers_infrastructure</code></td>
@@ -1250,7 +1250,17 @@ change once per scan.</p>
 <tr>
 <td><code>watchtower_rollbacks_total</code></td>
 <td>counter</td>
-<td>Rollbacks triggered by <a href="../arguments/#health_check_gated_updates"><code>--health-check-gated</code></a>. Each increment = a replacement container failed health check and the previous image was restored.</td>
+<td>Rollbacks triggered by <a href="../arguments/#health-check_gated_updates"><code>--health-check-gated</code></a>. Each increment = a replacement container failed health check and the previous image was restored.</td>
+</tr>
+<tr>
+<td><code>watchtower_promotion_aborts_total</code></td>
+<td>counter</td>
+<td>Blue-green cutovers that brought up a healthy replacement ("green") but could not retire the old container. Unlike a rollback the new image <strong>is</strong> live — green keeps a temporary name and the old container lingers — so it is counted separately from <code>watchtower_rollbacks_total</code>. Non-zero means a cutover needs manual reconciliation: <code>docker compose up -d --force-recreate &lt;service&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>watchtower_stranded_init_deps_total</code></td>
+<td>counter</td>
+<td>Times <a href="../arguments/#re-run_init_containers_service_completed_successfully"><code>--rerun-init-deps</code></a> found a stale Compose-managed target with no declared <code>service_completed_successfully</code> deps while its project still held one-shot init siblings (<code>migrate</code>/<code>pg-ready</code>) — the signature of a <code>com.docker.compose.depends_on</code> label dropped by a prior blue-green cutover. Non-zero means a service may be running new code against an un-migrated schema; redeploy it via <code>docker compose up -d --force-recreate &lt;service&gt;</code> to restore the label. Suppress a legitimate no-init-deps service with the <code>com.centurylinklabs.watchtower.no-init-deps=true</code> label.</td>
 </tr>
 <tr>
 <td><code>watchtower_containers_in_cooldown</code></td>
@@ -1366,7 +1376,8 @@ change once per scan.</p>
 <h2 id="useful_queries">Useful queries<a class="headerlink" href="#useful_queries" title="Permanent link">&para;</a></h2>
 <p>Staleness: <code>time() - watchtower_last_scan_timestamp_seconds</code> — seconds since the last scan.</p>
 <p>p95 scan duration: <code>histogram_quantile(0.95, sum by (le) (rate(watchtower_poll_duration_seconds_bucket[5m])))</code>.</p>
-<p>Bearer-cache hit ratio: <code>sum(increase(watchtower_auth_cache_hits_total[1h])) / clamp_min(sum(increase(watchtower_auth_cache_hits_total[1h])) + sum(increase(watchtower_auth_cache_misses_total[1h])), 1)</code>.</p>
+<p>Bearer-cache hit ratio:
+<code>sum(increase(watchtower_auth_cache_hits_total[1h])) / clamp_min(sum(increase(watchtower_auth_cache_hits_total[1h])) + sum(increase(watchtower_auth_cache_misses_total[1h])), 1)</code>.</p>
 <p>Unmanaged containers present for &gt; 1 h: <code>watchtower_containers_unmanaged &gt; 0</code> with an alert <code>for: 1h</code>.</p>
 <h2 id="dashboards_and_alerts">Dashboards and alerts<a class="headerlink" href="#dashboards_and_alerts" title="Permanent link">&para;</a></h2>
 <p>Ready-to-import Grafana dashboard and Prometheus alerting rules ship under
