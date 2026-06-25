@@ -11,6 +11,8 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-06-25
+
 ### Security
 - **The HTTP API server now sets explicit read/idle timeouts.** The API
   listener previously used a bare `http.ListenAndServe` with no timeouts, so a
@@ -1354,7 +1356,8 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged.
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.18.0...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.18.1...HEAD
+[1.18.1]: https://github.com/openserbia/watchtower/compare/v1.18.0...v1.18.1
 [1.18.0]: https://github.com/openserbia/watchtower/compare/v1.17.0...v1.18.0
 [1.17.0]: https://github.com/openserbia/watchtower/compare/v1.15.1...v1.17.0
 [1.15.1]: https://github.com/openserbia/watchtower/compare/v1.15.0...v1.15.1
