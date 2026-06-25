@@ -22,7 +22,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   images for this reason**. The Build step now restores `devbox.lock` inside
   the devbox shell before invoking GoReleaser. The v1.18.0 and v1.18.1
   changes (the metrics/label/dependency work and the HTTP API Slowloris
-  hardening) ship unchanged in this release.
+  hardening) ship unchanged in this release. ([a604e8b](https://github.com/openserbia/watchtower/commit/a604e8b))
 
 ## [1.18.1] - 2026-06-25
 
@@ -35,7 +35,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `IdleTimeout` (60s). `WriteTimeout` is intentionally left unset because
   `/v1/update` is synchronous — it pulls images and recreates containers inside
   the handler before responding, which legitimately takes minutes on a large
-  fleet, so a write deadline would truncate that response.
+  fleet, so a write deadline would truncate that response. ([df27c83](https://github.com/openserbia/watchtower/commit/df27c83))
 
 ## [1.18.0] - 2026-06-25
 
@@ -50,7 +50,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   healthy "green" container on a temporary name) and the old container merely
   lingers. The two now have distinct counters so alerting can describe each
   accurately. Reconcile a promotion abort with
-  `docker compose up -d --force-recreate <service>`.
+  `docker compose up -d --force-recreate <service>`. ([4d80f6e](https://github.com/openserbia/watchtower/commit/4d80f6e))
 - **`watchtower_stranded_init_deps_total` metric and a `WARN` when
   `--rerun-init-deps` finds a stranded init dependency.** A blue-green cutover
   recreates the "green" container by inheriting the old container's labels and
@@ -65,7 +65,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   naming the offending siblings, and increments
   `watchtower_stranded_init_deps_total`. Detection only; update behaviour is
   unchanged. Recovery is `docker compose up -d --force-recreate <service>`,
-  which rewrites the label from the Compose file.
+  which rewrites the label from the Compose file. ([1ba4a27](https://github.com/openserbia/watchtower/commit/1ba4a27))
 - **`com.centurylinklabs.watchtower.no-init-deps=true` opt-out label for the
   stranded-init-deps warning.** `WatchtowerStrandedInitDeps`
   (`watchtower_stranded_init_deps_total` + the WARN) flags a stale,
@@ -79,7 +79,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `com.centurylinklabs.watchtower.no-init-deps=true` on such a service affirms
   "no init deps by design" and suppresses the warning/metric **for that
   service only** — every sibling that genuinely depends on the one-shots keeps
-  the detector, so a real dropped-label stranding is still surfaced.
+  the detector, so a real dropped-label stranding is still surfaced. ([6f3803c](https://github.com/openserbia/watchtower/commit/6f3803c))
 
 ### Changed
 - **Dependency refresh.** Routine bump of Go module dependencies (direct and
@@ -92,7 +92,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `docker/docker-credential-helpers` v0.9.7 → v0.9.8, `felixge/httpsnoop`
   v1.0.4 → v1.1.0, `prometheus/common` v0.68.1 → v0.69.0, and the
   `golang.org/x/{net,sys,mod,sync,term,tools}` set. Build, tests (`-race`), and
-  lint all pass; no source changes required.
+  lint all pass; no source changes required. ([cf2f8a6](https://github.com/openserbia/watchtower/commit/cf2f8a6))
 
 ### Fixed
 - **`StopContainer` now retries `ContainerKill` on transient connection
@@ -109,7 +109,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   errors only; `NotFound`/permission/invalid-argument bail immediately),
   incrementing `watchtower_docker_api_retries_total{operation="kill"}` per
   retry. Re-sending the signal is safe — a terminating container ignores the
-  duplicate, an already-gone one returns `NotFound`.
+  duplicate, an already-gone one returns `NotFound`. ([4d80f6e](https://github.com/openserbia/watchtower/commit/4d80f6e))
 - **`--rerun-init-deps` now resolves init dependencies against the full
   daemon container list instead of the scan-filtered one.** With
   `WATCHTOWER_LABEL_ENABLE`, init one-shots that operators deliberately
@@ -124,7 +124,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `ListAllContainers` lookup (every container state, no filter, independent
   of `WATCHTOWER_INCLUDE_STOPPED`); which containers get *updated* is still
   governed solely by the configured scan filters. Targets whose init dep
-  genuinely does not exist on the daemon are still rejected as before.
+  genuinely does not exist on the daemon are still rejected as before. ([c708dcd](https://github.com/openserbia/watchtower/commit/c708dcd))
 
 ### Security
 - **Release signatures are now published with a `.sigstore.json` extension
@@ -136,7 +136,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   prior `.bundle` asset was scored as unsigned despite being a valid signature.
   Verification is otherwise identical (`cosign verify-blob --bundle <file>
   …`); the README example is updated to the new filename. **Action required**
-  only if you pinned the literal `.bundle` asset name in a verification script.
+  only if you pinned the literal `.bundle` asset name in a verification script. ([7a9d029](https://github.com/openserbia/watchtower/commit/7a9d029))
 - **Supply-chain hardening across the CI/release workflows** (no runtime
   behaviour change). Every GitHub Actions workflow now declares a least-
   privilege top-level `permissions:` block with per-job escalation; all action
@@ -145,17 +145,17 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   multi-arch index digest; and a native Go fuzz target was added for the
   attacker-influenceable `com.docker.compose.depends_on` label parser. These
   close the OpenSSF Scorecard Token-Permissions, Pinned-Dependencies, and
-  Fuzzing findings.
+  Fuzzing findings. ([7a9d029](https://github.com/openserbia/watchtower/commit/7a9d029))
 - **Contributions now require a Developer Certificate of Origin (DCO)
   sign-off.** Every commit in a pull request must carry a `Signed-off-by`
   trailer (`git commit -s`); a new [DCO workflow](.github/workflows/dco.yml)
-  enforces it. See CONTRIBUTING.md and <https://developercertificate.org/>.
+  enforces it. See CONTRIBUTING.md and <https://developercertificate.org/>. ([5b49b97](https://github.com/openserbia/watchtower/commit/5b49b97))
 - **Release tags are now GPG-signed.** Tag signing is enabled
   (`tag.gpgsign`), so annotated release tags are signed and verifiable with
   `git tag -v`, complementing the existing cosign artifact signatures. The
   release process is documented in [RELEASING.md](./RELEASING.md). Governance
   and the project's security assurance case are documented in
-  [GOVERNANCE.md](./GOVERNANCE.md) and [ASSURANCE-CASE.md](./ASSURANCE-CASE.md).
+  [GOVERNANCE.md](./GOVERNANCE.md) and [ASSURANCE-CASE.md](./ASSURANCE-CASE.md). ([5b49b97](https://github.com/openserbia/watchtower/commit/5b49b97))
 
 ### Docs
 - **Fixed seven dead intra-doc anchor links in the published site.** The `toc`
@@ -168,7 +168,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   Enabled the `attr_list` Markdown extension so the intended
   `{#update-strategy-blue-green}` custom anchor on the blue-green deploys
   heading resolves (it was previously rendered as literal heading text). A
-  strict `mkdocs build` now reports zero missing anchors.
+  strict `mkdocs build` now reports zero missing anchors. ([42b688f](https://github.com/openserbia/watchtower/commit/42b688f))
 
 ## [1.17.0] - 2026-06-07
 
@@ -184,7 +184,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   connector URL now fails fast at startup with a validation error instead of
   silently failing at send time. **Action required:** MS Teams users must mint a
   Power Automate workflow URL — see the
-  [notification docs](https://openserbia.github.io/watchtower/notifications/#microsoft-teams).
+  [notification docs](https://openserbia.github.io/watchtower/notifications/#microsoft-teams). ([d5d0b0e](https://github.com/openserbia/watchtower/commit/d5d0b0e))
 
 ### Fixed
 - **Self-update can no longer strand the live watchtower under an
@@ -210,13 +210,13 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   exit and before `CheckForMultipleWatchtowerInstances`) promotes a stranded
   self back to its canonical name or removes it when the canonical self already
   exists; and a failed respawn now renames the live self straight back to its
-  canonical name instead of leaving it stranded.
+  canonical name instead of leaving it stranded. ([95c68c5](https://github.com/openserbia/watchtower/commit/95c68c5))
 - **`--no-restart` no longer renames the live self at all.** The destructive
   rename was gated only on "this is self", independent of the respawn gate, so a
   stale self under `--no-restart` was renamed to a temp name with no replacement
   ever created. The rename is now skipped entirely under `--no-restart`,
   mirroring the existing blue-green `NoRestart` short-circuit — the live self
-  keeps its canonical name and image-only monitoring is unaffected.
+  keeps its canonical name and image-only monitoring is unaffected. ([95c68c5](https://github.com/openserbia/watchtower/commit/95c68c5))
 
 ### Changed
 - **Self-update name recovery is now structural rather than heuristic.** The
@@ -227,7 +227,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   canonically-named survivor over a newer transient (`-wt-self-`/random) one, so
   a just-promoted self — which keeps its older `CreatedAt` across the rename —
   is not reaped by the keep-newest rule. The `-wt-self-` suffix joins
-  `-wt-bluegreen-` as a reserved container-name pattern operators should avoid.
+  `-wt-bluegreen-` as a reserved container-name pattern operators should avoid. ([95c68c5](https://github.com/openserbia/watchtower/commit/95c68c5))
 - **Migrated the Docker Engine Go SDK from the deprecated
   `github.com/docker/docker` module to the split `github.com/moby/moby/api` +
   `github.com/moby/moby/client` modules (the Docker v29 SDK).** Upstream froze
@@ -240,10 +240,10 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   is that the opportunistic API-version-negotiation workaround is gone — the v29
   client already defaults to API 1.54 and negotiates down to the daemon — and
   `--preflight` was re-validated live against a Docker 29.x daemon with every
-  capability probe reporting available.
+  capability probe reporting available. ([0a55d9e](https://github.com/openserbia/watchtower/commit/0a55d9e))
 - Routine dependency refresh shipped alongside the above: `docker/cli`
   v29.5.2 → v29.5.3, plus indirect bumps `google/pprof` and `prometheus/common`
-  v0.68.0 → v0.68.1.
+  v0.68.0 → v0.68.1. ([d5d0b0e](https://github.com/openserbia/watchtower/commit/d5d0b0e))
 
 ## [1.15.1] - 2026-06-06
 
@@ -260,7 +260,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   whole process — a transient daemon blip killed watchtower until its restart
   policy brought it back. `NewMetric` now treats a `nil` report as an empty
   scan, so a failed update cycle records zero counts and the daemon keeps
-  polling. Present in upstream too (same unguarded `NewMetric(result)` call).
+  polling. Present in upstream too (same unguarded `NewMetric(result)` call). ([dec6dde](https://github.com/openserbia/watchtower/commit/dec6dde))
 - **A panic during any update cycle no longer takes down the whole daemon.**
   Defense in depth for the class of bug above: the scheduled (cron) callback,
   the `--update-on-start` scan, and the Docker-event watcher each run in a
@@ -270,7 +270,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   logging the full stack to the local log, sending operators a concise (not
   64 KB) notification, and returning an empty metric so the next poll retries
   cleanly. Chosen over `cron.Recover` because it also covers the non-cron
-  trigger paths and keeps the goroutine dump out of the notification payload.
+  trigger paths and keeps the goroutine dump out of the notification payload. ([dec6dde](https://github.com/openserbia/watchtower/commit/dec6dde))
 
 ## [1.15.0] - 2026-05-31
 
@@ -289,7 +289,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   container or a Compose recreate that races the name is never touched (it
   surfaces as the original conflict to retry next poll), and the container being
   recreated from is never removed. Complements the existing post-create orphan
-  cleanup and the startup duplicate-instance reconciliation.
+  cleanup and the startup duplicate-instance reconciliation. ([17e7343](https://github.com/openserbia/watchtower/commit/17e7343))
 - **Pull-stream errors are no longer silently swallowed.** Docker delivers pull
   *progress* and pull *failures* over the same newline-delimited JSON stream
   that `ImagePull` returns: a 401/404 on the manifest, a layer that 500s
@@ -304,7 +304,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   both completes the pull and surfaces a `*jsonmessage.JSONError` when the
   stream reported one; the error is routed through `classifyPullError` so the
   existing `cerrdefs` classification and the bare-name local-build safeguard
-  still apply.
+  still apply. ([31becce](https://github.com/openserbia/watchtower/commit/31becce))
 - **Locally-built bare-name images whose registry returns 401 are now correctly
   treated as local.** On the containerd image store, `docker build -t app:latest .`
   produces an image with a `docker.io/library/app` RepoDigest, so a pull
@@ -319,7 +319,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   in-stream `JSONError` carries no `cerrdefs` class) for references that lack a
   registry hostname. Hostname-qualified references (`ghcr.io/foo/bar`,
   `registry:5000/x`) never reach the broadened branch, so typos and genuinely
-  broken private-registry credentials still fail loudly instead of being masked.
+  broken private-registry credentials still fail loudly instead of being masked. ([31becce](https://github.com/openserbia/watchtower/commit/31becce))
 - **Self-update no longer leaks a half-created container or storms
   notifications on repeated failure.** Two distinct failure modes are
   addressed: (1) When a recreate failed *after* `ContainerCreate` had already
@@ -337,7 +337,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   genuinely different failure) notifies, identical repeats inside a one-hour
   cooldown drop to `Debug`. The cache is in-memory and resets on restart, so a
   `docker restart watchtower` surfaces the next failure loudly. Non-self
-  failures are unaffected and always log at `Error`.
+  failures are unaffected and always log at `Error`. ([31becce](https://github.com/openserbia/watchtower/commit/31becce))
 - **`--update-strategy=blue-green` hardening — three cutover edge cases closed.**
   (1) When green came up healthy but the old "blue" container *refused to stop*,
   the cutover aborted without arming any cooldown, so the next poll re-ran the
@@ -354,7 +354,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   (the green *is* the live service). (3) `params.NoRestart` (`--no-restart`) is
   now honored by the blue-green path with an explicit guard, matching the
   long-standing gate in the recreate path — the main loop already filters these
-  out, so it is a defensive consistency fix.
+  out, so it is a defensive consistency fix. ([261c189](https://github.com/openserbia/watchtower/commit/261c189))
 - **Recreate no longer carries a stale `User` forward when the source image
   was garbage-collected (e.g. a distroless base-image switch).** Docker
   materializes an image's `USER` directive into the container's `Config.User`,
@@ -376,7 +376,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   pattern — a narrowly-scoped recreate-time adjustment, not a change to the
   global image-default diff. `Entrypoint`/`Cmd`/`WorkingDir`/`Healthcheck` share
   the same fallback-baseline flaw but only silently preserve stale values; only
-  `User` hard-fails `ContainerCreate`, so it is the one addressed here.
+  `User` hard-fails `ContainerCreate`, so it is the one addressed here. ([ecabfb4](https://github.com/openserbia/watchtower/commit/ecabfb4))
 
 ### Added
 - **`--preflight` flag (env `WATCHTOWER_PREFLIGHT`, default `false`) — a Docker
@@ -400,7 +400,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   treated as an optional accelerator: a missing `/events` only warns and falls
   back to scheduled polling. Opt-in; off by default. See
   [Required capabilities](required-capabilities.md) for the full catalog and a
-  ready-to-paste socket-proxy environment block.
+  ready-to-paste socket-proxy environment block. ([31becce](https://github.com/openserbia/watchtower/commit/31becce))
 - **`--update-strategy` flag (env `WATCHTOWER_UPDATE_STRATEGY`) with a new
   blue-green zero-downtime strategy.** Replaces the single global
   `--rolling-restart` boolean with an extensible enum — `recreate` (default;
@@ -408,7 +408,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `rolling-restart` (one container at a time), or `blue-green` (start the new
   container alongside the old, wait until it reports healthy, drain, then retire
   the old). Default stays `recreate`, so a drop-in fork upgrade changes nothing
-  for existing users.
+  for existing users. ([89ce8b1](https://github.com/openserbia/watchtower/commit/89ce8b1))
   - **Blue-green deploys** bring up a "green" container from the stale "blue"
     container's config under a temporary unique name so both run side by side,
     wait for green's Docker `HEALTHCHECK` to report `healthy` (reusing
@@ -447,7 +447,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   identical to `dockers_v2` in `goreleaser.yml`. `:latest-dev` now runs anywhere
   a tagged release does. The in-Dockerfile `go test` was dropped: a cross-arch
   binary can't execute on the build host, and the workflow's dedicated `test`
-  job already gates publish.
+  job already gates publish. ([d6775d0](https://github.com/openserbia/watchtower/commit/d6775d0))
 
 ### Changed
 - **Container-update failure alerts now name the image and the reason in the
@@ -459,7 +459,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   blue-green cutover failures now interpolate the container, image, and error
   into the text, e.g.
   `Failed to start container web (image nginx:latest): Error response from daemon: driver failed programming external connectivity`.
-  The structured `image` field and `WithError` are retained for log processors.
+  The structured `image` field and `WithError` are retained for log processors. ([608311c](https://github.com/openserbia/watchtower/commit/608311c), [664a6a4](https://github.com/openserbia/watchtower/commit/664a6a4))
 - **Dependency refresh.** Routine bump of Go module dependencies (direct and
   indirect) via `go get -u ./...`, then tidy + re-vendor. Direct: `shoutrrr`
   v0.14.3 → v0.15.1 (the notification backend; a minor bump, no API changes
@@ -470,7 +470,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `prometheus/common` v0.67.5 → v0.68.0, `docker/docker-credential-helpers`
   v0.9.6 → v0.9.7, `mattn/go-colorable` v0.1.14 → v0.1.15, and the
   `golang.org/x/{net,sys,mod,term,tools}` set. Build, tests (`-race`), and lint
-  all pass; no source changes required.
+  all pass; no source changes required. ([aaf4021](https://github.com/openserbia/watchtower/commit/aaf4021))
 - **Dependency footprint reduction: dropped `spf13/viper` and
   `stretchr/testify`** (−10 modules from `go.mod`). `viper` was used only in
   `internal/flags` as an environment-variable reader (no config files, no pflag
@@ -482,7 +482,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `sagikazarmark/locafero`, `subosito/gotenv`, `pelletier/go-toml/v2`, and
   `fsnotify/fsnotify`. `testify` (and `objx`) are gone now that the few
   `assert`/`require` test files and the `FilterableContainer` mock use Gomega
-  and a hand-written stub, matching the project's Ginkgo/Gomega convention.
+  and a hand-written stub, matching the project's Ginkgo/Gomega convention. ([89ce8b1](https://github.com/openserbia/watchtower/commit/89ce8b1))
 - **Runtime image rebased from `scratch` onto digest-pinned
   `gcr.io/distroless/static-debian13`.** The published images now use Google's
   distroless static base (pinned by its multi-arch manifest-list digest for
@@ -494,7 +494,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   image** — distroless is not built for those two platforms — but the release
   still produces binary `tar.gz` archives for them, so non-image consumers on
   32-bit x86 / ARMv6 are unaffected. The exec-form `HEALTHCHECK` runs the
-  binary directly and needs no shell.
+  binary directly and needs no shell. ([17e7343](https://github.com/openserbia/watchtower/commit/17e7343))
 - **Releases are now cryptographically signed and carry build provenance.**
   GoReleaser signs both the published container images and `checksums.txt` with
   **keyless cosign** (GitHub Actions OIDC → Sigstore, no long-lived keys), and the
@@ -505,7 +505,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   offered only SHA256 checksums (integrity, not authenticity). The self-contained
   build images also take the version via a `VERSION` build-arg instead of an
   in-container `git describe`, so the dev image builds with no `git`/toolchain
-  packages.
+  packages. ([17e7343](https://github.com/openserbia/watchtower/commit/17e7343))
 
 ## [1.14.3] - 2026-05-23
 
@@ -534,7 +534,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   the canonical name from the start — no rescue rename needed and
   no transient random-name window for deploy-notifiers to alert on.
   The existing safety net remains as a backstop for unusual edge
-  cases that don't fit the IsRandName signature.
+  cases that don't fit the IsRandName signature. ([80034d8](https://github.com/openserbia/watchtower/commit/80034d8))
 
 ## [1.14.2] - 2026-05-23
 
@@ -560,7 +560,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `GetCreateConfig` honors the flag by emitting an empty `Hostname`, so
   docker assigns the new container's own short ID as hostname. The next
   self-update then sees `os.Hostname() == own short ID` and self-detection
-  remains accurate — for every link in the chain, not just the first.
+  remains accurate — for every link in the chain, not just the first. ([cc3e07c](https://github.com/openserbia/watchtower/commit/cc3e07c))
 - **Belt-and-suspenders backstop: self-update verifies the new container's
   name and renames it back when it diverged.** Even with the
   Hostname-clear root-cause fix above, the rename-and-respawn pattern can
@@ -571,7 +571,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   it back when its name diverges. The check is best-effort: rename
   failures log a warning but never abort the update, since the service
   half of the contract (right image, healthy) is already satisfied by the
-  time the name is checked.
+  time the name is checked. ([487eaef](https://github.com/openserbia/watchtower/commit/487eaef))
 
 ## [1.14.1] - 2026-05-23
 
@@ -585,13 +585,13 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   fixture (now a package-level `composeProjectName` constant).
   Behavior is identical to v1.14.0 as specified; only the build
   pipeline differs. No GitHub release or Docker image ever published
-  for the v1.14.0 tag.
+  for the v1.14.0 tag. ([0a7970a](https://github.com/openserbia/watchtower/commit/0a7970a))
 
 ### Docs
 - **README badges.** Added Release-workflow status, OpenSSF Scorecard,
   and Snyk vulnerability badges; stubbed an OpenSSF Best Practices
   badge as an HTML comment pending self-attestation registration on
-  bestpractices.dev.
+  bestpractices.dev. ([a68e840](https://github.com/openserbia/watchtower/commit/a68e840))
 
 ## [1.14.0] - 2026-05-23
 
@@ -623,7 +623,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   the `IsRunning()` gate so `Exited(0)` init containers actually run again),
   new parser `Container.ComposeInitDependencies()` (preserves the
   `service_completed_successfully` filter that `ComposeDependencies()`
-  intentionally strips for the sorter).
+  intentionally strips for the sorter). ([8452c54](https://github.com/openserbia/watchtower/commit/8452c54))
 
 ### Fixed
 - **Self-update no longer multiplies orphan watchtower containers.** The
@@ -648,7 +648,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   recreate (resurrecting an orphan under its random name was the original
   bug). The legacy `IsWatchtower()` check remains as a fallback for
   watchtower running outside a container or with `--hostname` overridden
-  off the short-ID default.
+  off the short-ID default. ([e1aedb6](https://github.com/openserbia/watchtower/commit/e1aedb6))
 - **Self-update notification noise filtered.** Same root cause — orphan
   rename-respawn — was emitting a `Found new image` line on every poll
   for every container the registry had a newer digest for, *even when an
@@ -662,7 +662,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `Creating` / `Removing image` lines and the per-scan `Session done`
   summary already report what actually happened. Operators who need
   visibility into "registry has a newer digest but cooldown is holding"
-  can flip `WATCHTOWER_DEBUG=true`.
+  can flip `WATCHTOWER_DEBUG=true`. ([e1aedb6](https://github.com/openserbia/watchtower/commit/e1aedb6), [ad677f8](https://github.com/openserbia/watchtower/commit/ad677f8))
 
 ### Changed
 - **HTTP API startup banner downgraded from INFO to DEBUG.** Three
@@ -675,7 +675,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   but reflects the operator's own configuration, not a runtime
   condition that needs an alert. With these gone, default-INFO logs
   show only Watchtower's actual scan/update activity instead of being
-  front-loaded with config echo. Visible again under `WATCHTOWER_DEBUG`.
+  front-loaded with config echo. Visible again under `WATCHTOWER_DEBUG`. ([e1aedb6](https://github.com/openserbia/watchtower/commit/e1aedb6))
 
 ## [1.13.0] - 2026-05-06
 
@@ -688,7 +688,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `Masterminds/semver/v3` v3.4.0 → v3.5.0, `mattn/go-isatty` v0.0.21 →
   v0.0.22, `pelletier/go-toml/v2` v2.3.0 → v2.3.1, `klauspost/compress`
   v1.18.5 → v1.18.6. Build, tests, and lint all pass; no source changes
-  required.
+  required. ([e855f79](https://github.com/openserbia/watchtower/commit/e855f79))
 - **Container error logs now always include the image, and rollback logs
   carry the failure reason.** Every warn/error log in
   `internal/actions/update.go` and `pkg/container/client.go` that touches a
@@ -703,7 +703,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   to reproduce the failure locally. Bare `log.Error(err)` calls in
   `stopStaleContainer`, `restartStaleContainer`, `cleanupImages`, the
   rollback inspect/stop paths, and `PullImage`'s response-read fallback are
-  now structured the same way.
+  now structured the same way. ([0a28559](https://github.com/openserbia/watchtower/commit/0a28559), [9ce1891](https://github.com/openserbia/watchtower/commit/9ce1891))
 
 ### Added
 - **`--disable-memory-swappiness` for Podman / cgroupv2 hosts.** Podman with
@@ -714,7 +714,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   When this flag (or `WATCHTOWER_DISABLE_MEMORY_SWAPPINESS=true`) is set,
   `MemorySwappiness` is dropped from the recreate request — Podman accepts
   the absent field. No-op on Docker hosts (opt-in). Borrowed from
-  [beatkind/watchtower](https://github.com/beatkind/watchtower/commit/70426e1838cf78416faaddae4c71dc420b82199e).
+  [beatkind/watchtower](https://github.com/beatkind/watchtower/commit/70426e1838cf78416faaddae4c71dc420b82199e). ([cd8e77f](https://github.com/openserbia/watchtower/commit/cd8e77f))
 - **Typed pull-error sentinels for unauthorized and not-found.** `PullImage`
   now wraps daemon errors as `ErrPullImageUnauthorized` (HTTP 401) and
   `ErrPullImageNotFound` (HTTP 404), logging auth failures at warn (so a
@@ -724,7 +724,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   so the existing local-build safeguard in `pullFailureLooksLocal` keeps
   firing on bare-name references — no behaviour change for the silent-skip
   path. Borrowed from
-  [nicholas-fedor/watchtower#1477](https://github.com/nicholas-fedor/watchtower/pull/1477).
+  [nicholas-fedor/watchtower#1477](https://github.com/nicholas-fedor/watchtower/pull/1477). ([67b8a9c](https://github.com/openserbia/watchtower/commit/67b8a9c))
 
 ### Fixed
 - **Bounded timeouts on every Docker daemon API call.** `pkg/container/client.go`
@@ -745,12 +745,12 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   next poll retries. Adapted from
   [Marrrrrrrrry/watchtower](https://github.com/Marrrrrrrrry/watchtower/commit/69616e64c479af8a8472d1db5722e96bbb524225)
   with revised per-call budgets (their 60 s in `IsContainerStale` would have
-  cut healthy multi-GB pulls off mid-stream).
+  cut healthy multi-GB pulls off mid-stream). ([cd8e77f](https://github.com/openserbia/watchtower/commit/cd8e77f))
 - **Startup log reflects the actual HTTP API listen address.** When
   `--http-api-update` was enabled, the startup banner always said
   `The HTTP API is enabled at :8080.` even if the operator had bound to
   `127.0.0.1:9090` via `--http-api-host`. The log now reads from the same
-  flag the API server uses, so the banner matches reality.
+  flag the API server uses, so the banner matches reality. ([9ce1891](https://github.com/openserbia/watchtower/commit/9ce1891))
 - **Misconfigured port bindings no longer abort a recreate.** A compose
   file with `ports: ["8080:"]` (or any entry that resolves to an empty port
   number) used to fall through to `ContainerCreate` and surface as Docker's
@@ -759,7 +759,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   now strips empty / `"/proto"`-only entries from `HostConfig.PortBindings`
   and `Config.ExposedPorts` before the create call, logging a warn that
   identifies the offending key and the affected container. Borrowed from
-  [nicholas-fedor/watchtower#1478](https://github.com/nicholas-fedor/watchtower/pull/1478).
+  [nicholas-fedor/watchtower#1478](https://github.com/nicholas-fedor/watchtower/pull/1478). ([67b8a9c](https://github.com/openserbia/watchtower/commit/67b8a9c))
 - **`ContainerCreate` no longer races the registry tag.** The recreate
   flow handed Docker a tag (`name:latest`) for the new image, so a CI
   rebuild that briefly untagged the reference between the scan and the
@@ -774,7 +774,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   pulled rather than whatever the registry tag happens to point at by
   the time we get there. The health-gated rollback path repoints the
   override at the *old* image's digest before restoring, so a rejected
-  new build doesn't get re-created on rollback either.
+  new build doesn't get re-created on rollback either. ([5c0617c](https://github.com/openserbia/watchtower/commit/5c0617c))
   - **Why not write the digest into `Config.Image` directly.** The
     initial attempt at this fix mutated `Config.Image` to the digest
     inside `GetCreateConfig`, which read clean in the recreate path
@@ -794,7 +794,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   stuck across watchtower restarts. The fallback returns the image's
   current canonical tag, which is what `HasNewImage`, `PullImage`,
   `FilterByImage`, and registry-auth all expect, so affected
-  containers self-heal on the next poll.
+  containers self-heal on the next poll. ([5c0617c](https://github.com/openserbia/watchtower/commit/5c0617c))
 - **`--cleanup` defers image removal by one generation per container.**
   The just-retired image now stays on disk as the previous-generation
   rollback target until the *next* successful update of the same
@@ -806,7 +806,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   in-memory rotation map resets on watchtower restart, which under-
   cleans by one generation for the next update of each container —
   intentional, in favor of zero on-disk state. The `--cleanup` flag
-  shape and per-image still-in-use guard are unchanged.
+  shape and per-image still-in-use guard are unchanged. ([178bd7a](https://github.com/openserbia/watchtower/commit/178bd7a))
 - **Identity-based local-build detection now actually reaches the wire.**
   The v1.12.2 Identity decoder was correct, but two stacked ceilings kept
   it from ever seeing a populated field on real daemons: the Docker
@@ -820,7 +820,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   tokens, typed unmarshal drops unknown JSON fields, and the one place
   we consume new fields (Identity) already uses
   `ImageInspectWithRawResponse`. Explicit pins via `DOCKER_API_VERSION`
-  are still respected.
+  are still respected. ([46addc5](https://github.com/openserbia/watchtower/commit/46addc5))
 - **Pull-error safeguard for older daemons.** On engines below API
   v1.53 the `Identity` signal never appears, and on the containerd
   image store the old `len(RepoDigests) == 0` heuristic can't fire
@@ -831,7 +831,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   locally built and fall through to `HasNewImage`. Hostname-qualified
   references (`ghcr.io/foo/bar`, `registry.local:5000/app`) never hit
   this path, so typos and broken private-registry credentials still
-  surface loudly instead of being silently masked.
+  surface loudly instead of being silently masked. ([46addc5](https://github.com/openserbia/watchtower/commit/46addc5))
 - **`docker_api_errors_total{operation="image_pull"}` no longer
   increments for safeguard-recovered local builds.** The metric was
   being bumped inside `PullImage` before the caller had a chance to
@@ -842,7 +842,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   absent from the registry isn't a Docker API failure — counting it as
   one was keeping `WatchtowerDockerAPIErrorsSustained` lit on hosts
   full of compose-managed local builds. Real pull failures (hostname-
-  qualified refs, auth errors, 5xx) still increment as before.
+  qualified refs, auth errors, 5xx) still increment as before. ([b771007](https://github.com/openserbia/watchtower/commit/b771007))
 - **`docker_api_errors_total` no longer increments on clean logical
   answers from the daemon.** Three more call sites were emitting the
   metric for situations the scan deliberately recovers from:
@@ -863,7 +863,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   Introduced a `recordDaemonError` helper that accepts the
   expected-error predicates per call site (`cerrdefs.IsNotFound` for
   inspects; `cerrdefs.IsNotFound` + `cerrdefs.IsConflict` for image
-  removal). Real daemon errors (connection, 5xx, auth) still count.
+  removal). Real daemon errors (connection, 5xx, auth) still count. ([536e843](https://github.com/openserbia/watchtower/commit/536e843))
 
 ### Docs
 - **`docs/arguments.md` corrected to reflect actual `--api-version`
@@ -873,7 +873,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   who have `DOCKER_API_VERSION=1.44` left in their compose or env
   file from an older deployment — removing it is the recommended
   step on Docker 25+ to unlock the Identity-based local-build
-  detection.
+  detection. ([46addc5](https://github.com/openserbia/watchtower/commit/46addc5))
 
 ## [1.12.2] - 2026-04-20
 
@@ -882,13 +882,13 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   prints the compile-time version (the same `internal/meta.Version`
   value used in the HTTP `User-Agent`) without having to start the
   daemon or `docker inspect` the image. Makes support triage and image
-  tag verification a one-liner.
+  tag verification a one-liner. ([50e9d3c](https://github.com/openserbia/watchtower/commit/50e9d3c))
 - **New Prometheus counter `watchtower_docker_api_retries_total{operation}`.**
   Pairs with the new `ListContainers` retry (see below) and follows the
   shape of `watchtower_registry_retries_total`. One increment per retry
   attempt, not per failed call. A sustained non-zero value points at a
   flaky daemon — daemon restarts during polls, socket-proxy blips, or
-  engine-API 5xx under load.
+  engine-API 5xx under load. ([99a4325](https://github.com/openserbia/watchtower/commit/99a4325))
 
 ### Changed
 - **`WATCHTOWER_NOTIFICATIONS_LEVEL` is now honored in report mode.**
@@ -899,7 +899,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   threshold: no level-appropriate log entries AND no failed or
   error-marked skipped containers. At info/debug/trace thresholds
   behavior is unchanged (verbose mode fires for any report). Inspired
-  by [nicholas-fedor/watchtower#1290](https://github.com/nicholas-fedor/watchtower/pull/1290).
+  by [nicholas-fedor/watchtower#1290](https://github.com/nicholas-fedor/watchtower/pull/1290). ([99a4325](https://github.com/openserbia/watchtower/commit/99a4325))
 - **Pinned-image skip demoted from `warn` to `debug`.** Containers
   whose tag is a `sha256:...` digest can never be updated (there's no
   moving target), so the per-poll `Unable to update container ...
@@ -907,13 +907,13 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `container.ErrPinnedImage` sentinel is now used at the call site in
   `actions.Update` to demote the log line without altering the skip
   semantics. Existing error message is preserved verbatim so
-  downstream log parsers and notification templates keep matching.
+  downstream log parsers and notification templates keep matching. ([99a4325](https://github.com/openserbia/watchtower/commit/99a4325))
 - **Pre-update lifecycle command failures logged at `warn`, not `error`.**
   User-defined `com.centurylinklabs.watchtower.lifecycle.pre-update`
   scripts are user code; a failure is the script's problem, not
   watchtower's orchestration. Strict `NOTIFICATIONS_LEVEL=error`
   feeds no longer fire for user-script flakes. The container is still
-  skipped and still recorded in the session report.
+  skipped and still recorded in the session report. ([99a4325](https://github.com/openserbia/watchtower/commit/99a4325))
 
 ### Fixed
 - **Locally-built images on the containerd image store (Docker 25+).**
@@ -933,7 +933,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   also exists (build-then-push stays on the normal path). The old
   empty-`RepoDigests` fallback still carries the classic image store,
   so this is purely additive. Decoded from the raw inspect JSON via
-  the SDK's `ImageInspectWithRawResponse` option — no SDK bump needed.
+  the SDK's `ImageInspectWithRawResponse` option — no SDK bump needed. ([50e9d3c](https://github.com/openserbia/watchtower/commit/50e9d3c))
 - **`ListContainers` no longer fails the scan on a transient daemon
   flake.** A daemon restart during a poll, a socket-proxy blip, or any
   transient 5xx from the Docker engine API used to fail the whole scan
@@ -945,7 +945,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   on `context.Canceled`, `context.DeadlineExceeded`, and caller-fault
   errors (`IsInvalidArgument`, `IsNotFound`, `IsPermissionDenied`) that
   won't clear with a retry. Inspired by
-  [nicholas-fedor/watchtower#1459](https://github.com/nicholas-fedor/watchtower/pull/1459).
+  [nicholas-fedor/watchtower#1459](https://github.com/nicholas-fedor/watchtower/pull/1459). ([99a4325](https://github.com/openserbia/watchtower/commit/99a4325))
 - **Containers that vanish between the stale-check and the stop no
   longer abort the scan.** Between `IsContainerStale` deciding to
   recreate a container and `StopContainer` actually firing, a Compose
@@ -957,7 +957,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   scanning the rest. The scan also no longer tries to recreate the
   vanished container, which would otherwise collide with whatever
   Compose put in its place. Inspired by
-  [nicholas-fedor/watchtower#1522](https://github.com/nicholas-fedor/watchtower/pull/1522).
+  [nicholas-fedor/watchtower#1522](https://github.com/nicholas-fedor/watchtower/pull/1522). ([99a4325](https://github.com/openserbia/watchtower/commit/99a4325))
 - **Cleanup defers images still referenced by an active container.**
   When `--cleanup` is on, watchtower would force-remove the old image
   of a just-recreated container even if a separate, still-running
@@ -970,7 +970,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   gone or recreated. Also applied to the `cleanupExcessWatchtowers`
   path (multi-watchtower cleanup) so the kept instance's image isn't
   yanked out when siblings share the image. Inspired by
-  [nicholas-fedor/watchtower#1428](https://github.com/nicholas-fedor/watchtower/pull/1428).
+  [nicholas-fedor/watchtower#1428](https://github.com/nicholas-fedor/watchtower/pull/1428). ([99a4325](https://github.com/openserbia/watchtower/commit/99a4325))
 
 ## [1.12.1] - 2026-04-19
 
@@ -997,7 +997,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `watchtower_events_reconnects_total`. Natural follow-up to the
   local-build pull-skip fix below — that one made local builds work
   without `--no-pull`; this one makes them react without waiting for
-  the next poll.
+  the next poll. ([2496562](https://github.com/openserbia/watchtower/commit/2496562))
 
 ### Fixed
 - **Locally-built images no longer trip the pull path.** Containers
@@ -1012,7 +1012,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   the recreate. Makes the local-build workflow work out of the box
   without setting `--no-pull` or the per-container
   `com.centurylinklabs.watchtower.no-pull=true` label. Inspired by
-  [nicholas-fedor/watchtower#1514](https://github.com/nicholas-fedor/watchtower/pull/1514).
+  [nicholas-fedor/watchtower#1514](https://github.com/nicholas-fedor/watchtower/pull/1514). ([4c68ee7](https://github.com/openserbia/watchtower/commit/4c68ee7))
 - **Self-update is now skipped when Watchtower has published host
   ports.** The rename-and-respawn self-update pattern briefly overlaps
   the old and new containers; if the current Watchtower publishes a
@@ -1023,7 +1023,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   Operators with published ports must `stop + pull + recreate`
   manually. New `Container.HasPublishedPorts()` method on the
   `types.Container` interface. Inspired by
-  [nicholas-fedor/watchtower#1481](https://github.com/nicholas-fedor/watchtower/pull/1481).
+  [nicholas-fedor/watchtower#1481](https://github.com/nicholas-fedor/watchtower/pull/1481). ([398a67e](https://github.com/openserbia/watchtower/commit/398a67e))
 - **HEAD → GET fallback on manifest digest fetches.** Some registries
   (GHCR and Docker Hub under certain anonymous-pull conditions) answer
   the manifest `HEAD` endpoint with `401 Unauthorized` even with a
@@ -1036,13 +1036,13 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   registry omits the `Docker-Content-Digest` header. New metric
   operation labels: `digest_head` and `digest_get` on
   `watchtower_registry_requests_total`. Inspired by
-  [nicholas-fedor/watchtower#669](https://github.com/nicholas-fedor/watchtower/pull/669).
+  [nicholas-fedor/watchtower#669](https://github.com/nicholas-fedor/watchtower/pull/669). ([e78e0bf](https://github.com/openserbia/watchtower/commit/e78e0bf))
 
 ### Changed
 - **`/v1/metrics` no-auth startup log demoted from `warn` to `info`.**
   The message is informational (operator opted in to public scraping) —
   not a warning about anything going wrong. Stops muddying
-  `NOTIFICATIONS_LEVEL=warn` feeds.
+  `NOTIFICATIONS_LEVEL=warn` feeds. ([398a67e](https://github.com/openserbia/watchtower/commit/398a67e))
 
 ## [1.12.0] - 2026-04-18
 
@@ -1057,10 +1057,10 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   warning fires at startup if both are set. Modifiers in the label
   value (e.g. `db:service_healthy:true`) are parsed and stripped;
   Watchtower only needs the graph edge, not Compose's startup
-  conditions.
+  conditions. ([4c16bf2](https://github.com/openserbia/watchtower/commit/4c16bf2))
 - New `Container.ComposeProject()`, `ComposeService()`,
   `ComposeDependencies()` methods on the `types.Container` interface
-  for programmatic use.
+  for programmatic use. ([4c16bf2](https://github.com/openserbia/watchtower/commit/4c16bf2))
 - **`--image-cooldown`** flag (env: `WATCHTOWER_IMAGE_COOLDOWN`) +
   per-container label `com.centurylinklabs.watchtower.image-cooldown` —
   supply-chain gate that defers applying a new image digest until it has
@@ -1068,7 +1068,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   different digest during the window (author re-pushed), the clock
   resets. Directly addresses the long-standing "broken `:latest` push
   reaches prod in one poll interval" rough edge. Default `0` keeps
-  existing behavior unchanged.
+  existing behavior unchanged. ([4c16bf2](https://github.com/openserbia/watchtower/commit/4c16bf2))
   - New Prometheus gauge `watchtower_containers_in_cooldown` tracks the
     current count of deferred updates.
   - Pairs with `--health-check-gated`: cooldown gates *when* to apply,
@@ -1082,24 +1082,24 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   the HTTP API listener to a specific host:port. Defaults to `:8080`
   (all interfaces, unchanged behavior). Useful for operators who want a
   localhost-only bind (`127.0.0.1:8080`) without putting a reverse proxy
-  in front. Inspired by [nicholas-fedor/watchtower#697](https://github.com/nicholas-fedor/watchtower/pull/697).
+  in front. Inspired by [nicholas-fedor/watchtower#697](https://github.com/nicholas-fedor/watchtower/pull/697). ([4c16bf2](https://github.com/openserbia/watchtower/commit/4c16bf2))
 - **Auto-detect container stop timeout.** If a container was started
   with its own `StopTimeout` (via `docker run --stop-timeout` or
   Compose's `stop_grace_period`), Watchtower honors that value instead
   of the global `--stop-timeout`. Matches Docker's own precedence of
   per-container over daemon default. New `Container.StopTimeout()`
   method on the `types.Container` interface. Inspired by
-  [nicholas-fedor/watchtower#1182](https://github.com/nicholas-fedor/watchtower/pull/1182).
+  [nicholas-fedor/watchtower#1182](https://github.com/nicholas-fedor/watchtower/pull/1182). ([4c16bf2](https://github.com/openserbia/watchtower/commit/4c16bf2))
 - **`--update-on-start`** flag (env: `WATCHTOWER_UPDATE_ON_START`) — run
   one scan immediately at startup in addition to the scheduled cadence,
   so operators can verify a fresh deployment without waiting for the
   first poll interval. Skipped if the HTTP API already holds the update
-  lock at boot. Inspired by [nicholas-fedor/watchtower#672](https://github.com/nicholas-fedor/watchtower/pull/672).
+  lock at boot. Inspired by [nicholas-fedor/watchtower#672](https://github.com/nicholas-fedor/watchtower/pull/672). ([4c16bf2](https://github.com/openserbia/watchtower/commit/4c16bf2))
 - **Structured JSON response from `GET /v1/update`**. The endpoint now
   returns `{"status": "completed", "scanned": N, "updated": N, "failed": N}`
   on success instead of an empty 200 body — automation can tell how the
   scan went without scraping logs. Inspired by
-  [nicholas-fedor/watchtower#673](https://github.com/nicholas-fedor/watchtower/pull/673).
+  [nicholas-fedor/watchtower#673](https://github.com/nicholas-fedor/watchtower/pull/673). ([4c16bf2](https://github.com/openserbia/watchtower/commit/4c16bf2))
 
 ### Changed
 - **`/v1/update` returns HTTP 429** (with a `{"status":"skipped","reason":...}`
@@ -1107,7 +1107,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   succeeding with 200. Lets clients retry with backoff. Targeted updates
   (`?image=<name>`) still block on the lock rather than 429-ing, because a
   caller explicitly asking for an image usually wants it eventually.
-  Inspired by [nicholas-fedor/watchtower#1304](https://github.com/nicholas-fedor/watchtower/pull/1304).
+  Inspired by [nicholas-fedor/watchtower#1304](https://github.com/nicholas-fedor/watchtower/pull/1304). ([4c16bf2](https://github.com/openserbia/watchtower/commit/4c16bf2))
 
 ### Fixed
 - **`WatchtowerScansStopped` alert no longer fires before the first scan**
@@ -1120,41 +1120,41 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   Expression now guards on
   `watchtower_last_scan_timestamp_seconds > 0` so the alert only fires
   once a scan has completed at least once and subsequent scans are
-  overdue.
+  overdue. ([0a49fa6](https://github.com/openserbia/watchtower/commit/0a49fa6))
 
 ## [1.11.2] - 2026-04-18
 
 ### Fixed
 - **`docs/introduction.md`** — the `centurylink/wetty-cli` example image
   was an upstream-era artefact. Replaced with a coherent `nginx:latest`
-  walkthrough (container name, image, and port mapping now match).
+  walkthrough (container name, image, and port mapping now match). ([51a2559](https://github.com/openserbia/watchtower/commit/51a2559))
 - **`docs/notifications.md`** — the shoutrrr reference pointed at the
   upstream `containrrr/shoutrrr` project and its `v0.8` docs, but the
   fork actually vendors `nicholas-fedor/shoutrrr v0.14.3`. Updated the
-  link and added a one-line note on fork lineage + URL compatibility.
+  link and added a one-line note on fork lineage + URL compatibility. ([51a2559](https://github.com/openserbia/watchtower/commit/51a2559))
 - **`docs/secure-connections.md`** — rewritten around the supported
   `DOCKER_HOST` + `DOCKER_CERT_PATH` + `DOCKER_TLS_VERIFY` path with a
   Compose example. `docker-machine` demoted to a "works if you still
   have the certs it generated" footnote (Docker archived the tool in
-  2023). Added a pointer differentiating daemon TLS from registry TLS.
+  2023). Added a pointer differentiating daemon TLS from registry TLS. ([51a2559](https://github.com/openserbia/watchtower/commit/51a2559))
 - **`docs/http-api-mode.md`** — removed a reference to a
   `WatchtowerAPIUnauthorizedBurst` alert that was dropped during the
   production-tuning pass but still advertised as "shipped"; replaced
   with the PromQL snippet for operators who want to compose their own.
   Added an **Env** column to the endpoint table, tightened the
-  `/v1/update` response-shape prose, quoted Compose port mappings.
+  `/v1/update` response-shape prose, quoted Compose port mappings. ([7fac931](https://github.com/openserbia/watchtower/commit/7fac931))
 - **`docs/why-fork.md`** — expanded *What changed* from a single
   toolchain table into four grouped tables (Project health, Update
   behavior, Security, Observability) so the comparison isn't just
   "we updated Go". Added rows for the shoutrrr swap, registry TLS
   default change, constant-time token compare, `/v1/audit`, metric
-  count, and the shipped observability bundle.
+  count, and the shipped observability bundle. ([7fac931](https://github.com/openserbia/watchtower/commit/7fac931))
 
 ### Changed
 - **CI workflows** — set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`
   across every GitHub Actions workflow so JS-based actions run on
   Node 24 uniformly (instead of inheriting whatever default the
-  specific action ships with).
+  specific action ships with). ([e51c282](https://github.com/openserbia/watchtower/commit/e51c282))
 
 ## [1.11.1] - 2026-04-18
 
@@ -1164,7 +1164,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   prefixes `com.docker.buildx.*` / `com.docker.desktop.*`) are now
   classified as `infrastructure` instead of `unmanaged`. Silences the
   recurring audit warning every `docker buildx build` caused by the
-  ephemeral `buildx_buildkit_*` container. Exposed via:
+  ephemeral `buildx_buildkit_*` container. Exposed via: ([eed614c](https://github.com/openserbia/watchtower/commit/eed614c))
   - New `watchtower_containers_infrastructure` Prometheus gauge.
   - New `"status": "infrastructure"` entries in `GET /v1/audit`.
   - New fourth slice on the Grafana watch-status donut + stacked history.
@@ -1178,19 +1178,19 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `GET /v1/audit` endpoint that returns a JSON report of every container
   classified as `managed` / `excluded` / `unmanaged`. Pull-model alternative
   to the log-based `--audit-unmanaged` for scripts, dashboards, and
-  post-deploy verification. Token-gated like `/v1/update`.
+  post-deploy verification. Token-gated like `/v1/update`. ([a1943ea](https://github.com/openserbia/watchtower/commit/a1943ea))
 - **Three new Prometheus gauges** — `watchtower_containers_managed`,
   `watchtower_containers_excluded`, `watchtower_containers_unmanaged` —
   published every poll regardless of whether any audit flag is set, so the
   Grafana dashboard shows the watch-status breakdown at a glance. Dashboard
   (`observability/grafana/watchtower-dashboard.json`) adds a donut, a
   stat-with-threshold for unmanaged, and a stacked history panel. Alerts
-  add `WatchtowerUnmanagedContainersPresent` (info, >1 h).
+  add `WatchtowerUnmanagedContainersPresent` (info, >1 h). ([a1943ea](https://github.com/openserbia/watchtower/commit/a1943ea))
 - **`watchtower_poll_interval_seconds`** gauge — configured scan cadence
   derived from the active schedule at startup. Replaces the hardcoded 2 h
   window in the `WatchtowerScansStopped` alert with
   `(time() - last_scan) > 2 × poll_interval`, so long-cadence deployments
-  (e.g. `@every 12h`) no longer false-alarm.
+  (e.g. `@every 12h`) no longer false-alarm. ([34ee213](https://github.com/openserbia/watchtower/commit/34ee213))
 
 ### Changed
 - **Observability artifacts** (`observability/`) aligned with production
@@ -1201,12 +1201,12 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `WatchtowerDockerAPIErrorsSustained`); noise-heavy candidates
   (`WatchtowerAllScansSkipped`, `WatchtowerScansWithoutUpdates`,
   `WatchtowerAPIUnauthorizedBurst`) dropped. Descriptions tightened to
-  single-line operational prose with `humanizeDuration` templating.
+  single-line operational prose with `humanizeDuration` templating. ([7dbc891](https://github.com/openserbia/watchtower/commit/7dbc891))
 - Dashboard gains a collapsed "Logs (requires Loki)" row with two panels
   (warn/error log rate + logs explorer, both querying
   `{container="watchtower"}`). Uses a new `DS_LOKI` datasource variable
   so operators without Loki can pick "Do not save" at import time and the
-  rest of the dashboard keeps working.
+  rest of the dashboard keeps working. ([7dbc891](https://github.com/openserbia/watchtower/commit/7dbc891))
 - **Reliability / security observability.** Seven new metrics:
   `watchtower_api_requests_total{endpoint, status}`,
   `watchtower_registry_requests_total{host, operation, outcome}`,
@@ -1220,19 +1220,19 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   rate, non-2xx API request breakdown, Docker API error rate, bearer-cache
   hit ratio, and 24 h image-fallback count. Alerts add
   `WatchtowerRegistryErrorsSustained`, `WatchtowerAPIUnauthorizedBurst`,
-  and `WatchtowerDockerAPIErrorsSustained`.
+  and `WatchtowerDockerAPIErrorsSustained`. ([6d55ab8](https://github.com/openserbia/watchtower/commit/6d55ab8))
 - **`--http-api-metrics-no-auth`** flag (env:
   `WATCHTOWER_HTTP_API_METRICS_NO_AUTH`). Exposes `/v1/metrics` without
   bearer-token auth, matching Prometheus convention for trusted-network
   scraping. `/v1/update` remains token-gated unconditionally. When only the
   (public) metrics endpoint is enabled, `--http-api-token` is no longer
-  required to start the daemon.
+  required to start the daemon. ([a1943ea](https://github.com/openserbia/watchtower/commit/a1943ea))
 
 - `--audit-unmanaged` is no longer spammy. The audit warns about each
   unlabeled container the first time it appears (startup baseline) and then
   stays silent on subsequent polls unless the set changes — a new unlabeled
   container shows up, or a previously-unlabeled one gets labeled or removed.
-  Same signal, orders of magnitude less log noise for stable homelabs.
+  Same signal, orders of magnitude less log noise for stable homelabs. ([a1943ea](https://github.com/openserbia/watchtower/commit/a1943ea))
 
 ### Removed
 - **`notify-upgrade` subcommand** (`cmd/notify-upgrade.go`). The helper
@@ -1243,19 +1243,19 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   remain supported via the shim in `pkg/notifications`, so existing
   deployments keep working. If you were scripting `docker run openserbia/watchtower
   notify-upgrade`, that invocation now exits with "unknown command"; either
-  pin to `v1.10.x` or switch to writing shoutrrr URLs directly.
+  pin to `v1.10.x` or switch to writing shoutrrr URLs directly. ([a1943ea](https://github.com/openserbia/watchtower/commit/a1943ea))
 
 ### Security
 - `api.RequireToken` now uses `crypto/subtle.ConstantTimeCompare` instead of
   `!=` when checking the bearer token, closing a theoretical timing-oracle
-  on `:8080`.
+  on `:8080`. ([a1943ea](https://github.com/openserbia/watchtower/commit/a1943ea))
 
 ## [1.10.1] - 2026-04-18
 
 ### Fixed
 - Internal: named the two literal `2`s used in the rollback-timeout computation
   so `golangci-lint`'s `mnd` rule stops flagging them. No user-visible behavior
-  change; ships a clean lint run for the release pipeline.
+  change; ships a clean lint run for the release pipeline. ([38e2be2](https://github.com/openserbia/watchtower/commit/38e2be2))
 
 ## [1.10.0] - 2026-04-18
 
@@ -1263,16 +1263,16 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 - **`com.centurylinklabs.watchtower.health-check-timeout`** label — per-container
   override for `--health-check-timeout`, accepts a Go duration string. Highest
   priority in the resolution chain (label → HEALTHCHECK-derived → global flag
-  → 60s fallback).
+  → 60s fallback). ([855052c](https://github.com/openserbia/watchtower/commit/855052c))
 - **Smart default** for health-check gating timeout when neither label nor
   global flag is set: derives
   `start_period + retries × (interval + timeout)` from the container's own
   `HEALTHCHECK` config (or the image's default). Believes the image author's
-  declaration rather than one-size-fits-all.
+  declaration rather than one-size-fits-all. ([855052c](https://github.com/openserbia/watchtower/commit/855052c))
 - **`watchtower_rollbacks_total`** Prometheus counter — incremented whenever
   `--health-check-gated` reverts a container. Exposed via `/v1/metrics`. The
   shipped alert (`WatchtowerRollbackTriggered` in
-  `observability/prometheus/alerts.yml`) fires on any non-zero 1h increase.
+  `observability/prometheus/alerts.yml`) fires on any non-zero 1h increase. ([855052c](https://github.com/openserbia/watchtower/commit/855052c))
 - **Rollback health gating + cooldown.** The rolled-back container is itself
   health-gated with a shorter timeout (half the effective). If both the new
   and old images fail, Watchtower logs at `error` with `rollback_failed=true`
@@ -1280,7 +1280,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   rollback, the container is skipped on subsequent polls for 1 hour
   (`rollbackCooldown` in `internal/actions/update.go`) to prevent the
   stop → start → fail → rollback thrash loop when an image author keeps
-  pushing broken versions.
+  pushing broken versions. ([855052c](https://github.com/openserbia/watchtower/commit/855052c))
 - **`--health-check-gated`** + **`--health-check-timeout`** (envs:
   `WATCHTOWER_HEALTH_CHECK_GATED`, `WATCHTOWER_HEALTH_CHECK_TIMEOUT`,
   default 60s). Opt-in: after recreating a container, wait for its
@@ -1288,35 +1288,35 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   times out, stop the replacement and rebuild the old container from the
   preserved config+image. Containers without a `HEALTHCHECK` skip the gate
   and emit a warning. Addresses the [upstream#1385](https://github.com/containrrr/watchtower/issues/1385)
-  family ("update pulled, replaced, everything broke").
+  family ("update pulled, replaced, everything broke"). ([855052c](https://github.com/openserbia/watchtower/commit/855052c))
 - **`--insecure-registry`** (env: `WATCHTOWER_INSECURE_REGISTRY`) — comma-separated
   list of registry hosts (`host` or `host:port`) for which TLS certificate
   verification is skipped. Replaces the previous hardcoded
   `InsecureSkipVerify: true` in `pkg/registry/digest`: verification is now
   strict (TLS 1.2+, system trust store) by default and the operator opts in
-  per host.
+  per host. ([855052c](https://github.com/openserbia/watchtower/commit/855052c))
 - **`--registry-ca-bundle`** (env: `WATCHTOWER_REGISTRY_CA_BUNDLE`) — PEM file
   of additional trusted CA certificates. Extends the system trust store rather
   than replacing it, so public registries keep working while registries signed
-  by a private CA also validate cleanly.
+  by a private CA also validate cleanly. ([855052c](https://github.com/openserbia/watchtower/commit/855052c))
 - **`observability/`** directory — ships a Grafana dashboard
   (`grafana/watchtower-dashboard.json`) and a set of Prometheus alerting rules
   (`prometheus/alerts.yml`) covering scheduler wedges, sustained failures,
   and silent-update gaps. First thing to wire up after enabling
-  `WATCHTOWER_HTTP_API_METRICS`.
+  `WATCHTOWER_HTTP_API_METRICS`. ([855052c](https://github.com/openserbia/watchtower/commit/855052c))
 
 ### Changed
 - Registry HTTP calls now flow through a new `pkg/registry/transport` package
   that builds per-host `http.Client`s with the right TLS policy. The auth
   challenge and bearer-token exchange (previously using bare `http.Client{}`)
-  now honor the same TLS tuning as the manifest HEAD request.
+  now honor the same TLS tuning as the manifest HEAD request. ([855052c](https://github.com/openserbia/watchtower/commit/855052c))
 
 ### Security
 - Fixed a long-standing weakness where `pkg/registry/digest.GetDigest`
   unconditionally set `InsecureSkipVerify: true` for *all* registries, not
   just configured-insecure ones. Strict verification is now the default; the
   old behavior is available as an explicit per-host opt-in via
-  `--insecure-registry`.
+  `--insecure-registry`. ([855052c](https://github.com/openserbia/watchtower/commit/855052c))
 
 ## [1.9.0] - 2026-04-18
 
@@ -1324,17 +1324,17 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 - **`--audit-unmanaged`** flag (env: `WATCHTOWER_AUDIT_UNMANAGED`). With
   `--label-enable` active, warns once per poll for every container that carries
   no `com.centurylinklabs.watchtower.enable` label at all, so silent exclusions
-  stop looking identical to intentional opt-outs.
+  stop looking identical to intentional opt-outs. ([9fa9e44](https://github.com/openserbia/watchtower/commit/9fa9e44))
 - **Bounded exponential backoff** for registry HTTP calls (`pkg/registry/retry`).
   Wraps the oauth challenge, bearer-token exchange, and manifest HEAD with up to
   3 attempts (500 ms → 4 s + jitter) on network errors, 5xx, 429, and the
-  401/403/404 flakes observed on registry oauth endpoints under load.
+  401/403/404 flakes observed on registry oauth endpoints under load. ([9fa9e44](https://github.com/openserbia/watchtower/commit/9fa9e44))
 - **In-memory bearer-token cache** (`pkg/registry/auth`). Cuts registry
   authentication traffic dramatically: a poll across N containers on the same
   registry+repository scope now issues one token exchange instead of N. Keyed
   by auth URL + credential hash, respects the registry's `expires_in` (default
   60 s per the Docker token spec) minus a 10 s skew, and is concurrency-safe.
-  Also reduces exposure to the oauth-endpoint flakes the retry wrapper handles.
+  Also reduces exposure to the oauth-endpoint flakes the retry wrapper handles. ([a1c6c2e](https://github.com/openserbia/watchtower/commit/a1c6c2e))
 
 ### Fixed
 - **Containers stuck un-updatable after their source image is garbage-collected.**
@@ -1346,7 +1346,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   next poll. Fixes [upstream#1217](https://github.com/containrrr/watchtower/issues/1217)
   (nil-pointer panic in `Container.ImageID()`) and
   [upstream#1413](https://github.com/containrrr/watchtower/issues/1413)
-  ("Unable to update container: Error: No such image" loop).
+  ("Unable to update container: Error: No such image" loop). ([c12200c](https://github.com/openserbia/watchtower/commit/c12200c))
 - **`--cleanup` no longer deletes the freshly-pulled replacement image** after
   the fallback path above kicks in. Cleanup now targets `containerInfo.Image`
   (the ID Docker recorded at container creation) via the new
@@ -1354,20 +1354,20 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   `RemoveImageByID` also treats `NotFound` as success so already-GC'd old
   images stop logging spurious errors. Fixes
   [upstream#966](https://github.com/containrrr/watchtower/issues/966)
-  (`conflict: unable to delete <id> - image is being used by running container`).
+  (`conflict: unable to delete <id> - image is being used by running container`). ([9fa9e44](https://github.com/openserbia/watchtower/commit/9fa9e44))
 - **Compose-deploy races** (`docker compose up` between two polls) no longer
   abort the entire scan. `ListContainers` skips containers that vanish between
-  list and inspect, and `StopContainer` tolerates `NotFound` on kill.
+  list and inspect, and `StopContainer` tolerates `NotFound` on kill. ([9fa9e44](https://github.com/openserbia/watchtower/commit/9fa9e44))
 - **Pull-failure log level raised** from `info` to `warn` in
   `actions.Update`, so operators running `WATCHTOWER_NOTIFICATIONS_LEVEL=error`
   are actually notified of stuck containers instead of the failure being
-  silently swallowed.
+  silently swallowed. ([9fa9e44](https://github.com/openserbia/watchtower/commit/9fa9e44))
 
 ### Changed
 - `Container` interface gained `SourceImageID()` — returns the raw image ID
   Docker recorded against the container at creation time, stable across
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
-  unchanged.
+  unchanged. ([9fa9e44](https://github.com/openserbia/watchtower/commit/9fa9e44))
 
 [Unreleased]: https://github.com/openserbia/watchtower/compare/v1.18.2...HEAD
 [1.18.2]: https://github.com/openserbia/watchtower/compare/v1.17.0...v1.18.2
