@@ -1370,9 +1370,7 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   unchanged.
 
 [Unreleased]: https://github.com/openserbia/watchtower/compare/v1.18.2...HEAD
-[1.18.2]: https://github.com/openserbia/watchtower/compare/v1.18.1...v1.18.2
-[1.18.1]: https://github.com/openserbia/watchtower/compare/v1.18.0...v1.18.1
-[1.18.0]: https://github.com/openserbia/watchtower/compare/v1.17.0...v1.18.0
+[1.18.2]: https://github.com/openserbia/watchtower/compare/v1.17.0...v1.18.2
 [1.17.0]: https://github.com/openserbia/watchtower/compare/v1.15.1...v1.17.0
 [1.15.1]: https://github.com/openserbia/watchtower/compare/v1.15.0...v1.15.1
 [1.15.0]: https://github.com/openserbia/watchtower/compare/v1.14.3...v1.15.0
