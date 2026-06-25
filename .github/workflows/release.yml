@@ -66,11 +66,42 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract release notes from CHANGELOG
+        # GoReleaser's default release notes are a raw commit-SHA list; use the
+        # curated CHANGELOG section for this tag, then append a linked commit
+        # list since the previous tag. Written under RUNNER_TEMP (outside the
+        # repo) so the file doesn't show as untracked and re-trip GoReleaser's
+        # dirty-state check.
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          notes="$RUNNER_TEMP/release-notes.md"
+          awk -v ver="$version" '
+            index($0, "## [" ver "]") == 1 { found = 1; next }
+            found && index($0, "## [") == 1 { exit }
+            found { print }
+          ' CHANGELOG.md > "$notes"
+          if [ ! -s "$notes" ]; then
+            echo "::error::No CHANGELOG section found for $version"
+            exit 1
+          fi
+          # Append a linked commit list (and a full-diff link) since the
+          # previous tag, so the curated notes keep the precise commit refs.
+          repo_url="https://github.com/${GITHUB_REPOSITORY}"
+          prev_tag="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          if [ -n "$prev_tag" ]; then range="${prev_tag}..${GITHUB_REF_NAME}"; else range="${GITHUB_REF_NAME}"; fi
+          {
+            printf '\n### Commits\n\n'
+            git log --no-merges --pretty="format:- %s ([%h](${repo_url}/commit/%H))" "$range"
+            printf '\n'
+            [ -n "$prev_tag" ] && printf '\n**Full diff:** %s/compare/%s...%s\n' "$repo_url" "$prev_tag" "$GITHUB_REF_NAME"
+          } >> "$notes"
+          echo "----- release notes for $version -----"
+          cat "$notes"
       - name: Build
         # `devbox run` re-resolves the "latest"-pinned tools and rewrites
         # devbox.lock, which would make GoReleaser abort on a dirty git state.
         # Restore the lock inside the devbox shell before invoking GoReleaser.
-        run: devbox run -- bash -c 'git checkout -- devbox.lock && goreleaser release --clean'
+        run: devbox run -- bash -c 'git checkout -- devbox.lock && goreleaser release --clean --release-notes="$RUNNER_TEMP/release-notes.md"'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Trivy CVE scan (observation mode — exit-code: 0 = never fail.
