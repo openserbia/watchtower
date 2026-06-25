@@ -129,6 +129,19 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   and the project's security assurance case are documented in
   [GOVERNANCE.md](./GOVERNANCE.md) and [ASSURANCE-CASE.md](./ASSURANCE-CASE.md).
 
+### Docs
+- **Fixed seven dead intra-doc anchor links in the published site.** The `toc`
+  extension uses `separator: "_"`, so heading slugs join words with `_` but keep
+  literal hyphens — cross-references that guessed the separator wrong (e.g.
+  `arguments.md#http_api_host` → `#http_api_listen_address`,
+  `#health_check_gated_updates` → `#health-check_gated_updates`,
+  `#watch_status_audit_endpoint` → `#watch-status_audit_endpoint`,
+  `notifications.md#microsoft-teams` → `#microsoft_teams`) landed on nothing.
+  Enabled the `attr_list` Markdown extension so the intended
+  `{#update-strategy-blue-green}` custom anchor on the blue-green deploys
+  heading resolves (it was previously rendered as literal heading text). A
+  strict `mkdocs build` now reports zero missing anchors.
+
 ## [1.17.0] - 2026-06-07
 
 ### ⚠ Breaking Changes

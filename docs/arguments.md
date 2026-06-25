@@ -832,7 +832,7 @@ Set `0` (the default) to disable — matches pre-v1.12 behavior. Per-container o
 `com.centurylinklabs.watchtower.image-cooldown` label: production services get a longer grace period
 than dev containers inheriting the fleet-wide default.
 
-Pairs naturally with [`--health-check-gated`](arguments.md#health_check_gated_updates). Cooldown gates
+Pairs naturally with [`--health-check-gated`](arguments.md#health-check_gated_updates). Cooldown gates
 *when* to apply; health-check gates *whether* the applied container works. The cooldown state is
 in-memory and resets on daemon restart — operators who want to force an immediate apply can just
 restart Watchtower.

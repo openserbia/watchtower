@@ -54,14 +54,14 @@ Published every scan regardless of whether any audit flag is set.
 | --- | --- | --- |
 | `watchtower_containers_managed` | gauge | Containers with `com.centurylinklabs.watchtower.enable=true`. |
 | `watchtower_containers_excluded` | gauge | Containers with `com.centurylinklabs.watchtower.enable=false` (intentional opt-out). |
-| `watchtower_containers_unmanaged` | gauge | Containers with no `enable` label at all. Under `--label-enable` these are silently skipped — hit [`/v1/audit`](arguments.md#watch_status_audit_endpoint) for names or enable [`--audit-unmanaged`](arguments.md#audit_unmanaged_containers) for log warnings. Excludes Docker-managed infrastructure (buildkit etc.), which is tracked separately in `watchtower_containers_infrastructure`. |
+| `watchtower_containers_unmanaged` | gauge | Containers with no `enable` label at all. Under `--label-enable` these are silently skipped — hit [`/v1/audit`](arguments.md#watch-status_audit_endpoint) for names or enable [`--audit-unmanaged`](arguments.md#audit_unmanaged_containers) for log warnings. Excludes Docker-managed infrastructure (buildkit etc.), which is tracked separately in `watchtower_containers_infrastructure`. |
 | `watchtower_containers_infrastructure` | gauge | Docker-managed scaffolding (`moby/buildkit*` image prefix, `docker/desktop-*` image prefix, `com.docker.buildx.*` / `com.docker.desktop.*` label prefixes). Not a user workload; tracked separately so transient builder containers don't show up as unmanaged noise. |
 
 ### Update lifecycle
 
 | Metric | Type | What it tells you |
 | --- | --- | --- |
-| `watchtower_rollbacks_total` | counter | Rollbacks triggered by [`--health-check-gated`](arguments.md#health_check_gated_updates). Each increment = a replacement container failed health check and the previous image was restored. |
+| `watchtower_rollbacks_total` | counter | Rollbacks triggered by [`--health-check-gated`](arguments.md#health-check_gated_updates). Each increment = a replacement container failed health check and the previous image was restored. |
 | `watchtower_containers_in_cooldown` | gauge | Containers currently waiting out a [`--image-cooldown`](arguments.md#image_cooldown_supply-chain_gate) window. Non-zero right after a fresh push; stuck non-zero means the author keeps re-pushing and resetting the clock. |
 | `watchtower_image_fallback_total` | counter | Times `GetContainer` fell back to inspecting by image reference because the source image ID was missing locally. Sustained counts indicate external tooling is deleting images Watchtower still needs. Background: [upstream#1217](https://github.com/containrrr/watchtower/issues/1217). |
 

@@ -22,7 +22,7 @@ Swap the image name and you're done. The fork deliberately preserves:
 No config migration. No flag rename. No label rewrite.
 
 !!! note "One MS Teams exception (v1.17.0+)"
-    The `--notification-msteams-hook` URL must now be a **Power Automate workflow** webhook — Microsoft retired the Office 365 *connector* webhooks the older format relied on, and the bundled shoutrrr (v0.16) dropped support for them. The flag and env var are unchanged; only the URL you supply differs. See the [notification docs](notifications.md#microsoft-teams).
+    The `--notification-msteams-hook` URL must now be a **Power Automate workflow** webhook — Microsoft retired the Office 365 *connector* webhooks the older format relied on, and the bundled shoutrrr (v0.16) dropped support for them. The flag and env var are unchanged; only the URL you supply differs. See the [notification docs](notifications.md#microsoft_teams).
 
 ## What changed
 

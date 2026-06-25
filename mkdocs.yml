@@ -24,6 +24,7 @@ markdown_extensions:
         permalink: True
         separator: "_"
     - admonition
+    - attr_list
     - pymdownx.highlight
     - pymdownx.superfences
     - pymdownx.magiclink:

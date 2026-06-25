@@ -2,7 +2,7 @@ Watchtower exposes a small HTTP control-plane with three optional
 endpoints. Each is opt-in via its own flag, and all share the same
 listener and bearer-token scheme. The listener binds to `:8080` (all
 interfaces) by default; change that with
-[`--http-api-host`](arguments.md#http_api_host) — e.g.
+[`--http-api-host`](arguments.md#http_api_listen_address) — e.g.
 `127.0.0.1:8080` for a localhost-only bind, or `0.0.0.0:9090` to pick
 a different port.
 
