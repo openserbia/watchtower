@@ -11,6 +11,25 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+### Added
+- **`watchtower_stranded_init_deps` gauge — a non-resolving signal for the
+  "new code on an un-migrated schema" trap.** The existing
+  `watchtower_stranded_init_deps_total` counter only increments when a *stale*
+  target is scanned, so an alert built on `increase(...[1h]) > 0` auto-resolves
+  an hour after the last such scan whether or not the operator actually
+  re-armed the service — decoupling alert resolution from remediation. The new
+  gauge is recomputed every scan and reads the number of compose targets
+  **currently** stranded: empty `com.docker.compose.depends_on` while the
+  project still holds a `migrate`/`pg-ready` one-shot, excluding
+  `no-init-deps` opt-outs. It drops to 0 on the first scan after
+  `docker compose up -d --force-recreate <service>` restores the label, so an
+  alert on `watchtower_stranded_init_deps > 0` fires while broken and clears
+  exactly on fix. The detection predicate (`strandedInitSiblings`) is now the
+  single source of truth for both the gauge and the per-target warning, and it
+  skips one-shot init containers themselves so two sibling one-shots
+  (migrate ↔ pg-ready) surfaced by `WATCHTOWER_INCLUDE_STOPPED` no longer count
+  each other. Detection-only — update behavior is unchanged.
+
 ## [1.18.3] - 2026-06-25
 
 ### Changed

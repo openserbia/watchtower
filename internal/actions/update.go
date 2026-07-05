@@ -552,6 +552,23 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 				fieldDigest:    target.TargetImageID().ShortID(),
 			}).Warn("--rerun-init-deps: skipping target update, digest cached as rejected")
 		}
+
+		// Per-scan stranded gauge: recompute how many targets are stranded
+		// RIGHT NOW — empty depends_on but the project still holds a
+		// migrate/pg-ready one-shot — across ALL scanned containers, not just
+		// the ones stale this cycle. Published as watchtower_stranded_init_deps
+		// so the alert tracks live state: it stays firing until the operator
+		// re-arms the service and drops to 0 on the very next scan. The _total
+		// counter above still records per-detection history; this gauge is what
+		// resolves-on-fix. Reuses the memoized ensureDepLookup so a scan makes
+		// at most one extra ListAllContainers call regardless of container count.
+		stranded := 0
+		for i := range containers {
+			if len(strandedInitSiblings(containers[i], ensureDepLookup())) > 0 {
+				stranded++
+			}
+		}
+		metrics.SetStrandedInitDeps(stranded)
 	}
 
 	containers, err = sorter.SortByDependencies(containers, params.ComposeDependsOn)
@@ -593,31 +610,52 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 	return progress.Report(), nil
 }
 
-// warnIfStrandedInitDeps surfaces the silent-skip trap behind "new code, old
-// schema": a stale, compose-managed target that declares no
-// service_completed_successfully deps even though its compose project still
-// contains one-shot init siblings (migrate, pg-ready, bootstrap). The usual
-// cause is a com.docker.compose.depends_on label lost when an earlier
-// blue-green cutover recreated the container — Watchtower only inherits labels
-// green<-blue, never re-derives them, so once the value is empty it stays empty
-// across every cutover. With no declared deps --rerun-init-deps skips the
-// target entirely and migrations never run. Redeploying the target via
-// `docker compose up -d --force-recreate <service>` rewrites the label from the
-// compose file and restores the contract.
-func warnIfStrandedInitDeps(target types.Container, all []types.Container) {
+// strandedInitSiblings returns the one-shot init siblings (migrate, pg-ready,
+// bootstrap) that `target` should gate on but no longer declares. It is
+// non-empty exactly when target is a stranded-init-deps case: compose-managed,
+// an EMPTY com.docker.compose.depends_on (no service_completed_successfully
+// deps), no no-init-deps opt-out, yet its project still holds a one-shot init
+// sibling. The usual cause is a depends_on label lost when an earlier
+// blue-green cutover recreated the container — Watchtower inherits labels
+// green<-blue and never re-derives them, so once the value is empty it stays
+// empty across every cutover, --rerun-init-deps skips the target, and the new
+// image runs against the old schema with no other signal.
+//
+// Single source of truth for both the per-target warning (warnIfStrandedInitDeps)
+// and the per-scan gauge (watchtower_stranded_init_deps). Re-arming via
+// `docker compose up -d --force-recreate <service>` rewrites the label, so
+// ComposeInitDependencies() becomes non-empty and this returns nil — which is
+// what lets the gauge drop to 0 and the alert resolve on remediation.
+func strandedInitSiblings(target types.Container, all []types.Container) []string {
 	// Opt-out: a target that legitimately has no init deps — e.g. a frontend
 	// sharing a Compose project with migrate/pg-ready one-shots owned by a
 	// sibling API tier — sets com.centurylinklabs.watchtower.no-init-deps=true
 	// to affirm the empty depends_on is by design, not a dropped-label signal.
-	// Suppress the false positive without touching the real-stranding path: a
-	// backend that genuinely lost its label won't carry the opt-out.
+	// A backend that genuinely lost its label won't carry the opt-out.
 	if target.HasNoInitDepsLabel() {
-		return
+		return nil
+	}
+
+	// A one-shot init container is never itself a stranded parent — it is the
+	// gate, not the gated service. Skip it so the per-scan gauge doesn't
+	// double-count sibling one-shots that see each other (migrate <-> pg-ready)
+	// when WATCHTOWER_INCLUDE_STOPPED surfaces their exited carcasses in the
+	// scan list. Without this, a project with two one-shots reads 2 even when
+	// nothing is stranded — a false alert.
+	if isOneShotInitSibling(target) {
+		return nil
+	}
+
+	// A non-empty init-deps set means the contract is intact (or already
+	// re-armed): nothing stranded. This is the check that makes the gauge
+	// resolve-on-fix.
+	if len(target.ComposeInitDependencies()) != 0 {
+		return nil
 	}
 
 	project := target.ComposeProject()
 	if project == "" {
-		return
+		return nil
 	}
 
 	var siblings []string
@@ -629,6 +667,17 @@ func warnIfStrandedInitDeps(target types.Container, all []types.Container) {
 			siblings = append(siblings, c.ComposeService())
 		}
 	}
+	return siblings
+}
+
+// warnIfStrandedInitDeps surfaces the silent-skip trap behind "new code, old
+// schema" for a single stale target and records it in the
+// watchtower_stranded_init_deps_total history counter. Detection lives in
+// strandedInitSiblings; this adds only the actionable log line and the counter
+// increment. The companion per-scan gauge (watchtower_stranded_init_deps) is
+// what the non-resolving alert keys on.
+func warnIfStrandedInitDeps(target types.Container, all []types.Container) {
+	siblings := strandedInitSiblings(target, all)
 	if len(siblings) == 0 {
 		return
 	}
@@ -636,7 +685,7 @@ func warnIfStrandedInitDeps(target types.Container, all []types.Container) {
 	metrics.RegisterStrandedInitDeps()
 	log.WithFields(log.Fields{
 		fieldContainer: target.Name(),
-		"project":      project,
+		"project":      target.ComposeProject(),
 		"siblings":     strings.Join(siblings, ","),
 	}).Warn("--rerun-init-deps: stale target declares no init deps but its compose project has one-shot init siblings; the com.docker.compose.depends_on label was likely dropped by a prior blue-green cutover, so migrations will NOT be re-run. Redeploy with `docker compose up -d --force-recreate <service>` to restore the label.")
 }

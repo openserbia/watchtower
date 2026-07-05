@@ -177,3 +177,99 @@ func TestWarnIfStrandedInitDeps(t *testing.T) {
 		}
 	})
 }
+
+// newRearmedFixture builds a compose-managed service that DECLARES its init
+// deps — i.e. a target whose com.docker.compose.depends_on label is intact
+// (the state produced by `docker compose up -d --force-recreate`). This is the
+// not-stranded case that must drop the gauge back to 0.
+func newRearmedFixture(service string, initDeps ...string) types.Container {
+	entries := make([]string, 0, len(initDeps))
+	for _, d := range initDeps {
+		entries = append(entries, d+":service_completed_successfully:false")
+	}
+
+	return container.NewContainer(&dockercontainer.InspectResponse{
+		ID:   service,
+		Name: service,
+		HostConfig: &dockercontainer.HostConfig{
+			RestartPolicy: dockercontainer.RestartPolicy{Name: "unless-stopped"},
+		},
+		Config: &dockercontainer.Config{Labels: map[string]string{
+			"com.docker.compose.project":    strandedTestProject,
+			"com.docker.compose.service":    service,
+			"com.docker.compose.depends_on": strings.Join(entries, ","),
+		}},
+	}, nil)
+}
+
+// TestStrandedInitSiblings exercises the predicate that both the warning and the
+// watchtower_stranded_init_deps gauge are built on. countStranded mirrors the
+// per-scan gauge loop in Update, so these cases pin the gauge's value.
+func TestStrandedInitSiblings(t *testing.T) {
+	countStranded := func(all []types.Container) int {
+		n := 0
+		for i := range all {
+			if len(strandedInitSiblings(all[i], all)) > 0 {
+				n++
+			}
+		}
+		return n
+	}
+
+	t.Run("stranded target names its dropped init sibling", func(t *testing.T) {
+		target := newStrandedFixture("api", "unless-stopped") // empty depends_on
+		migrate := newStrandedFixture("migrate", "no")
+
+		got := strandedInitSiblings(target, []types.Container{target, migrate})
+		if len(got) != 1 || got[0] != "migrate" {
+			t.Fatalf("expected [migrate], got %v", got)
+		}
+	})
+
+	t.Run("re-armed target with intact depends_on is NOT stranded", func(t *testing.T) {
+		// The resolve-on-fix case: after `compose up --force-recreate` the
+		// label is back, ComposeInitDependencies() is non-empty, so the gauge
+		// must read 0 and the alert clears.
+		target := newRearmedFixture("api", "migrate", "pg-ready")
+		migrate := newStrandedFixture("migrate", "no")
+		pgReady := newStrandedFixture("pg-ready", "no")
+
+		if got := strandedInitSiblings(target, []types.Container{target, migrate, pgReady}); got != nil {
+			t.Fatalf("expected nil for a re-armed target, got %v", got)
+		}
+		if n := countStranded([]types.Container{target, migrate, pgReady}); n != 0 {
+			t.Fatalf("expected gauge count 0 after re-arm, got %d", n)
+		}
+	})
+
+	t.Run("opt-out and no-sibling targets are not counted", func(t *testing.T) {
+		optOut := container.NewContainer(&dockercontainer.InspectResponse{
+			ID:   "web",
+			Name: "web",
+			HostConfig: &dockercontainer.HostConfig{
+				RestartPolicy: dockercontainer.RestartPolicy{Name: "unless-stopped"},
+			},
+			Config: &dockercontainer.Config{Labels: map[string]string{
+				"com.docker.compose.project":                  strandedTestProject,
+				"com.docker.compose.service":                  "web",
+				"com.centurylinklabs.watchtower.no-init-deps": "true",
+			}},
+		}, nil)
+		migrate := newStrandedFixture("migrate", "no")
+
+		if got := strandedInitSiblings(optOut, []types.Container{optOut, migrate}); got != nil {
+			t.Fatalf("expected nil for a no-init-deps opt-out, got %v", got)
+		}
+	})
+
+	t.Run("gauge counts each stranded parent once", func(t *testing.T) {
+		// One stranded API + its migrate one-shot: exactly one stranded target.
+		// The migrate one-shot itself has no siblings of its own to gate on.
+		api := newStrandedFixture("api", "unless-stopped")
+		migrate := newStrandedFixture("migrate", "no")
+
+		if n := countStranded([]types.Container{api, migrate}); n != 1 {
+			t.Fatalf("expected exactly 1 stranded target, got %d", n)
+		}
+	})
+}
