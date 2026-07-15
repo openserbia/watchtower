@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -514,21 +515,27 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 				continue
 			}
 			target := containers[i]
-			if len(target.ComposeInitDependencies()) == 0 {
+			initDeps := target.ComposeInitDependencies()
+			if len(initDeps) == 0 {
 				// No declared init deps is normal for most services. But if the
 				// target is compose-managed and its project still holds one-shot
 				// init siblings (migrate/pg-ready), its
-				// com.docker.compose.depends_on label was almost certainly
-				// dropped by a prior blue-green cutover (green inherits blue's
-				// labels and never re-derives them). With no declared deps the
-				// rerun skips the target and the new image runs against the old
-				// schema with NO other signal — make it loud.
-				if target.ComposeProject() != "" {
-					warnIfStrandedInitDeps(target, ensureDepLookup())
+				// com.docker.compose.depends_on was emptied out-of-band — most
+				// often a `docker compose up --no-deps <svc>` in-place recreate
+				// (the .env-only update pattern), which stamps an EMPTY
+				// depends_on that is then carried verbatim across every later
+				// blue-green cutover. Left alone the rerun would skip the target
+				// and the new image would start on the old schema. Recover it:
+				// re-run the detected one-shot siblings anyway, and still flag the
+				// empty label so the operator re-arms the declared contract.
+				siblings := strandedInitSiblings(target, ensureDepLookup())
+				if len(siblings) == 0 {
+					continue
 				}
-				continue
+				warnStrandedInitDeps(target, siblings)
+				initDeps = orderInitSiblings(siblings, ensureDepLookup(), target.ComposeProject())
 			}
-			results := initrerun.Run(client, target, ensureDepLookup(), initrerun.DefaultTimeout)
+			results := initrerun.RunDeps(client, target, initDeps, ensureDepLookup(), initrerun.DefaultTimeout)
 			if len(results) == 0 {
 				continue
 			}
@@ -615,17 +622,20 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 // non-empty exactly when target is a stranded-init-deps case: compose-managed,
 // an EMPTY com.docker.compose.depends_on (no service_completed_successfully
 // deps), no no-init-deps opt-out, yet its project still holds a one-shot init
-// sibling. The usual cause is a depends_on label lost when an earlier
-// blue-green cutover recreated the container — Watchtower inherits labels
-// green<-blue and never re-derives them, so once the value is empty it stays
-// empty across every cutover, --rerun-init-deps skips the target, and the new
-// image runs against the old schema with no other signal.
+// sibling. The usual cause is a `docker compose up --no-deps <svc>` in-place
+// recreate (the .env-only update pattern), which stamps an EMPTY depends_on
+// because --no-deps tells Compose to disregard the dependency graph. Blue-green
+// is NOT the cause: green faithfully inherits blue's labels (GetCreateConfig
+// copies them verbatim), so it only propagates an already-empty value — a peer
+// whose label was populated at its last full `compose up` keeps it across every
+// cutover. Once empty, --rerun-init-deps would skip the target and the new image
+// would run against the old schema; the recovery path re-runs these siblings.
 //
-// Single source of truth for both the per-target warning (warnIfStrandedInitDeps)
-// and the per-scan gauge (watchtower_stranded_init_deps). Re-arming via
-// `docker compose up -d --force-recreate <service>` rewrites the label, so
-// ComposeInitDependencies() becomes non-empty and this returns nil — which is
-// what lets the gauge drop to 0 and the alert resolve on remediation.
+// Single source of truth for the stranded predicate: the per-target warn/rerun
+// (warnStrandedInitDeps) and the per-scan gauge (watchtower_stranded_init_deps).
+// Re-arming via `docker compose up -d --force-recreate <service>` rewrites the
+// label, so ComposeInitDependencies() becomes non-empty and this returns nil —
+// which is what lets the gauge drop to 0 and the alert resolve on remediation.
 func strandedInitSiblings(target types.Container, all []types.Container) []string {
 	// Opt-out: a target that legitimately has no init deps — e.g. a frontend
 	// sharing a Compose project with migrate/pg-ready one-shots owned by a
@@ -670,24 +680,48 @@ func strandedInitSiblings(target types.Container, all []types.Container) []strin
 	return siblings
 }
 
-// warnIfStrandedInitDeps surfaces the silent-skip trap behind "new code, old
-// schema" for a single stale target and records it in the
-// watchtower_stranded_init_deps_total history counter. Detection lives in
-// strandedInitSiblings; this adds only the actionable log line and the counter
-// increment. The companion per-scan gauge (watchtower_stranded_init_deps) is
-// what the non-resolving alert keys on.
-func warnIfStrandedInitDeps(target types.Container, all []types.Container) {
-	siblings := strandedInitSiblings(target, all)
-	if len(siblings) == 0 {
-		return
-	}
-
+// warnStrandedInitDeps records the stranded-init-deps history counter and logs
+// the actionable line for a stale target whose com.docker.compose.depends_on was
+// emptied out-of-band (detection in strandedInitSiblings; siblings is its
+// non-empty result). --rerun-init-deps now RE-RUNS these siblings as a safety
+// net, so this no longer means "migrations will NOT run" — but the empty label
+// still needs re-arming to restore the declared contract (and exact ordering),
+// which is why the companion per-scan gauge (watchtower_stranded_init_deps)
+// keeps the alert firing until an operator redeploys with deps.
+func warnStrandedInitDeps(target types.Container, siblings []string) {
 	metrics.RegisterStrandedInitDeps()
 	log.WithFields(log.Fields{
 		fieldContainer: target.Name(),
 		"project":      target.ComposeProject(),
 		"siblings":     strings.Join(siblings, ","),
-	}).Warn("--rerun-init-deps: stale target declares no init deps but its compose project has one-shot init siblings; the com.docker.compose.depends_on label was likely dropped by a prior blue-green cutover, so migrations will NOT be re-run. Redeploy with `docker compose up -d --force-recreate <service>` to restore the label.")
+	}).Warn("--rerun-init-deps: target's com.docker.compose.depends_on is empty but its compose project still holds one-shot init siblings (typically a `docker compose up --no-deps <svc>` recreate emptied the label); re-running the detected siblings as a safety net so the new image does not start on an un-migrated schema. Re-arm with `docker compose up -d --force-recreate <service>` to restore the declared depends_on.")
+}
+
+// orderInitSiblings best-effort orders recovered one-shot siblings so each runs
+// after any sibling it itself gates on. The declared depends_on order is lost
+// with the emptied label, so we approximate from each sibling's OWN init-dep
+// count: a leaf (e.g. pg-ready, 0 deps) sorts before a migrate that declares it,
+// with the service name as a stable tiebreak. One-shot siblings are created by
+// the full `compose up` (not the --no-deps recreate that stranded the target),
+// so their own labels are usually intact and this reproduces the declared order;
+// re-arming the target restores it exactly. Deterministic in all cases.
+func orderInitSiblings(siblings []string, all []types.Container, project string) []string {
+	ownDepCount := func(svc string) int {
+		for _, c := range all {
+			if c.ComposeProject() == project && c.ComposeService() == svc {
+				return len(c.ComposeInitDependencies())
+			}
+		}
+		return 0
+	}
+	ordered := append([]string(nil), siblings...)
+	sort.SliceStable(ordered, func(a, b int) bool {
+		if ca, cb := ownDepCount(ordered[a]), ownDepCount(ordered[b]); ca != cb {
+			return ca < cb
+		}
+		return ordered[a] < ordered[b]
+	})
+	return ordered
 }
 
 // isOneShotInitSibling reports whether c looks like a Compose one-shot init

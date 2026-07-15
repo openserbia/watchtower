@@ -15,7 +15,7 @@ import (
 const strandedTestProject = "proj"
 
 // newStrandedFixture builds a compose-managed container fixture with a given
-// service name and restart policy. Only the fields warnIfStrandedInitDeps /
+// service name and restart policy. Only the fields strandedInitSiblings /
 // isOneShotInitSibling read are populated; imageInfo is irrelevant and nil.
 func newStrandedFixture(service, restart string) types.Container {
 	labels := map[string]string{
@@ -105,75 +105,52 @@ func captureWarn(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
-func TestWarnIfStrandedInitDeps(t *testing.T) {
-	const marker = "migrations will NOT be re-run"
-
-	t.Run("warns when a one-shot init sibling is present", func(t *testing.T) {
-		target := newStrandedFixture("api", "unless-stopped") // no depends_on
-		migrate := newStrandedFixture("migrate", "no")
-
-		out := captureWarn(t, func() {
-			warnIfStrandedInitDeps(target, []types.Container{target, migrate})
-		})
-		if !strings.Contains(out, marker) {
-			t.Fatalf("expected stranded-init warning, got: %q", out)
-		}
-		if !strings.Contains(out, "migrate") {
-			t.Fatalf("expected the offending sibling service in the warning, got: %q", out)
-		}
-	})
-
-	t.Run("silent when the only siblings are long-lived", func(t *testing.T) {
+func TestWarnStrandedInitDeps(t *testing.T) {
+	// warnStrandedInitDeps no longer detects — the caller passes the siblings
+	// that strandedInitSiblings already found — so it always logs. The message
+	// must name the recovered siblings, explain the --no-deps cause, and give
+	// the re-arm remedy. The old "migrations will NOT be re-run" wording is gone:
+	// they ARE re-run now, as a safety net.
+	t.Run("logs the safety-net recovery line with siblings, cause and remedy", func(t *testing.T) {
 		target := newStrandedFixture("api", "unless-stopped")
-		web := newStrandedFixture("web", "unless-stopped")
 
 		out := captureWarn(t, func() {
-			warnIfStrandedInitDeps(target, []types.Container{target, web})
+			warnStrandedInitDeps(target, []string{"migrate", "pg-ready"})
 		})
-		if strings.Contains(out, marker) {
-			t.Fatalf("did not expect a warning when no one-shot siblings exist, got: %q", out)
+		for _, want := range []string{"safety net", "migrate", "pg-ready", "--no-deps", "--force-recreate"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("expected stranded-init warning to contain %q, got: %q", want, out)
+			}
+		}
+		if strings.Contains(out, "will NOT be re-run") {
+			t.Fatalf("stale wording — siblings are re-run now, got: %q", out)
 		}
 	})
+}
 
-	t.Run("silent when the target opts out via no-init-deps label", func(t *testing.T) {
-		// A frontend in a project with migrate/pg-ready siblings owned by a
-		// sibling API tier: empty depends_on is by design, not a dropped label.
-		target := container.NewContainer(&dockercontainer.InspectResponse{
-			ID:   "web",
-			Name: "web",
-			HostConfig: &dockercontainer.HostConfig{
-				RestartPolicy: dockercontainer.RestartPolicy{Name: "unless-stopped"},
-			},
-			Config: &dockercontainer.Config{Labels: map[string]string{
-				"com.docker.compose.project":                  strandedTestProject,
-				"com.docker.compose.service":                  "web",
-				"com.centurylinklabs.watchtower.no-init-deps": "true",
-			}},
-		}, nil)
-		migrate := newStrandedFixture("migrate", "no")
+func TestOrderInitSiblings(t *testing.T) {
+	// A leaf one-shot (pg-ready, no own init deps) must sort before a one-shot
+	// that declares it (migrate: depends_on pg-ready), regardless of input order,
+	// so the recovered rerun applies them in a runnable sequence. The declared
+	// order is lost with the emptied target label, so we reconstruct it from each
+	// sibling's OWN init-dep count.
+	migrate := newRearmedFixture("migrate", "pg-ready") // 1 own init dep
+	pgReady := newStrandedFixture("pg-ready", "no")     // 0 own init deps
+	all := []types.Container{migrate, pgReady}
 
-		out := captureWarn(t, func() {
-			warnIfStrandedInitDeps(target, []types.Container{target, migrate})
-		})
-		if strings.Contains(out, marker) {
-			t.Fatalf("did not expect a warning for a no-init-deps opt-out target, got: %q", out)
+	for _, in := range [][]string{{"migrate", "pg-ready"}, {"pg-ready", "migrate"}} {
+		got := orderInitSiblings(in, all, strandedTestProject)
+		if len(got) != 2 || got[0] != "pg-ready" || got[1] != "migrate" {
+			t.Fatalf("orderInitSiblings(%v) = %v, want [pg-ready migrate]", in, got)
 		}
-	})
+	}
 
-	t.Run("silent when the target is not compose-managed", func(t *testing.T) {
-		bare := container.NewContainer(&dockercontainer.InspectResponse{
-			ID:         "bare",
-			Name:       "bare",
-			HostConfig: &dockercontainer.HostConfig{RestartPolicy: dockercontainer.RestartPolicy{Name: "unless-stopped"}},
-			Config:     &dockercontainer.Config{Labels: map[string]string{}},
-		}, nil)
-		migrate := newStrandedFixture("migrate", "no")
-
-		out := captureWarn(t, func() {
-			warnIfStrandedInitDeps(bare, []types.Container{bare, migrate})
-		})
-		if strings.Contains(out, marker) {
-			t.Fatalf("did not expect a warning for a non-compose target, got: %q", out)
+	t.Run("stable name tiebreak when own dep counts are equal", func(t *testing.T) {
+		a := newStrandedFixture("a-init", "no")
+		b := newStrandedFixture("b-init", "no")
+		got := orderInitSiblings([]string{"b-init", "a-init"}, []types.Container{a, b}, strandedTestProject)
+		if len(got) != 2 || got[0] != "a-init" || got[1] != "b-init" {
+			t.Fatalf("expected name-sorted [a-init b-init], got %v", got)
 		}
 	})
 }
@@ -259,6 +236,29 @@ func TestStrandedInitSiblings(t *testing.T) {
 
 		if got := strandedInitSiblings(optOut, []types.Container{optOut, migrate}); got != nil {
 			t.Fatalf("expected nil for a no-init-deps opt-out, got %v", got)
+		}
+	})
+
+	t.Run("long-lived-only siblings are not stranded", func(t *testing.T) {
+		target := newStrandedFixture("api", "unless-stopped")
+		web := newStrandedFixture("web", "unless-stopped")
+
+		if got := strandedInitSiblings(target, []types.Container{target, web}); got != nil {
+			t.Fatalf("expected nil when no one-shot siblings exist, got %v", got)
+		}
+	})
+
+	t.Run("non-compose target is not stranded", func(t *testing.T) {
+		bare := container.NewContainer(&dockercontainer.InspectResponse{
+			ID:         "bare",
+			Name:       "bare",
+			HostConfig: &dockercontainer.HostConfig{RestartPolicy: dockercontainer.RestartPolicy{Name: "unless-stopped"}},
+			Config:     &dockercontainer.Config{Labels: map[string]string{}},
+		}, nil)
+		migrate := newStrandedFixture("migrate", "no")
+
+		if got := strandedInitSiblings(bare, []types.Container{bare, migrate}); got != nil {
+			t.Fatalf("expected nil for a non-compose target, got %v", got)
 		}
 	})
 

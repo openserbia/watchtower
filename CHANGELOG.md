@@ -28,7 +28,28 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   single source of truth for both the gauge and the per-target warning, and it
   skips one-shot init containers themselves so two sibling one-shots
   (migrate ↔ pg-ready) surfaced by `WATCHTOWER_INCLUDE_STOPPED` no longer count
-  each other. Detection-only — update behavior is unchanged.
+  each other. The gauge is detection-only; the companion auto-recovery that
+  re-runs the stranded siblings ships alongside it (see Fixed).
+
+### Fixed
+- **`--rerun-init-deps` now recovers a stranded target instead of only warning
+  about it.** When a compose target's `com.docker.compose.depends_on` is empty
+  but its project still holds one-shot `migrate`/`pg-ready` siblings — the state
+  a `docker compose up --no-deps <svc>` in-place recreate leaves behind (it
+  stamps an EMPTY `depends_on` because `--no-deps` tells Compose to disregard the
+  dependency graph), then carried verbatim across every later blue-green cutover
+  — the update path previously skipped the init rerun and let the new image start
+  against the old schema, logging only a warning. It now re-runs the detected
+  one-shot siblings before recreating the target, gated identically to declared
+  init deps (a failing sibling caches the digest as rejected and leaves the old
+  container serving). Siblings are ordered by each one's own init-dep count so a
+  leaf (`pg-ready`) runs before a `migrate` that gates on it. The
+  `watchtower_stranded_init_deps` gauge still fires so the operator re-arms the
+  label with `docker compose up -d --force-recreate <service>` to restore the
+  declared contract and exact ordering. Also corrects the prior misattribution
+  of the empty label to blue-green cutovers: green inherits blue's labels
+  verbatim (`GetCreateConfig` copies them), so it only ever propagates an
+  already-empty value — the emptying happens at the `--no-deps` recreate.
 
 ## [1.18.3] - 2026-06-25
 

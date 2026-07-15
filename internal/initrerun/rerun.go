@@ -51,8 +51,18 @@ func (r Result) Succeeded() bool { return r.Err == nil && r.ExitCode == 0 }
 // — only same-image init containers (the migrate-sibling-of-same-image
 // pattern) inherit the target's freshly-resolved digest.
 func Run(client container.Client, target t.Container, allContainers []t.Container, timeout time.Duration) []Result {
-	initDeps := target.ComposeInitDependencies()
-	if len(initDeps) == 0 {
+	return RunDeps(client, target, target.ComposeInitDependencies(), allContainers, timeout)
+}
+
+// RunDeps is Run with an explicit list of init-dep service names, for callers
+// that discovered the siblings by means other than the depends_on label. The
+// stranded-init-deps recovery uses it: a `docker compose up --no-deps` recreate
+// (the .env-only in-place update pattern) stamps an EMPTY
+// com.docker.compose.depends_on, so ComposeInitDependencies() returns nothing
+// even though the project still holds one-shot init siblings. depSvcs are
+// compose service names in the target's project, run in the given order.
+func RunDeps(client container.Client, target t.Container, depSvcs []string, allContainers []t.Container, timeout time.Duration) []Result {
+	if len(depSvcs) == 0 {
 		return nil
 	}
 	if timeout <= 0 {
@@ -63,13 +73,13 @@ func Run(client container.Client, target t.Container, allContainers []t.Containe
 	if project == "" {
 		// Defensive: shouldn't happen for compose-managed containers, but
 		// without a project label we can't disambiguate dep service names.
-		log.WithField("container", target.Name()).Warn("--rerun-init-deps: target has depends_on but no compose project label; skipping")
+		log.WithField("container", target.Name()).Warn("--rerun-init-deps: target has init deps but no compose project label; skipping")
 		return nil
 	}
 
-	results := make([]Result, 0, len(initDeps))
+	results := make([]Result, 0, len(depSvcs))
 
-	for _, depSvc := range initDeps {
+	for _, depSvc := range depSvcs {
 		dep, ok := findInProject(allContainers, project, depSvc)
 		if !ok {
 			results = append(results, Result{

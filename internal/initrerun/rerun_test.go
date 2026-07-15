@@ -49,6 +49,32 @@ func TestRun_NoInitDeps_ReturnsNil(t1 *testing.T) {
 	}
 }
 
+func TestRunDeps_StrandedTarget_ExplicitSiblingsRun(t1 *testing.T) {
+	// The stranded-init-deps recovery: the target's depends_on label was emptied
+	// (a `compose up --no-deps` recreate), so the label-driven Run() finds
+	// nothing — but the caller passes the detected sibling explicitly and
+	// RunDeps runs it anyway.
+	td := &mocks.TestData{}
+	client := mocks.CreateMockClient(td, false, false)
+
+	migrate := newComposeContainer("migrate", "migrate", "myapp:latest", "")
+	target := newComposeContainer("api", "api", "myapp:latest", "") // EMPTY depends_on
+	target.SetTargetImageID(t.ImageID("sha256:newdigest"))
+
+	// Sanity: the label-driven path skips a stranded target.
+	if got := initrerun.Run(client, target, []t.Container{migrate, target}, time.Minute); got != nil {
+		t1.Fatalf("Run should skip a target with empty depends_on, got %d results", len(got))
+	}
+
+	got := initrerun.RunDeps(client, target, []string{"migrate"}, []t.Container{migrate, target}, time.Minute)
+	if len(got) != 1 || !got[0].Succeeded() {
+		t1.Fatalf("expected one successful rerun, got %+v", got)
+	}
+	if len(td.RerunInitContainers) != 1 || td.RerunInitContainers[0].Name() != "migrate" {
+		t1.Fatalf("expected migrate to be rerun exactly once, got %+v", td.RerunInitContainers)
+	}
+}
+
 func TestRun_HappyPath_OneSameImageDep(t1 *testing.T) {
 	td := &mocks.TestData{}
 	client := mocks.CreateMockClient(td, false, false)
