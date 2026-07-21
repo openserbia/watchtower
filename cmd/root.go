@@ -22,6 +22,7 @@ import (
 	"github.com/openserbia/watchtower/internal/events"
 	"github.com/openserbia/watchtower/internal/flags"
 	"github.com/openserbia/watchtower/internal/meta"
+	"github.com/openserbia/watchtower/internal/watchdog"
 	"github.com/openserbia/watchtower/pkg/api"
 	apiAudit "github.com/openserbia/watchtower/pkg/api/audit"
 	apiMetrics "github.com/openserbia/watchtower/pkg/api/metrics"
@@ -58,6 +59,9 @@ var (
 	labelPrecedence    bool
 	runOnce            bool
 	selfContainerID    t.ContainerID
+	// livenessWatchdog is nil when disabled (--no-watchdog or --run-once);
+	// all its methods are nil-safe.
+	livenessWatchdog *watchdog.Watchdog
 )
 
 var rootCmd = NewRootCommand()
@@ -188,6 +192,15 @@ func Run(c *cobra.Command, names []string) {
 			log.Fatal("The health check flag should never be passed to the main watchtower container process")
 		}
 		os.Exit(0)
+	}
+
+	// Arm the liveness watchdog before anything that can block (the Docker
+	// client init, sanity checks, the notifier) — a boot wedged on a stale
+	// socket mount must trip it too, and it never happens later than here.
+	// Skipped for --run-once, which runs interactively in the foreground.
+	if noWatchdog, _ := c.PersistentFlags().GetBool("no-watchdog"); !noWatchdog && !runOnce {
+		livenessWatchdog = watchdog.New()
+		go livenessWatchdog.Run(context.Background())
 	}
 
 	if updateStrategy.IsRollingOrBlueGreen() && monitorOnly {
@@ -470,6 +483,8 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 	_, err := scheduler.AddFunc(
 		scheduleSpec,
 		func() {
+			// A skipped tick still proves the scheduler is alive.
+			livenessWatchdog.Tick()
 			select {
 			case v := <-lock:
 				defer func() { lock <- v }()
@@ -478,7 +493,15 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 			default:
 				// Update was skipped
 				metrics.RegisterScan(nil)
-				log.Debug("Skipped another update already running.")
+				if age := livenessWatchdog.UpdateRunningFor(); age > 0 {
+					// Visible, unlike the historical debug line: a run that
+					// outlives poll intervals is the precursor of a wedged
+					// update, and this is the only place that can report it.
+					log.WithField("running_for", age.Round(time.Second).String()).
+						Warn("Skipped scheduled scan: the previous update is still running")
+				} else {
+					log.Debug("Skipped another update already running.")
+				}
 			}
 
 			nextRuns := scheduler.Entries()
@@ -496,7 +519,11 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 	// Derive the cadence between two consecutive fires. For fixed interval
 	// schedules this is exact; for irregular cron expressions it's a best-effort
 	// approximation of "typical gap" — good enough for the staleness alert.
-	metrics.SetPollInterval(schedule.Next(firstFire).Sub(firstFire))
+	interval := schedule.Next(firstFire).Sub(firstFire)
+	metrics.SetPollInterval(interval)
+	// Long-cadence schedules (12h, 24h) must not trip the watchdog's default
+	// boot grace while legitimately waiting for their first fire.
+	livenessWatchdog.SetTickGrace(interval)
 
 	writeStartupMessage(c, firstFire, filtering)
 
@@ -535,6 +562,14 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 }
 
 func runUpdatesWithNotifications(filter t.Filter) (metricResults *metrics.Metric) {
+	// Every trigger path (scheduler, event watcher, --update-on-start, HTTP
+	// API) funnels through here, so this single pair bounds any update run:
+	// if the cycle wedges (stalled pull, blocked notification, dead socket)
+	// the watchdog exits the process instead of stranding the update lock —
+	// and with it all future scans — forever.
+	livenessWatchdog.UpdateStarted()
+	defer livenessWatchdog.UpdateFinished()
+
 	// Defense in depth: a panic anywhere in an update cycle must not take down
 	// the daemon. The scheduled (cron) callback, the --update-on-start scan, and
 	// the Docker-event watcher each run in a goroutine with no recovery of its

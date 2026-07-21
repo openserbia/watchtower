@@ -281,6 +281,32 @@ Environment Variable: WATCHTOWER_WATCH_DOCKER_EVENTS
              Default: false
 ```
 
+## Disable the liveness watchdog
+By default watchtower runs an internal watchdog that terminates the process (exit code 1) when the scan
+loop has verifiably stopped making progress, so the container restart policy can revive a working
+instance. Two conditions trip it:
+
+- **A stuck update run**: a single update cycle has been running for over an hour. A stalled registry
+  pull, a notification send without a timeout, or a dead Docker socket otherwise strands the shared
+  update lock — every subsequent scheduled scan is skipped and updating silently stops while the
+  container keeps reporting healthy.
+- **A dead scheduler**: no scheduler tick for three poll intervals (at least 15 minutes). This also
+  covers a boot that wedges before the first scan — for example a stale socket mount after a rootless
+  Docker daemon restart.
+
+The exit path deliberately depends on nothing else in the process (not the logger, not a writable
+stderr), so a wedge in those cannot keep the watchdog from firing. Long update runs also surface as a
+per-poll warning (`Skipped scheduled scan: the previous update is still running`) before the deadline
+trips. Disable only if your deployment has no restart policy or legitimately runs single update cycles
+longer than an hour.
+
+```text
+            Argument: --no-watchdog
+Environment Variable: WATCHTOWER_NO_WATCHDOG
+                Type: Boolean
+             Default: false
+```
+
 ## Audit unmanaged containers
 Warn when a container has no `com.centurylinklabs.watchtower.enable` label at all. Under `--label-enable`, such
 containers are silently skipped, which is indistinguishable from an intentional opt-out. Enabling this flag

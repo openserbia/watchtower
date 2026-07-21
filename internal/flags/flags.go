@@ -208,6 +208,13 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 	)
 
 	flags.BoolP(
+		"no-watchdog",
+		"",
+		envBool("WATCHTOWER_NO_WATCHDOG"),
+		"Disable the liveness watchdog. By default watchtower exits (for the container restart policy to revive it) when the scheduler stops ticking or a single update run exceeds one hour — a wedged pull, notification send, or Docker API call otherwise strands the update lock and silently stops all scanning while the container still reports healthy.",
+	)
+
+	flags.BoolP(
 		"include-restarting",
 		"",
 		envBool("WATCHTOWER_INCLUDE_RESTARTING"),

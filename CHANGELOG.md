@@ -12,6 +12,22 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 ## [Unreleased]
 
 ### Added
+- **Liveness watchdog: exit instead of wedging silently (`--no-watchdog` to
+  opt out).** A production instance was observed spending two days "healthy"
+  while doing nothing: its host's rootless Docker daemon restarted, the
+  container came back with broken plumbing, and the process parked before its
+  first log line — no scans, no errors, no signal. The same silent shape occurs
+  when a single update run wedges (a stalled pull, a notification send without
+  a timeout, a dead socket): the shared update lock is never returned and every
+  later tick skips at debug level, invisible at the default log level. The new
+  watchdog goroutine arms before anything that can block and terminates the
+  process (exit 1, for the restart policy to revive) when a single update run
+  exceeds one hour or the scheduler misses three poll intervals (min 15m —
+  which also catches a wedged boot). The exit path is deliberately
+  self-sufficient: the reason line is written best-effort from separate
+  goroutines, so a deadlocked log hook or blocked stderr cannot suppress the
+  exit. Skipped ticks caused by a still-running update are now logged at
+  warning level with the run's age, replacing the historical debug-only line.
 - **`watchtower_stranded_init_deps` gauge — a non-resolving signal for the
   "new code on an un-migrated schema" trap.** The existing
   `watchtower_stranded_init_deps_total` counter only increments when a *stale*
