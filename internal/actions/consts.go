@@ -11,4 +11,5 @@ const (
 	fieldRollback  = "rollback"
 	fieldCanonical = "canonical"
 	fieldSelf      = "self"
+	fieldRetryIn   = "retry_in"
 )

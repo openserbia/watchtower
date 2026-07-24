@@ -62,6 +62,10 @@ var (
 	// livenessWatchdog is nil when disabled (--no-watchdog or --run-once);
 	// all its methods are nil-safe.
 	livenessWatchdog *watchdog.Watchdog
+	// stopWatchdog cancels the watchdog's Run goroutine. Called on the graceful
+	// shutdown path, where the scheduler stops ticking on purpose while the
+	// in-flight update drains. Nil when the watchdog is disabled.
+	stopWatchdog context.CancelFunc
 )
 
 var rootCmd = NewRootCommand()
@@ -199,8 +203,15 @@ func Run(c *cobra.Command, names []string) {
 	// socket mount must trip it too, and it never happens later than here.
 	// Skipped for --run-once, which runs interactively in the foreground.
 	if noWatchdog, _ := c.PersistentFlags().GetBool("no-watchdog"); !noWatchdog && !runOnce {
-		livenessWatchdog = watchdog.New()
-		go livenessWatchdog.Run(context.Background())
+		stuckDeadline, _ := c.PersistentFlags().GetDuration("watchdog-stuck-deadline")
+		tickGrace, _ := c.PersistentFlags().GetDuration("watchdog-tick-grace")
+		livenessWatchdog = watchdog.New(watchdog.Options{
+			StuckDeadline: stuckDeadline,
+			TickGrace:     tickGrace,
+		})
+		var watchdogCtx context.Context
+		watchdogCtx, stopWatchdog = context.WithCancel(context.Background())
+		go livenessWatchdog.Run(watchdogCtx)
 	}
 
 	if updateStrategy.IsRollingOrBlueGreen() && monitorOnly {
@@ -322,6 +333,14 @@ func Run(c *cobra.Command, names []string) {
 		httpAPI.RegisterFunc(auditHandler.Path, auditHandler.Handle)
 	}
 
+	if enableUpdateAPI && !unblockHTTPAPI {
+		// HTTP-API-only mode: Start(true) below blocks serving HTTP forever and
+		// the scheduler is never constructed, so no tick can ever arrive —
+		// leaving the tick rule armed would kill this healthy process every
+		// tick grace, forever, taking any in-flight API-triggered update with
+		// it. The stuck-update rule stays armed and still bounds those runs.
+		livenessWatchdog.DisableTickRule()
+	}
 	if err := httpAPI.Start(enableUpdateAPI && !unblockHTTPAPI); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("failed to start API", err)
 	}
@@ -518,12 +537,14 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 	firstFire := schedule.Next(time.Now())
 	// Derive the cadence between two consecutive fires. For fixed interval
 	// schedules this is exact; for irregular cron expressions it's a best-effort
-	// approximation of "typical gap" — good enough for the staleness alert.
+	// approximation of "typical gap" — good enough for the staleness metric,
+	// which is all it feeds. The watchdog gets the schedule itself, below.
 	interval := schedule.Next(firstFire).Sub(firstFire)
 	metrics.SetPollInterval(interval)
-	// Long-cadence schedules (12h, 24h) must not trip the watchdog's default
-	// boot grace while legitimately waiting for their first fire.
-	livenessWatchdog.SetTickGrace(interval)
+	// Anchor the watchdog's tick rule to the actual schedule: it trips only
+	// when a due fire is verifiably missed, so irregular specs (business
+	// hours, weekends) never turn a legitimate gap into a process kill.
+	livenessWatchdog.SetSchedule(schedule)
 
 	writeStartupMessage(c, firstFire, filtering)
 
@@ -556,6 +577,12 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 
 	<-interrupt
 	scheduler.Stop()
+	// Stand the watchdog down before draining: the scheduler has stopped
+	// ticking on purpose, so a drain longer than the tick grace would
+	// otherwise be killed mid-shutdown.
+	if stopWatchdog != nil {
+		stopWatchdog()
+	}
 	log.Info("Waiting for running update to be finished...")
 	<-lock
 	return nil

@@ -22,8 +22,20 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   later tick skips at debug level, invisible at the default log level. The new
   watchdog goroutine arms before anything that can block and terminates the
   process (exit 1, for the restart policy to revive) when a single update run
-  exceeds one hour or the scheduler misses three poll intervals (min 15m —
-  which also catches a wedged boot). The exit path is deliberately
+  exceeds the stuck deadline (default 1h, tunable via the new
+  `--watchdog-stuck-deadline`) or the scheduler verifiably misses a scheduled
+  scan by more than the tick grace (default 15m, tunable via the new
+  `--watchdog-tick-grace`; the same grace bounds a boot that wedges before
+  reaching the scheduler). The scheduler rule is anchored to the actual cron
+  schedule — it trips only when a due fire was missed, so irregular specs
+  (business hours, weekends) never turn a legitimate gap into a kill — and it
+  knows when it doesn't apply: it suspends while an update run is in flight
+  (`--update-on-start` scans before the scheduler even starts; only the stuck
+  deadline bounds a running cycle), disarms entirely in HTTP-API-only mode
+  (`--http-api-update` without `--http-api-periodic-polls` never constructs a
+  scheduler, so "no ticks" is that mode's healthy steady state), and stands
+  down on the post-SIGTERM drain (the scheduler stops ticking on purpose while
+  the in-flight update finishes). The exit path is deliberately
   self-sufficient: the reason line is written best-effort from separate
   goroutines, so a deadlocked log hook or blocked stderr cannot suppress the
   exit. Skipped ticks caused by a still-running update are now logged at
@@ -35,8 +47,8 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   an hour after the last such scan whether or not the operator actually
   re-armed the service — decoupling alert resolution from remediation. The new
   gauge is recomputed every scan and reads the number of compose targets
-  **currently** stranded: empty `com.docker.compose.depends_on` while the
-  project still holds a `migrate`/`pg-ready` one-shot, excluding
+  **currently** stranded: a present-but-empty `com.docker.compose.depends_on`
+  while the project still holds a `migrate`/`pg-ready` one-shot, excluding
   `no-init-deps` opt-outs. It drops to 0 on the first scan after
   `docker compose up -d --force-recreate <service>` restores the label, so an
   alert on `watchtower_stranded_init_deps > 0` fires while broken and clears
@@ -48,9 +60,60 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   re-runs the stranded siblings ships alongside it (see Fixed).
 
 ### Fixed
+- **Reports no longer claim a container was "updated" when the update was
+  deliberately withheld.** Any container whose staleness was gated off after
+  the scan — an active [`--image-cooldown`](docs/arguments.md) window, the
+  post-rollback cooldown of `--health-check-gated`, or a rejected
+  `--rerun-init-deps` digest — was still optimistically marked updated for the
+  session report. The default notification template sends a message whenever
+  the report's `Updated` list is non-empty, so every poll inside a cooldown
+  window produced a notification claiming the container had been *updated*
+  when nothing was touched (and the JSON notifier listed it under `updated`).
+  Gated containers are now left in the scanned state and truthfully classify
+  as *stale* ("update available, not applied"). (The
+  `watchtower_containers_updated` metric and the HTTP API's `updated` count
+  are unaffected — both have always counted updated + stale together.)
+- **`--rerun-init-deps` no longer executes migrations for targets it will
+  never update.** The init-rerun loop gated only on staleness, but staleness
+  is deliberately also set for `monitor-only` containers and under global
+  `--no-restart` so reports can say "update available". With
+  `--rerun-init-deps` enabled, such a target's migration container was run
+  against the new image while the app itself was never updated — producing
+  exactly the new-schema-under-old-code state the feature exists to prevent,
+  as side-effecting work under a flag operators read as "observe only". The
+  rerun loop now uses the same eligibility predicate as the executor.
+- **The rejected-digest cache of `--rerun-init-deps` is no longer poisoned by
+  transient and orchestration failures.** Two repairs: (1) an orchestration
+  failure (exit −1) — most commonly the init dep's exited carcass having been
+  removed by a routine `docker system prune`, or a daemon error on
+  stop/create/start — is no longer cached as a digest rejection, since it says
+  nothing about the digest; previously a prune silently and permanently
+  disabled updates for every compose target with declared init deps (the dep
+  was still missing after any restart, so each new digest was re-rejected on
+  first sight, with only a one-time warning). The skip now re-warns every scan
+  and retries the next poll, healing as soon as the dep is restored. (2) A
+  genuine non-zero init exit now expires after 1 hour (mirroring the rollback
+  cooldown) instead of blocking the digest until a process restart or a new
+  image push — so a migration that failed because its database was briefly
+  down unblocks itself within the hour.
+- **Stranded-init-deps detection no longer misfires on intact `depends_on`
+  contracts.** The detection treated "no `service_completed_successfully`
+  deps" as "label dropped", which also matched a label populated only with
+  `service_started`/`service_healthy` conditions (a declared contract with
+  legitimately zero *init* deps) and a label that was never stamped at all. A
+  target like `depends_on: db: {condition: service_healthy}` in a project
+  containing any `restart: no` one-shot (a manual backup job, a debug
+  container) was flagged stranded: a warning every scan, a firing
+  `watchtower_stranded_init_deps` alert the operator could not resolve, and —
+  with the recovery above — that unrelated one-shot being executed before
+  every update of the target. The discriminator is now exactly the
+  present-but-**empty** `com.docker.compose.depends_on` label that a
+  `docker compose up --no-deps <svc>` recreate stamps; absent or populated
+  labels are never flagged.
 - **`--rerun-init-deps` now recovers a stranded target instead of only warning
-  about it.** When a compose target's `com.docker.compose.depends_on` is empty
-  but its project still holds one-shot `migrate`/`pg-ready` siblings — the state
+  about it.** When a compose target's `com.docker.compose.depends_on` is
+  present but empty while its project still holds one-shot `migrate`/`pg-ready`
+  siblings — the state
   a `docker compose up --no-deps <svc>` in-place recreate leaves behind (it
   stamps an EMPTY `depends_on` because `--no-deps` tells Compose to disregard the
   dependency graph), then carried verbatim across every later blue-green cutover
@@ -66,6 +129,22 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   of the empty label to blue-green cutovers: green inherits blue's labels
   verbatim (`GetCreateConfig` copies them), so it only ever propagates an
   already-empty value — the emptying happens at the `--no-deps` recreate.
+
+### Changed
+- **Go dependencies refreshed (minor/patch only).** Direct: `docker/cli`
+  v29.6.0 → v29.6.2, `shoutrrr` v0.16.1 → v0.16.2,
+  `prometheus/client_golang` v1.23.2 → v1.24.1. Indirect sweep includes
+  `golang.org/x/net` v0.57.0,
+  `golang.org/x/sys`/`text`/`term`/`sync`/`mod`/`tools`,
+  `prometheus/common` v0.70.1, `prometheus/procfs` v0.21.1, and
+  `klauspost/compress` v1.19.1. The shoutrrr bump deprecates
+  `shoutrrr.NewSender`; the notifier now calls `NewSenderWithOptions` with
+  zero options (behavior-identical — but the new `SenderOptions.Timeout` /
+  `HTTPClient` knobs are a future lever for bounding notification sends,
+  one of the wedge classes the liveness watchdog guards against).
+  `govulncheck` reports no reachable vulnerabilities after the refresh. The
+  Moby client (`moby/moby/client` v0.5.0, `moby/moby/api` v1.55.0), cobra,
+  cron, and Ginkgo/Gomega were already current.
 
 ### Security
 - **Go toolchain bumped 1.26.4 → 1.26.5 to fix a reachable `crypto/tls`

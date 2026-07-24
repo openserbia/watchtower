@@ -72,6 +72,12 @@ var _ = Describe("the update action", func() {
 	When("--rerun-init-deps is enabled", func() {
 		params := types.UpdateParams{RerunInitDeps: true}
 
+		BeforeEach(func() {
+			// These specs exercise the rejected-digest cache; don't let one
+			// spec's rejection leak into the next.
+			actions.ResetRejectedInitDigestsForTest()
+		})
+
 		buildComposeContainer := func(name, service, dependsOn string) types.Container {
 			labels := map[string]string{
 				"com.docker.compose.project": "rerun-test",
@@ -109,7 +115,12 @@ var _ = Describe("the update action", func() {
 			Expect(report.Updated()).To(HaveLen(1))
 		})
 
-		It("rejects the digest when the init dep exists nowhere on the daemon", func() {
+		It("skips the cycle WITHOUT caching the digest when the init dep is missing", func() {
+			// A routine `docker system prune` removes the exited one-shot
+			// carcass. That is an orchestration failure, not a verdict on the
+			// digest: caching it would permanently disable updates for this
+			// target (the dep is still missing after any restart, so every
+			// future digest would be re-rejected on first sight).
 			target := buildComposeContainer("rerun-dep-missing-target", "api",
 				"migrate:service_completed_successfully:true")
 			data := &TestData{
@@ -123,6 +134,91 @@ var _ = Describe("the update action", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.RerunInitContainers).To(BeEmpty())
 			Expect(report.Updated()).To(BeEmpty())
+
+			// The operator restores the one-shot (`docker compose up -d`); the
+			// very next poll must rerun it and let the update through — no new
+			// push, no process restart.
+			dep := buildComposeContainer("rerun-dep-missing-migrate", "migrate", "")
+			client.TestData.AllContainers = []types.Container{target, dep}
+
+			report, err = actions.Update(client, params)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.RerunInitContainers).To(HaveLen(1))
+			Expect(report.Updated()).To(HaveLen(1))
+		})
+
+		It("caches a genuinely failing init exit and retries only after the TTL", func() {
+			digest := types.ImageID("sha256:rerun-fail-digest")
+			target := buildComposeContainer("rerun-fail-target", "api",
+				"migrate:service_completed_successfully:true")
+			dep := buildComposeContainer("rerun-fail-migrate", "migrate", "")
+			data := &TestData{
+				Containers:        []types.Container{target},
+				AllContainers:     []types.Container{target, dep},
+				NewestImageByName: map[string]types.ImageID{target.Name(): digest},
+				InitExitByName:    map[string]int{dep.Name(): 2},
+			}
+			client := CreateMockClient(data, false, false)
+
+			// First poll: the migration genuinely fails → digest rejected,
+			// old container kept.
+			report, err := actions.Update(client, params)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.RerunInitContainers).To(HaveLen(1))
+			Expect(report.Updated()).To(BeEmpty())
+
+			// Second poll inside the TTL: served from the cache — the failing
+			// migration must NOT be executed again.
+			report, err = actions.Update(client, params)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.RerunInitContainers).To(HaveLen(1))
+			Expect(report.Updated()).To(BeEmpty())
+
+			// Past the TTL the rerun is retried (the failure may have been a
+			// transient dep, e.g. a briefly-down database).
+			actions.RewindRejectedInitDigestForTest(digest, 48*time.Hour)
+			report, err = actions.Update(client, params)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.RerunInitContainers).To(HaveLen(2))
+			Expect(report.Updated()).To(BeEmpty())
+		})
+
+		It("does not run init deps for monitor-only targets", func() {
+			// SetStale(true) is reached for monitor-only containers so reports
+			// can say "update available" — but executing their migrations would
+			// apply the new schema while deliberately never updating the app.
+			target := buildComposeContainer("rerun-monitor-target", "api",
+				"migrate:service_completed_successfully:true")
+			dep := buildComposeContainer("rerun-monitor-migrate", "migrate", "")
+			data := &TestData{
+				Containers:        []types.Container{target},
+				AllContainers:     []types.Container{target, dep},
+				NewestImageByName: map[string]types.ImageID{target.Name(): "sha256:rerun-monitor-digest"},
+			}
+			client := CreateMockClient(data, false, false)
+
+			monitorParams := types.UpdateParams{RerunInitDeps: true, MonitorOnly: true}
+			report, err := actions.Update(client, monitorParams)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.RerunInitContainers).To(BeEmpty())
+			Expect(report.Updated()).To(BeEmpty())
+		})
+
+		It("does not run init deps under --no-restart", func() {
+			target := buildComposeContainer("rerun-norestart-target", "api",
+				"migrate:service_completed_successfully:true")
+			dep := buildComposeContainer("rerun-norestart-migrate", "migrate", "")
+			data := &TestData{
+				Containers:        []types.Container{target},
+				AllContainers:     []types.Container{target, dep},
+				NewestImageByName: map[string]types.ImageID{target.Name(): "sha256:rerun-norestart-digest"},
+			}
+			client := CreateMockClient(data, false, false)
+
+			noRestartParams := types.UpdateParams{RerunInitDeps: true, NoRestart: true}
+			_, err := actions.Update(client, noRestartParams)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.RerunInitContainers).To(BeEmpty())
 		})
 	})
 

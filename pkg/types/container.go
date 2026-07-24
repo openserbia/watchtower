@@ -98,6 +98,11 @@ type Container interface {
 	ComposeService() string
 	ComposeDependencies() []string
 	ComposeInitDependencies() []string
+	// ComposeDependsOnRaw returns the raw com.docker.compose.depends_on label
+	// value and whether the label is present at all. Present-and-empty is the
+	// `docker compose up --no-deps` stamp that stranded-init-deps detection
+	// keys on; absent means no compose create ever stamped the container.
+	ComposeDependsOnRaw() (string, bool)
 	// HasNoInitDepsLabel reports whether the container opts out of stranded
 	// init-deps detection via com.centurylinklabs.watchtower.no-init-deps=true.
 	HasNoInitDepsLabel() bool

@@ -175,11 +175,11 @@ func Default() *Metrics {
 		}),
 		strandedInitDeps: promauto.NewCounter(prometheus.CounterOpts{
 			Name: "watchtower_stranded_init_deps_total",
-			Help: "Times --rerun-init-deps found a stale compose-managed target with no declared service_completed_successfully deps while its project still held one-shot init siblings (migrate/pg-ready) — the signature of a com.docker.compose.depends_on label dropped by a prior blue-green cutover. Non-zero means a service ran new code against an un-migrated schema; redeploy it via compose to restore the label. This is a CUMULATIVE counter (per-detection history for rate/debugging); alert on the watchtower_stranded_init_deps gauge instead so the alert resolves when the target is re-armed.",
+			Help: "Times --rerun-init-deps found a stale compose-managed target whose com.docker.compose.depends_on label is present but EMPTY while its project still held one-shot init siblings (migrate/pg-ready) — the stamp a `docker compose up --no-deps <svc>` recreate leaves after dropping the dependency graph. Non-zero means a service ran new code against an un-migrated schema; redeploy it via compose to restore the label. This is a CUMULATIVE counter (per-detection history for rate/debugging); alert on the watchtower_stranded_init_deps gauge instead so the alert resolves when the target is re-armed.",
 		}),
 		strandedInitDepsCurrent: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "watchtower_stranded_init_deps",
-			Help: "Number of compose-managed targets CURRENTLY stranded: empty com.docker.compose.depends_on while their project still holds a one-shot init sibling (migrate/pg-ready) and no no-init-deps opt-out. Recomputed every scan, so it drops to 0 on the first scan after the operator re-arms with `docker compose up -d --force-recreate <service>`. Unlike the _total counter this is a live gauge — alert on `> 0` for a NON-RESOLVING 'new code on un-migrated schema' signal that clears exactly when the label is restored.",
+			Help: "Number of compose-managed targets CURRENTLY stranded: a present-but-empty com.docker.compose.depends_on while their project still holds a one-shot init sibling (migrate/pg-ready) and no no-init-deps opt-out. Recomputed every scan, so it drops to 0 on the first scan after the operator re-arms with `docker compose up -d --force-recreate <service>`. Unlike the _total counter this is a live gauge — alert on `> 0` for a NON-RESOLVING 'new code on un-migrated schema' signal that clears exactly when the label is restored.",
 		}),
 		lastScanTime: promauto.NewGauge(prometheus.GaugeOpts{
 			Name: "watchtower_last_scan_timestamp_seconds",

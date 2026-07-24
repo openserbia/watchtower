@@ -90,7 +90,9 @@ func createNotifier(urls []string, level log.Level, tplString string, legacy boo
 	} else {
 		logger = stdlog.New(log.StandardLogger().WriterLevel(log.TraceLevel), "Shoutrrr: ", 0)
 	}
-	r, err := shoutrrr.NewSender(logger, urls...)
+	// Zero options keep the sender's default HTTP client and per-service
+	// timeout — identical behavior to the deprecated NewSender.
+	r, err := shoutrrr.NewSenderWithOptions(logger, types.SenderOptions{}, urls...)
 	if err != nil {
 		log.Fatalf("Failed to initialize Shoutrrr notifications: %s\n", err.Error())
 	}

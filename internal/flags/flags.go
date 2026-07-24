@@ -15,6 +15,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/openserbia/watchtower/internal/watchdog"
 )
 
 const hoursPerDay = 24
@@ -211,7 +213,21 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"no-watchdog",
 		"",
 		envBool("WATCHTOWER_NO_WATCHDOG"),
-		"Disable the liveness watchdog. By default watchtower exits (for the container restart policy to revive it) when the scheduler stops ticking or a single update run exceeds one hour — a wedged pull, notification send, or Docker API call otherwise strands the update lock and silently stops all scanning while the container still reports healthy.",
+		"Disable the liveness watchdog. By default watchtower exits (for the container restart policy to revive it) when the scheduler misses a scheduled scan or a single update run exceeds the stuck deadline — a wedged pull, notification send, or Docker API call otherwise strands the update lock and silently stops all scanning while the container still reports healthy. Prefer tuning --watchdog-stuck-deadline / --watchdog-tick-grace over disabling the protection entirely.",
+	)
+
+	flags.DurationP(
+		"watchdog-stuck-deadline",
+		"",
+		envDuration("WATCHTOWER_WATCHDOG_STUCK_DEADLINE", watchdog.DefaultStuckUpdateDeadline),
+		"How long a single update run may take before the liveness watchdog declares it wedged and exits the process. Raise this instead of reaching for --no-watchdog when legitimate runs exceed the default (large stacks over slow links).",
+	)
+
+	flags.DurationP(
+		"watchdog-tick-grace",
+		"",
+		envDuration("WATCHTOWER_WATCHDOG_TICK_GRACE", watchdog.DefaultTickGrace),
+		"How far past its next scheduled scan the scheduler may run before the liveness watchdog declares it dead and exits the process. Also bounds startup: the process must reach the scheduler within this window.",
 	)
 
 	flags.BoolP(

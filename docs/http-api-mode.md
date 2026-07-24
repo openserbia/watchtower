@@ -66,6 +66,11 @@ By default, enabling this flag **disables** periodic polling (`--interval`
 / `--schedule`). Pass `--http-api-periodic-polls` to keep the scheduler
 running alongside the HTTP trigger.
 
+In this API-only mode the [liveness watchdog](arguments.md#disable_the_liveness_watchdog)
+automatically disarms its scheduler rule (there is no scheduler to
+watch); the stuck-update deadline stays active and still bounds
+API-triggered update runs.
+
 Trigger a full scan:
 
 ```bash

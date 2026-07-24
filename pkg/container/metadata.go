@@ -133,6 +133,17 @@ func (c Container) ComposeInitDependencies() []string {
 	return names
 }
 
+// ComposeDependsOnRaw returns the raw com.docker.compose.depends_on label
+// value and whether the label is present at all. Compose stamps the label on
+// every container it creates, so the two axes carry distinct signals:
+// present-and-empty is what a `docker compose up --no-deps <svc>` recreate
+// leaves behind (the dependency graph was disregarded), while absent means
+// the container never went through a label-stamping compose create at all.
+// Stranded-init-deps detection keys on exactly the present-and-empty shape.
+func (c Container) ComposeDependsOnRaw() (string, bool) {
+	return c.getLabelValue(composeDependsOnLabel)
+}
+
 // composeDep is the parsed shape of one entry in com.docker.compose.depends_on.
 // Internal to this package — call sites use ComposeDependencies (graph only) or
 // ComposeInitDependencies (init-only) depending on intent.

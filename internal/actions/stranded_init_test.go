@@ -17,10 +17,14 @@ const strandedTestProject = "proj"
 // newStrandedFixture builds a compose-managed container fixture with a given
 // service name and restart policy. Only the fields strandedInitSiblings /
 // isOneShotInitSibling read are populated; imageInfo is irrelevant and nil.
+// The depends_on label is present-and-empty — the shape every compose create
+// stamps on a dep-less service and, crucially, the one `--no-deps` leaves on
+// a target whose deps were dropped.
 func newStrandedFixture(service, restart string) types.Container {
 	labels := map[string]string{
-		"com.docker.compose.project": strandedTestProject,
-		"com.docker.compose.service": service,
+		"com.docker.compose.project":    strandedTestProject,
+		"com.docker.compose.service":    service,
+		"com.docker.compose.depends_on": "",
 	}
 
 	return container.NewContainer(&dockercontainer.InspectResponse{
@@ -236,6 +240,53 @@ func TestStrandedInitSiblings(t *testing.T) {
 
 		if got := strandedInitSiblings(optOut, []types.Container{optOut, migrate}); got != nil {
 			t.Fatalf("expected nil for a no-init-deps opt-out, got %v", got)
+		}
+	})
+
+	t.Run("absent depends_on label is NOT stranded", func(t *testing.T) {
+		// No compose create ever stamped the label (e.g. the container was
+		// hand-run with project/service labels): there is no dropped contract
+		// to recover, so the one-shot in the project must not be executed
+		// against it.
+		noLabel := container.NewContainer(&dockercontainer.InspectResponse{
+			ID:   "api",
+			Name: "api",
+			HostConfig: &dockercontainer.HostConfig{
+				RestartPolicy: dockercontainer.RestartPolicy{Name: "unless-stopped"},
+			},
+			Config: &dockercontainer.Config{Labels: map[string]string{
+				"com.docker.compose.project": strandedTestProject,
+				"com.docker.compose.service": "api",
+			}},
+		}, nil)
+		migrate := newStrandedFixture("migrate", "no")
+
+		if got := strandedInitSiblings(noLabel, []types.Container{noLabel, migrate}); got != nil {
+			t.Fatalf("expected nil for an absent depends_on label, got %v", got)
+		}
+	})
+
+	t.Run("populated non-init depends_on is NOT stranded", func(t *testing.T) {
+		// depends_on: db: {condition: service_healthy} is an intact declared
+		// contract with zero *init* deps — not a dropped label. Flagging it
+		// stranded would fire an unresolvable alert and execute an unrelated
+		// one-shot before every update of this target.
+		healthyDep := container.NewContainer(&dockercontainer.InspectResponse{
+			ID:   "api",
+			Name: "api",
+			HostConfig: &dockercontainer.HostConfig{
+				RestartPolicy: dockercontainer.RestartPolicy{Name: "unless-stopped"},
+			},
+			Config: &dockercontainer.Config{Labels: map[string]string{
+				"com.docker.compose.project":    strandedTestProject,
+				"com.docker.compose.service":    "api",
+				"com.docker.compose.depends_on": "db:service_healthy:true",
+			}},
+		}, nil)
+		backupOneShot := newStrandedFixture("backup", "no")
+
+		if got := strandedInitSiblings(healthyDep, []types.Container{healthyDep, backupOneShot}); got != nil {
+			t.Fatalf("expected nil for an intact service_healthy depends_on, got %v", got)
 		}
 	})
 

@@ -286,25 +286,54 @@ By default watchtower runs an internal watchdog that terminates the process (exi
 loop has verifiably stopped making progress, so the container restart policy can revive a working
 instance. Two conditions trip it:
 
-- **A stuck update run**: a single update cycle has been running for over an hour. A stalled registry
-  pull, a notification send without a timeout, or a dead Docker socket otherwise strands the shared
-  update lock — every subsequent scheduled scan is skipped and updating silently stops while the
-  container keeps reporting healthy.
-- **A dead scheduler**: no scheduler tick for three poll intervals (at least 15 minutes). This also
-  covers a boot that wedges before the first scan — for example a stale socket mount after a rootless
-  Docker daemon restart.
+- **A stuck update run**: a single update cycle has been running past the stuck deadline (default one
+  hour, tunable via `--watchdog-stuck-deadline`). A stalled registry pull, a notification send without
+  a timeout, or a dead Docker socket otherwise strands the shared update lock — every subsequent
+  scheduled scan is skipped and updating silently stops while the container keeps reporting healthy.
+- **A missed scheduled scan**: the scheduler failed to fire a scan that was due more than the tick grace
+  ago (default 15 minutes, tunable via `--watchdog-tick-grace`). The deadline is anchored to the actual
+  schedule, so irregular cron expressions (business hours, weekends) are safe: a legitimate overnight or
+  weekend gap never counts as a miss. Before the scheduler exists, the same grace bounds the boot phase,
+  covering a startup that wedges before the first scan — for example a stale socket mount after a
+  rootless Docker daemon restart. While an update run is in flight only the stuck deadline applies (an
+  `--update-on-start` scan runs before the scheduler starts, so missing ticks prove nothing then), and
+  in HTTP-API-only mode (`--http-api-update` without `--http-api-periodic-polls`) this rule is disarmed
+  entirely because no scheduler ever runs — the stuck deadline still bounds API-triggered runs.
 
 The exit path deliberately depends on nothing else in the process (not the logger, not a writable
 stderr), so a wedge in those cannot keep the watchdog from firing. Long update runs also surface as a
 per-poll warning (`Skipped scheduled scan: the previous update is still running`) before the deadline
-trips. Disable only if your deployment has no restart policy or legitimately runs single update cycles
-longer than an hour.
+trips. Prefer raising the deadlines below over disabling the watchdog; disable it only if your
+deployment has no restart policy.
 
 ```text
             Argument: --no-watchdog
 Environment Variable: WATCHTOWER_NO_WATCHDOG
                 Type: Boolean
              Default: false
+```
+
+## Watchdog stuck-update deadline
+How long a single update run may take before the liveness watchdog declares it wedged and exits the
+process. Raise this instead of reaching for `--no-watchdog` when legitimate update cycles exceed the
+default — for example a large stack pulled over a slow link.
+
+```text
+            Argument: --watchdog-stuck-deadline
+Environment Variable: WATCHTOWER_WATCHDOG_STUCK_DEADLINE
+                Type: Duration
+             Default: 1h
+```
+
+## Watchdog tick grace
+How far past a due scheduled scan the scheduler may run before the liveness watchdog declares it dead
+and exits the process. Also bounds the boot phase: startup must reach the scheduler within this window.
+
+```text
+            Argument: --watchdog-tick-grace
+Environment Variable: WATCHTOWER_WATCHDOG_TICK_GRACE
+                Type: Duration
+             Default: 15m
 ```
 
 ## Audit unmanaged containers
