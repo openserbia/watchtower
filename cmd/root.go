@@ -63,6 +63,12 @@ var (
 	// livenessWatchdog is nil when disabled (--no-watchdog or --run-once);
 	// all its methods are nil-safe.
 	livenessWatchdog *watchdog.Watchdog
+	// updateState is the daemon's single instance of the cross-run update
+	// state (rollback cooldowns, image-cooldown clocks, previous-image
+	// rotation, rejected init digests, notification dedup). Constructed once
+	// here and threaded into every actions.Update / actions.AuditUnmanaged
+	// call, so state ownership lives in exactly one place.
+	updateState = actions.NewState()
 	// stopWatchdog cancels the watchdog's Run goroutine. Called on the graceful
 	// shutdown path, where the scheduler stops ticking on purpose while the
 	// in-flight update drains. Nil when the watchdog is disabled.
@@ -638,7 +644,7 @@ func runUpdatesWithNotifications(filter t.Filter) (metricResults *metrics.Metric
 	// Always-on: classify containers and publish managed/excluded/unmanaged
 	// gauges so the Grafana dashboard has data to show. Log warnings are
 	// opt-in via --audit-unmanaged (only meaningful under --label-enable).
-	if err := actions.AuditUnmanaged(runCtx, client, scope, auditUnmanaged && enableLabel); err != nil {
+	if err := actions.AuditUnmanaged(runCtx, client, scope, auditUnmanaged && enableLabel, updateState); err != nil {
 		log.WithError(err).Warn("Failed to audit container watch status")
 	}
 	updateParams := t.UpdateParams{
@@ -665,7 +671,7 @@ func runUpdatesWithNotifications(filter t.Filter) (metricResults *metrics.Metric
 		// disabled watchdog).
 		Heartbeat: livenessWatchdog.RunProgress,
 	}
-	result, err := actions.Update(runCtx, client, updateParams)
+	result, err := actions.Update(runCtx, client, updateParams, updateState)
 	if err != nil {
 		log.Error(err)
 	}

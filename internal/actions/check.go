@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -65,25 +64,6 @@ func CheckForSanity(ctx context.Context, client container.Client, filter types.F
 	return nil
 }
 
-// unmanagedState tracks which containers we've already warned about across
-// polls. The audit deliberately emits at startup (empty known set → everything
-// new) and then stays quiet unless the set changes: a new unlabeled container
-// shows up (warn) or a previously-unlabeled one gets labeled or removed
-// (info). That turns a spammy per-poll warning into a steady-state signal
-// operators can actually act on.
-var (
-	auditMu        sync.Mutex
-	knownUnmanaged = make(map[string]struct{})
-)
-
-// ResetAuditStateForTest clears the in-memory audit cache. Intended for use
-// between test specs — callers in production code have no reason to invoke it.
-func ResetAuditStateForTest() {
-	auditMu.Lock()
-	defer auditMu.Unlock()
-	knownUnmanaged = make(map[string]struct{})
-}
-
 // AuditUnmanaged classifies every container visible to the daemon into
 // managed / excluded / unmanaged buckets, publishes those counts to
 // Prometheus so the Grafana dashboard can show them, and — when logWarnings
@@ -95,7 +75,7 @@ func ResetAuditStateForTest() {
 // Metrics publication is unconditional — Prometheus gauges are always-on
 // observability. The logWarnings flag gates only the `docker logs` output,
 // typically wired to --audit-unmanaged.
-func AuditUnmanaged(ctx context.Context, client container.Client, scope string, logWarnings bool) error {
+func AuditUnmanaged(ctx context.Context, client container.Client, scope string, logWarnings bool, state *State) error {
 	filter := filters.NoFilter
 	if scope != "" {
 		filter = filters.FilterByScope(scope, filter)
@@ -132,30 +112,10 @@ func AuditUnmanaged(ctx context.Context, client container.Client, scope string, 
 		return nil
 	}
 
-	auditMu.Lock()
-	defer auditMu.Unlock()
-
-	for name, c := range unmanagedNow {
-		if _, seen := knownUnmanaged[name]; seen {
-			continue
-		}
-		log.WithFields(log.Fields{
-			fieldContainer: name,
-			fieldImage:     c.ImageName(),
-		}).Warn("Container has no com.centurylinklabs.watchtower.enable label — silently skipped under --label-enable. Set the label to true or false to make the intent explicit.")
-	}
-
-	for name := range knownUnmanaged {
-		if _, still := unmanagedNow[name]; still {
-			continue
-		}
-		log.WithField(fieldContainer, name).Info("Previously-unmanaged container is now labeled or removed — audit cleared")
-	}
-
-	knownUnmanaged = make(map[string]struct{}, len(unmanagedNow))
-	for name := range unmanagedNow {
-		knownUnmanaged[name] = struct{}{}
-	}
+	// Change-detected warn/info output plus the known-set rotation live on
+	// State so the audit dedup shares the same daemon-lifetime ownership (and
+	// per-spec test isolation) as the rest of the cross-run state.
+	state.noteUnmanaged(unmanagedNow)
 
 	return nil
 }

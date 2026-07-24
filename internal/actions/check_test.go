@@ -20,7 +20,6 @@ var _ = Describe("AuditUnmanaged", func() {
 	var logBuf *bytes.Buffer
 
 	BeforeEach(func() {
-		actions.ResetAuditStateForTest()
 		logBuf = &bytes.Buffer{}
 		logrus.SetOutput(logBuf)
 		logrus.SetLevel(logrus.InfoLevel)
@@ -59,7 +58,7 @@ var _ = Describe("AuditUnmanaged", func() {
 		}
 		client := CreateMockClient(testData, false, false)
 
-		Expect(actions.AuditUnmanaged(context.Background(), client, "", true)).To(Succeed())
+		Expect(actions.AuditUnmanaged(context.Background(), client, "", true, testState)).To(Succeed())
 		Expect(logBuf.String()).NotTo(ContainSubstring("buildx_buildkit"))
 		Expect(logBuf.String()).To(ContainSubstring("real-svc"))
 	})
@@ -74,7 +73,7 @@ var _ = Describe("AuditUnmanaged", func() {
 		}
 		client := CreateMockClient(testData, false, false)
 
-		Expect(actions.AuditUnmanaged(context.Background(), client, "", true)).To(Succeed())
+		Expect(actions.AuditUnmanaged(context.Background(), client, "", true, testState)).To(Succeed())
 		Expect(logBuf.String()).To(ContainSubstring("unlabeled-svc"))
 		Expect(logBuf.String()).NotTo(ContainSubstring("opted-in"))
 		Expect(logBuf.String()).NotTo(ContainSubstring("opted-out"))
@@ -89,7 +88,7 @@ var _ = Describe("AuditUnmanaged", func() {
 		}
 		client := CreateMockClient(testData, false, false)
 
-		Expect(actions.AuditUnmanaged(context.Background(), client, "", true)).To(Succeed())
+		Expect(actions.AuditUnmanaged(context.Background(), client, "", true, testState)).To(Succeed())
 		Expect(logBuf.String()).To(BeEmpty())
 	})
 
@@ -101,11 +100,11 @@ var _ = Describe("AuditUnmanaged", func() {
 		}
 		client := CreateMockClient(testData, false, false)
 
-		Expect(actions.AuditUnmanaged(context.Background(), client, "", true)).To(Succeed())
+		Expect(actions.AuditUnmanaged(context.Background(), client, "", true, testState)).To(Succeed())
 		Expect(logBuf.String()).To(ContainSubstring("stable-unlabeled"))
 
 		logBuf.Reset()
-		Expect(actions.AuditUnmanaged(context.Background(), client, "", true)).To(Succeed())
+		Expect(actions.AuditUnmanaged(context.Background(), client, "", true, testState)).To(Succeed())
 		Expect(logBuf.String()).To(BeEmpty())
 	})
 
@@ -116,12 +115,12 @@ var _ = Describe("AuditUnmanaged", func() {
 			},
 		}
 		client := CreateMockClient(baseline, false, false)
-		Expect(actions.AuditUnmanaged(context.Background(), client, "", true)).To(Succeed())
+		Expect(actions.AuditUnmanaged(context.Background(), client, "", true, testState)).To(Succeed())
 		logBuf.Reset()
 
 		// Second poll: a new unmanaged container shows up.
 		baseline.Containers = append(baseline.Containers, newMock("newly-deployed", map[string]string{}))
-		Expect(actions.AuditUnmanaged(context.Background(), client, "", true)).To(Succeed())
+		Expect(actions.AuditUnmanaged(context.Background(), client, "", true, testState)).To(Succeed())
 		Expect(logBuf.String()).To(ContainSubstring("newly-deployed"))
 		Expect(logBuf.String()).NotTo(ContainSubstring("existing-unlabeled"))
 	})
@@ -134,7 +133,7 @@ var _ = Describe("AuditUnmanaged", func() {
 		}
 		client := CreateMockClient(testData, false, false)
 
-		Expect(actions.AuditUnmanaged(context.Background(), client, "", false)).To(Succeed())
+		Expect(actions.AuditUnmanaged(context.Background(), client, "", false, testState)).To(Succeed())
 		Expect(logBuf.String()).To(BeEmpty())
 	})
 
@@ -145,14 +144,14 @@ var _ = Describe("AuditUnmanaged", func() {
 			},
 		}
 		client := CreateMockClient(testData, false, false)
-		Expect(actions.AuditUnmanaged(context.Background(), client, "", true)).To(Succeed())
+		Expect(actions.AuditUnmanaged(context.Background(), client, "", true, testState)).To(Succeed())
 		logBuf.Reset()
 
 		// Second poll: operator added the enable label.
 		testData.Containers = []types.Container{
 			newMock("will-be-labeled", map[string]string{"com.centurylinklabs.watchtower.enable": "true"}),
 		}
-		Expect(actions.AuditUnmanaged(context.Background(), client, "", true)).To(Succeed())
+		Expect(actions.AuditUnmanaged(context.Background(), client, "", true, testState)).To(Succeed())
 		Expect(logBuf.String()).To(ContainSubstring("will-be-labeled"))
 		Expect(logBuf.String()).To(ContainSubstring("audit cleared"))
 	})

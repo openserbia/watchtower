@@ -13,11 +13,11 @@
 > `--rerun-stranded-init-deps`. Fixing bug 6's tests also surfaced and fixed a
 > reporting bug not in this list: containers whose staleness was gated off
 > post-scan (image cooldown, rollback cooldown, rejected digest) were
-> notified as *updated* every poll. Still open: flaw B (`Daemon` state
-> consolidation — softened: false watchdog kills are gone and the rejection
-> cache has a TTL, but the five package-level maps remain) and flaw C (the
-> scan→plan→execute pipeline; its bug classes 4/5 are fixed, the monolith
-> refactor is not).
+> notified as *updated* every poll. **Step 5 (flaw B) is also IMPLEMENTED**:
+> all cross-run state is consolidated behind `actions.State` (one instance in
+> `cmd.Run`, fresh per test spec, `Reset…ForTest` helpers gone). The only item
+> still open is flaw C (the scan→plan→execute pipeline; its bug classes 4/5
+> are fixed, the monolith refactor is not).
 
 **Date:** 2026-07-22
 **Reviewer:** analysis pass (no code changed)
@@ -241,9 +241,12 @@ accepts a context** — the seam exists now and didn't before.
 
 ### Flaw B — the watchdog silently broke the "restart = operator touch-point" contract
 
-> ⏳ **OPEN** (softened): false watchdog kills are gone, restarts are rare again,
-> and `rejectedInitDigests` now has a TTL regardless — but the five
-> package-level maps and the `Daemon` consolidation remain future work.
+> ✅ **IMPLEMENTED** — all cross-run state (the five maps plus `knownUnmanaged`)
+> now lives behind one `actions.State`, constructed once in `cmd.Run` and
+> threaded into `Update`/`AuditUnmanaged`; the `Reset…ForTest` pattern is gone
+> (tests build a fresh `State` per spec) and persistence has exactly one home.
+> The cmd-level client/notifier/watchdog globals were deliberately left as-is —
+> the state ownership was the load-bearing part of this flaw.
 
 `internal/actions` now holds five package-level mutex-guarded maps — `failedRollbacks`,
 `pendingImages`, `previousImages`, `rejectedInitDigests`, `selfStartFailures`

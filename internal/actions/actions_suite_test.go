@@ -20,10 +20,15 @@ func TestActions(t *testing.T) {
 	RunSpecs(t, "Actions Suite")
 }
 
-// Reset package-level state between specs. previousImages is populated by
-// every successful update and would otherwise leak across tests.
+// testState is the per-spec instance of the daemon's cross-run update state.
+// A fresh one per spec replaces the historical package-level maps and their
+// Reset…ForTest helpers: state written by one spec can never leak into the
+// next, and within a spec it persists across multiple Update calls exactly
+// like the daemon's single instance does across polls.
+var testState *actions.State
+
 var _ = BeforeEach(func() {
-	actions.ResetPreviousImagesForTest()
+	testState = actions.NewState()
 })
 
 var _ = Describe("the actions package", func() {

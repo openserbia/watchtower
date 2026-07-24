@@ -7,7 +7,6 @@ import (
 	"maps"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	dockercontainer "github.com/moby/moby/api/types/container"
@@ -45,200 +44,6 @@ const (
 // a const) so tests can lower it.
 var healthPollInterval = 2 * time.Second
 
-var (
-	failedRollbacksMu sync.Mutex
-	// failedRollbacks tracks the last rollback time per container name. An
-	// in-memory map is intentional: watchtower state resets on restart, and
-	// operators who want to force a retry after a restart are exactly who
-	// should benefit from that behavior.
-	failedRollbacks = make(map[string]time.Time)
-
-	pendingImagesMu sync.Mutex
-	// pendingImages tracks digests first seen during an active --image-cooldown
-	// window but not yet applied. Keyed by container name. When the digest
-	// matches the map entry and the cooldown has elapsed, the update proceeds;
-	// if the registry serves a different digest during the window (author
-	// re-pushed), the entry resets so the clock restarts.
-	pendingImages = make(map[string]pendingImage)
-
-	previousImagesMu sync.Mutex
-	// previousImages keeps the digest a container was running on *before* its
-	// last successful update, keyed by container name. The next successful
-	// update of that container hands the recorded digest to --cleanup and
-	// rotates this slot to the digest just retired. Net effect: at any moment
-	// each managed container has exactly one prior generation preserved on
-	// disk, so a failed ContainerCreate (e.g. tag-race / image GC) leaves a
-	// recoverable starting point. Survives only within a process — on
-	// watchtower restart this resets, which under-cleans by one generation
-	// for the next update of each container; that's a deliberate trade in
-	// favor of zero persistent state.
-	previousImages = make(map[string]types.ImageID)
-
-	rejectedInitDigestsMu sync.Mutex
-	// rejectedInitDigests holds image digests whose --rerun-init-deps init
-	// container exited non-zero in the current Watchtower process. Keyed by
-	// digest, so a target whose newest image still resolves to a rejected
-	// digest stays skipped until the registry serves a different digest
-	// (operator pushed a fix) or the entry outlives rejectedInitDigestTTL —
-	// the TTL is what lets a transient dep failure (a briefly-down database
-	// failing a pg-ready probe) self-heal without a new push or a process
-	// restart. Orchestration failures (exit -1) are never cached: they say
-	// nothing about the digest. In-memory only — also clears on Watchtower
-	// restart, which is intentional: a restart represents an operator
-	// touch-point that should trigger one retry.
-	rejectedInitDigests = make(map[types.ImageID]rejectionReason)
-
-	selfStartFailMu sync.Mutex
-	// selfStartFailures tracks the last time we *notified* about a self-update
-	// start failure, keyed by container name + a short signature of the error.
-	// A wedged self-update re-logs the same start failure every poll (default
-	// 60s); promoting each repeat to an Error turns logrus's notification hook
-	// into a per-poll storm. We notify on the first occurrence (and on any
-	// genuinely different failure) and suppress identical repeats within
-	// selfStartFailCooldown, logging them at Debug instead. In-memory only —
-	// resets on restart, which is the right behavior: a restart is an operator
-	// touch-point that should surface the next failure loudly. Mirrors the
-	// knownUnmanaged + auditMu dedup pattern in check.go.
-	selfStartFailures = make(map[string]time.Time)
-)
-
-// selfStartFailCooldown is the window during which an identical self-update
-// start failure is suppressed (logged at Debug) after it has already notified
-// once. A var so tests can shrink it.
-var selfStartFailCooldown = 1 * time.Hour
-
-// rejectedInitDigestTTL bounds how long a non-zero init-container exit keeps
-// its digest rejected before the rerun is retried. Mirrors rollbackCooldown's
-// thrash-prevention role: hourly retries of a genuinely broken migration are
-// bounded work (operators using --rerun-init-deps run idempotent migrations by
-// contract), while a transiently-failing dep unblocks itself within the hour.
-var rejectedInitDigestTTL = 1 * time.Hour
-
-type pendingImage struct {
-	digest    types.ImageID
-	firstSeen time.Time
-}
-
-// rejectionReason captures why a digest is in the rejected-digest cache.
-// Surfaced in skip-reason logs so operators can correlate a stuck container
-// with the upstream init-container failure.
-type rejectionReason struct {
-	Container string
-	Dep       string
-	ExitCode  int
-	At        time.Time
-}
-
-// rollbackCooldownRemaining reports how long the container should continue to
-// be skipped for being on post-rollback cooldown. Zero = not on cooldown.
-func rollbackCooldownRemaining(containerName string) time.Duration {
-	failedRollbacksMu.Lock()
-	defer failedRollbacksMu.Unlock()
-	last, ok := failedRollbacks[containerName]
-	if !ok {
-		return 0
-	}
-	remaining := rollbackCooldown - time.Since(last)
-	if remaining <= 0 {
-		delete(failedRollbacks, containerName)
-		return 0
-	}
-	return remaining
-}
-
-func recordRollback(containerName string) {
-	failedRollbacksMu.Lock()
-	defer failedRollbacksMu.Unlock()
-	failedRollbacks[containerName] = time.Now()
-}
-
-// isRejectedInitDigest reports whether the given digest recently failed
-// --rerun-init-deps in this Watchtower process. Used to short-circuit
-// stale-checks without flooding logs every poll. Entries past
-// rejectedInitDigestTTL are dropped lazily here, arming a retry.
-func isRejectedInitDigest(id types.ImageID) (rejectionReason, bool) {
-	rejectedInitDigestsMu.Lock()
-	defer rejectedInitDigestsMu.Unlock()
-	r, ok := rejectedInitDigests[id]
-	if !ok {
-		return r, false
-	}
-	if time.Since(r.At) >= rejectedInitDigestTTL {
-		delete(rejectedInitDigests, id)
-		return rejectionReason{}, false
-	}
-	return r, true
-}
-
-func rejectInitDigest(id types.ImageID, reason rejectionReason) {
-	rejectedInitDigestsMu.Lock()
-	defer rejectedInitDigestsMu.Unlock()
-	rejectedInitDigests[id] = reason
-}
-
-// ResetRejectedInitDigestsForTest clears the in-memory rejected-digest cache.
-// Test-only helper, parallel to the cooldown ResetFor… utilities above.
-func ResetRejectedInitDigestsForTest() {
-	rejectedInitDigestsMu.Lock()
-	defer rejectedInitDigestsMu.Unlock()
-	rejectedInitDigests = make(map[types.ImageID]rejectionReason)
-}
-
-// RewindRejectedInitDigestForTest shifts a rejected digest's recorded time
-// backwards by the given amount, simulating TTL expiry without making tests
-// sleep. Parallel to RewindCooldownFirstSeenForTest.
-func RewindRejectedInitDigestForTest(id types.ImageID, by time.Duration) {
-	rejectedInitDigestsMu.Lock()
-	defer rejectedInitDigestsMu.Unlock()
-	if r, ok := rejectedInitDigests[id]; ok {
-		r.At = r.At.Add(-by)
-		rejectedInitDigests[id] = r
-	}
-}
-
-// shouldNotifySelfStartFailure reports whether a self-update start failure for
-// the given container name and error should be logged at Error (which the
-// logrus notification hook turns into a notification) or suppressed to Debug.
-// It returns true — notify — on the first sighting of a (name, error-signature)
-// pair and again once selfStartFailCooldown has elapsed, recording the
-// notification time when it does. A genuinely different failure has a different
-// signature and so always notifies. Identical repeats inside the cooldown
-// return false. Mirrors the knownUnmanaged dedup in check.go.
-func shouldNotifySelfStartFailure(containerName string, err error) bool {
-	key := containerName + "\x00" + selfStartFailSignature(err)
-	now := time.Now()
-
-	selfStartFailMu.Lock()
-	defer selfStartFailMu.Unlock()
-
-	if last, seen := selfStartFailures[key]; seen && now.Sub(last) < selfStartFailCooldown {
-		return false
-	}
-	selfStartFailures[key] = now
-	return true
-}
-
-// selfStartFailSignature reduces an error to a short, stable key so that
-// repeated identical failures dedup but a different failure mode still
-// notifies. The full error string already varies little poll-to-poll for the
-// same root cause (e.g. a fixed "address already in use" bind), so we key on
-// it directly; an empty error never occurs on this path but maps to a constant
-// for safety.
-func selfStartFailSignature(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
-}
-
-// ResetSelfStartFailuresForTest clears the in-memory self-update start-failure
-// dedup cache. Test-only helper, parallel to ResetAuditStateForTest.
-func ResetSelfStartFailuresForTest() {
-	selfStartFailMu.Lock()
-	defer selfStartFailMu.Unlock()
-	selfStartFailures = make(map[string]time.Time)
-}
-
 // resolveImageCooldown picks the effective cooldown for a container:
 // per-container label > global flag > 0 (disabled). Zero means "apply
 // immediately" — the pre-v1.12 behavior.
@@ -275,115 +80,6 @@ func resolveBlueGreenDrain(c types.Container, params types.UpdateParams) time.Du
 	return defaultBlueGreenDrain
 }
 
-// evaluateImageCooldown is the single decision point for "should this digest
-// apply now?" under an active cooldown. Returns:
-//   - proceed=true when the cooldown has elapsed (and clears the pending entry)
-//   - proceed=false otherwise, with remaining giving the operator a useful
-//     "retry in N" number for the log line
-//
-// Resets the pending entry when the registry serves a different digest —
-// that's the signal the image author pushed a follow-up, so the clock should
-// restart with the new digest.
-func evaluateImageCooldown(containerName string, newest types.ImageID, cooldown time.Duration) (proceed bool, remaining time.Duration) {
-	pendingImagesMu.Lock()
-	defer pendingImagesMu.Unlock()
-
-	entry, tracked := pendingImages[containerName]
-	now := time.Now()
-
-	switch {
-	case !tracked, entry.digest != newest:
-		// First sighting of this digest (either no prior record, or the
-		// digest changed mid-cooldown). Record and defer.
-		pendingImages[containerName] = pendingImage{digest: newest, firstSeen: now}
-		return false, cooldown
-	case now.Sub(entry.firstSeen) >= cooldown:
-		// Stable long enough — apply and clear state.
-		delete(pendingImages, containerName)
-		return true, 0
-	default:
-		return false, cooldown - now.Sub(entry.firstSeen)
-	}
-}
-
-// pendingImageCount reports the number of containers currently inside an
-// active cooldown window. Used for watchtower_containers_in_cooldown.
-func pendingImageCount() int {
-	pendingImagesMu.Lock()
-	defer pendingImagesMu.Unlock()
-	return len(pendingImages)
-}
-
-// EvaluateImageCooldownForTest exposes the cooldown decision function for
-// external tests. Not for production use.
-func EvaluateImageCooldownForTest(containerName string, newest types.ImageID, cooldown time.Duration) (bool, time.Duration) {
-	return evaluateImageCooldown(containerName, newest, cooldown)
-}
-
-// ResetCooldownStateForTest clears the in-memory cooldown map. External
-// test-only helper.
-func ResetCooldownStateForTest() {
-	pendingImagesMu.Lock()
-	defer pendingImagesMu.Unlock()
-	pendingImages = make(map[string]pendingImage)
-}
-
-// rotatePreviousImage records the just-retired digest for a container and
-// returns whatever digest was previously held in that slot. The returned ID
-// is the one safe to hand to --cleanup; the freshly-stored ID stays on disk
-// as the rollback target until the next update of this container rotates it
-// out. An empty stored or rotated value is a normal first-pass condition,
-// not an error.
-func rotatePreviousImage(containerName string, justRetired types.ImageID) types.ImageID {
-	previousImagesMu.Lock()
-	defer previousImagesMu.Unlock()
-	prior := previousImages[containerName]
-	if justRetired == "" {
-		// Don't blow away a known prior with a sentinel. Leaves the map slot
-		// alone so the next real rotation still finds the recorded digest.
-		return prior
-	}
-	previousImages[containerName] = justRetired
-	return prior
-}
-
-// ResetPreviousImagesForTest clears the in-memory previous-image map.
-// External test-only helper.
-func ResetPreviousImagesForTest() {
-	previousImagesMu.Lock()
-	defer previousImagesMu.Unlock()
-	previousImages = make(map[string]types.ImageID)
-}
-
-// SeedPreviousImageForTest pre-records a prior digest for a container so a
-// test's first Update behaves as if it were the second (cleanup of the
-// previous-previous fires immediately). External test-only helper.
-func SeedPreviousImageForTest(containerName string, id types.ImageID) {
-	previousImagesMu.Lock()
-	defer previousImagesMu.Unlock()
-	previousImages[containerName] = id
-}
-
-// PreviousImageForTest exposes the recorded prior digest for a container,
-// for assertions in external tests.
-func PreviousImageForTest(containerName string) types.ImageID {
-	previousImagesMu.Lock()
-	defer previousImagesMu.Unlock()
-	return previousImages[containerName]
-}
-
-// RewindCooldownFirstSeenForTest shifts a container's recorded firstSeen
-// backwards by the given amount, simulating the passage of wall-clock time
-// without making tests sleep.
-func RewindCooldownFirstSeenForTest(containerName string, by time.Duration) {
-	pendingImagesMu.Lock()
-	defer pendingImagesMu.Unlock()
-	if entry, ok := pendingImages[containerName]; ok {
-		entry.firstSeen = entry.firstSeen.Add(-by)
-		pendingImages[containerName] = entry
-	}
-}
-
 // errNoHealthcheck signals that the container has no HEALTHCHECK defined and
 // health gating cannot be enforced. Treated as a warning, not a failure.
 var errNoHealthcheck = errors.New("container has no HEALTHCHECK; gating skipped")
@@ -398,13 +94,13 @@ var errNoHealthcheck = errors.New("container has no HEALTHCHECK; gating skipped"
 // here is tracked separately and risks behavior drift on the hot path.
 //
 //nolint:cyclop // central update orchestration: image-cooldown checks,
-func Update(ctx context.Context, client container.Client, params types.UpdateParams) (types.Report, error) {
+func Update(ctx context.Context, client container.Client, params types.UpdateParams, state *State) (types.Report, error) {
 	log.Debug("Checking containers for updated images")
 	start := time.Now()
 	defer func() {
 		metrics.SetLastScanTimestamp(time.Now())
 		metrics.ObservePollDuration(time.Since(start))
-		metrics.SetContainersInCooldown(pendingImageCount())
+		metrics.SetContainersInCooldown(state.pendingImageCount())
 	}()
 	progress := &session.Progress{}
 
@@ -428,7 +124,7 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 			targetContainer.SetTargetImageID(newestImage)
 		}
 		if stale && err == nil {
-			if remaining := rollbackCooldownRemaining(targetContainer.Name()); remaining > 0 {
+			if remaining := state.rollbackCooldownRemaining(targetContainer.Name()); remaining > 0 {
 				log.WithFields(log.Fields{
 					fieldContainer: targetContainer.Name(),
 					fieldRetryIn:   remaining.Round(time.Second),
@@ -443,7 +139,7 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 		// newestImage, not the container's currently-running digest, so a
 		// pushed fix is detected by digest change at the next poll.
 		if stale && err == nil && params.RerunInitDeps && newestImage != "" {
-			if reason, rejected := isRejectedInitDigest(newestImage); rejected {
+			if reason, rejected := state.isRejectedInitDigest(newestImage); rejected {
 				log.WithFields(log.Fields{
 					fieldContainer: targetContainer.Name(),
 					fieldDigest:    newestImage.ShortID(),
@@ -462,7 +158,7 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 		// the operator explicitly asked for an immediate, one-shot update.
 		if stale && err == nil && !params.RunOnce {
 			if cooldown := resolveImageCooldown(targetContainer, params); cooldown > 0 {
-				if proceed, remaining := evaluateImageCooldown(targetContainer.Name(), newestImage, cooldown); !proceed {
+				if proceed, remaining := state.evaluateImageCooldown(targetContainer.Name(), newestImage, cooldown); !proceed {
 					log.WithFields(log.Fields{
 						fieldContainer: targetContainer.Name(),
 						fieldDigest:    newestImage.ShortID(),
@@ -607,7 +303,7 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 				}).WithError(last.Err).Warn("--rerun-init-deps: init dep could not be run; skipping target update this cycle, retrying next poll")
 				continue
 			}
-			rejectInitDigest(target.TargetImageID(), rejectionReason{
+			state.rejectInitDigest(target.TargetImageID(), rejectionReason{
 				Container: target.Name(),
 				Dep:       last.DepName,
 				ExitCode:  last.ExitCode,
@@ -667,14 +363,14 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 	recreateSet, rollingSet, blueGreenSet := partitionByStrategy(containersToUpdate, params)
 
 	for _, c := range blueGreenSet {
-		if err := performBlueGreenUpdate(ctx, c, containers, client, params); err != nil {
+		if err := performBlueGreenUpdate(ctx, c, containers, client, params, state); err != nil {
 			progress.UpdateFailed(map[types.ContainerID]error{c.ID(): err})
 		}
 		beat(params)
 	}
 
 	if len(rollingSet) > 0 {
-		progress.UpdateFailed(performRollingRestart(ctx, rollingSet, containers, client, params, progress))
+		progress.UpdateFailed(performRollingRestart(ctx, rollingSet, containers, client, params, progress, state))
 	}
 
 	if len(recreateSet) > 0 {
@@ -686,7 +382,7 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 		// already-stopped container. WithoutCancel keeps each call bounded by
 		// its per-call timeout; a wedge inside this phase escalates to the
 		// watchdog's stage-2 process exit instead.
-		progress.UpdateFailed(restartContainersInSortedOrder(context.WithoutCancel(ctx), recreateSet, containers, client, params, stoppedImages))
+		progress.UpdateFailed(restartContainersInSortedOrder(context.WithoutCancel(ctx), recreateSet, containers, client, params, stoppedImages, state))
 	}
 
 	if params.LifecycleHooks {
@@ -888,7 +584,7 @@ func partitionByStrategy(containersToUpdate []types.Container, params types.Upda
 // requests on blue can finish, then retires blue and renames green to blue's
 // canonical name. On a failed health check it removes green and leaves blue serving.
 // The caller guarantees the container has no published host ports and is not self.
-func performBlueGreenUpdate(ctx context.Context, blue types.Container, scanView []types.Container, client container.Client, params types.UpdateParams) error {
+func performBlueGreenUpdate(ctx context.Context, blue types.Container, scanView []types.Container, client container.Client, params types.UpdateParams, state *State) error {
 	if params.NoRestart {
 		// --no-restart means "update images but never start containers". A
 		// blue-green cutover exists only to start green, so there is nothing to
@@ -924,7 +620,7 @@ func performBlueGreenUpdate(ctx context.Context, blue types.Container, scanView 
 	}
 	log.WithFields(log.Fields{fieldContainer: bareName, fieldGreen: greenName}).Info("blue-green: started green container, waiting for it to become healthy")
 
-	if err := awaitBlueGreenHealthy(ctx, client, blue, greenID, greenName, bareName, params); err != nil {
+	if err := awaitBlueGreenHealthy(ctx, client, blue, greenID, greenName, bareName, params, state); err != nil {
 		return err
 	}
 
@@ -944,7 +640,7 @@ func performBlueGreenUpdate(ctx context.Context, blue types.Container, scanView 
 		// live via green, so it increments watchtower_promotion_aborts_total
 		// (not watchtower_rollbacks_total). recordRollback only arms the shared
 		// per-container cooldown — the name is historical, not the metric.
-		recordRollback(blue.Name())
+		state.recordRollback(blue.Name())
 		metrics.RegisterPromotionAbort()
 		log.WithError(err).WithFields(log.Fields{fieldContainer: bareName, fieldImage: blue.ImageName(), fieldGreen: greenName}).Errorf("blue-green: failed to stop the old container %s (image %s): %v; green is live but the old one remains and green keeps its temporary name — backing off for %s", bareName, blue.ImageName(), err, rollbackCooldown)
 
@@ -962,7 +658,7 @@ func performBlueGreenUpdate(ctx context.Context, blue types.Container, scanView 
 	}
 
 	if params.Cleanup {
-		if prior := rotatePreviousImage(blue.Name(), blue.SourceImageID()); prior != "" {
+		if prior := state.rotatePreviousImage(blue.Name(), blue.SourceImageID()); prior != "" {
 			cleanupImages(ctx, client, map[types.ImageID]bool{prior: true}, scanView)
 		}
 	}
@@ -995,7 +691,7 @@ func runBlueGreenPreUpdate(ctx context.Context, client container.Client, blue ty
 // missing HEALTHCHECK is a warning (the drain window is the only gate). A real
 // health failure removes green, arms the rollback cooldown, and returns an
 // error so blue keeps serving.
-func awaitBlueGreenHealthy(ctx context.Context, client container.Client, blue types.Container, greenID types.ContainerID, greenName, bareName string, params types.UpdateParams) error {
+func awaitBlueGreenHealthy(ctx context.Context, client container.Client, blue types.Container, greenID types.ContainerID, greenName, bareName string, params types.UpdateParams, state *State) error {
 	timeout := resolveHealthCheckTimeout(blue, params)
 	werr := waitForHealthy(ctx, client, greenID, timeout)
 	switch {
@@ -1015,13 +711,13 @@ func awaitBlueGreenHealthy(ctx context.Context, client container.Client, blue ty
 			log.WithError(serr).WithFields(log.Fields{fieldGreen: greenName, fieldImage: blue.ImageName()}).Errorf("blue-green: failed to remove the failed green container %s (image %s): %v", greenName, blue.ImageName(), serr)
 		}
 	}
-	recordRollback(blue.Name())
+	state.recordRollback(blue.Name())
 	metrics.RegisterRollback()
 
 	return fmt.Errorf("blue-green update of %s aborted after failed health check: %w", blue.Name(), werr)
 }
 
-func performRollingRestart(ctx context.Context, containers, scanView []types.Container, client container.Client, params types.UpdateParams, progress *session.Progress) map[types.ContainerID]error {
+func performRollingRestart(ctx context.Context, containers, scanView []types.Container, client container.Client, params types.UpdateParams, progress *session.Progress, state *State) map[types.ContainerID]error {
 	cleanupImageIDs := make(map[types.ImageID]bool, len(containers))
 	failed := make(map[types.ContainerID]error, len(containers))
 
@@ -1040,7 +736,7 @@ func performRollingRestart(ctx context.Context, containers, scanView []types.Con
 			case err != nil:
 				failed[containers[i].ID()] = err
 			default:
-				if err := restartStaleContainer(ctx, containers[i], client, params); err != nil {
+				if err := restartStaleContainer(ctx, containers[i], client, params, state); err != nil {
 					failed[containers[i].ID()] = err
 				} else if containers[i].IsStale() {
 					// Defer cleanup by one generation: hand --cleanup the
@@ -1051,7 +747,7 @@ func performRollingRestart(ctx context.Context, containers, scanView []types.Con
 					// it out. SourceImageID stays the right field — the old
 					// container was created from it, even if imageInfo now
 					// holds a freshly-pulled replacement.
-					if prior := rotatePreviousImage(containers[i].Name(), containers[i].SourceImageID()); prior != "" {
+					if prior := state.rotatePreviousImage(containers[i].Name(), containers[i].SourceImageID()); prior != "" {
 						cleanupImageIDs[prior] = true
 					}
 				}
@@ -1158,7 +854,7 @@ func stopStaleContainer(ctx context.Context, cont types.Container, client contai
 	return nil
 }
 
-func restartContainersInSortedOrder(ctx context.Context, containers, scanView []types.Container, client container.Client, params types.UpdateParams, stoppedImages map[types.ImageID]bool) map[types.ContainerID]error {
+func restartContainersInSortedOrder(ctx context.Context, containers, scanView []types.Container, client container.Client, params types.UpdateParams, stoppedImages map[types.ImageID]bool, state *State) map[types.ContainerID]error {
 	cleanupImageIDs := make(map[types.ImageID]bool, len(containers))
 	failed := make(map[types.ContainerID]error, len(containers))
 
@@ -1168,12 +864,12 @@ func restartContainersInSortedOrder(ctx context.Context, containers, scanView []
 			continue
 		}
 		if stoppedImages[c.SafeImageID()] {
-			if err := restartStaleContainer(ctx, c, client, params); err != nil {
+			if err := restartStaleContainer(ctx, c, client, params, state); err != nil {
 				failed[c.ID()] = err
 			} else if c.IsStale() {
 				// Defer cleanup by one generation — see performRollingRestart
 				// for the rationale. SourceImageID is still the right key.
-				if prior := rotatePreviousImage(c.Name(), c.SourceImageID()); prior != "" {
+				if prior := state.rotatePreviousImage(c.Name(), c.SourceImageID()); prior != "" {
 					cleanupImageIDs[prior] = true
 				}
 			}
@@ -1278,7 +974,7 @@ func selfTempName(canonical string) string {
 // state-machine across helpers. Refactor tracked separately.
 //
 //nolint:cyclop // linear orchestrator: split would scatter the
-func restartStaleContainer(ctx context.Context, container types.Container, client container.Client, params types.UpdateParams) error {
+func restartStaleContainer(ctx context.Context, container types.Container, client container.Client, params types.UpdateParams, state *State) error {
 	// Orphan watchtower-labeled containers (random-named leftovers from a
 	// previous self-update whose CheckForMultipleWatchtowerInstances pass did
 	// not complete) reach this point already stopped+removed by
@@ -1385,7 +1081,7 @@ func restartStaleContainer(ctx context.Context, container types.Container, clien
 			// first occurrence — and any genuinely different failure — notifies;
 			// identical repeats inside the cooldown drop to Debug. Non-self
 			// failures are unaffected and always log at Error.
-			if wasRunningSelf && !shouldNotifySelfStartFailure(originalName, err) {
+			if wasRunningSelf && !state.shouldNotifySelfStartFailure(originalName, err) {
 				entry.Debugf("Failed to start container %s (image %s) again; suppressing repeat notification: %v", originalName, container.ImageName(), err)
 				return err
 			}
@@ -1396,7 +1092,7 @@ func restartStaleContainer(ctx context.Context, container types.Container, clien
 			lifecycle.ExecutePostUpdateCommand(ctx, client, newContainerID)
 		}
 		if params.HealthCheckGated {
-			if err := gateOnHealthCheck(ctx, client, container, newContainerID, params); err != nil {
+			if err := gateOnHealthCheck(ctx, client, container, newContainerID, params, state); err != nil {
 				return err
 			}
 		}
@@ -1476,7 +1172,7 @@ func containerOrImageHealthcheck(c types.Container) *dockercontainer.HealthConfi
 // gateOnHealthCheck blocks until the replacement container is healthy or until
 // the resolved timeout elapses. On failure it stops the new container and
 // restarts the old one from the same config+image that were running before.
-func gateOnHealthCheck(ctx context.Context, client container.Client, old types.Container, newID types.ContainerID, params types.UpdateParams) error {
+func gateOnHealthCheck(ctx context.Context, client container.Client, old types.Container, newID types.ContainerID, params types.UpdateParams, state *State) error {
 	timeout := resolveHealthCheckTimeout(old, params)
 	err := waitForHealthy(ctx, client, newID, timeout)
 	if errors.Is(err, errNoHealthcheck) {
@@ -1502,7 +1198,7 @@ func gateOnHealthCheck(ctx context.Context, client container.Client, old types.C
 	// back" and has to reproduce locally to find the cause.
 	maps.Copy(fields, healthFailureContext(ctx, client, newID))
 	log.WithError(err).WithFields(fields).Errorf("Health check failed after updating %s (image %s): %v — rolling back to the previous image", old.Name(), old.ImageName(), err)
-	if rbErr := rollback(ctx, client, old, newID, params); rbErr != nil {
+	if rbErr := rollback(ctx, client, old, newID, params, state); rbErr != nil {
 		return fmt.Errorf("rollback failed for %s: %w (original health-check error: %w)", old.Name(), rbErr, err)
 	}
 	return fmt.Errorf("update of %s rolled back after failed health check: %w", old.Name(), err)
@@ -1589,8 +1285,8 @@ func waitForHealthy(ctx context.Context, client container.Client, id types.Conta
 // Every rollback — successful or not — arms the cooldown so the same
 // container isn't stopped and started every poll while the image author
 // re-pushes broken versions.
-func rollback(ctx context.Context, client container.Client, old types.Container, newID types.ContainerID, params types.UpdateParams) error {
-	defer recordRollback(old.Name())
+func rollback(ctx context.Context, client container.Client, old types.Container, newID types.ContainerID, params types.UpdateParams, state *State) error {
+	defer state.recordRollback(old.Name())
 
 	newSnapshot, err := client.GetContainer(ctx, newID)
 	if err != nil {

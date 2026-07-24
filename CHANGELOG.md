@@ -143,6 +143,19 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   already-empty value — the emptying happens at the `--no-deps` recreate.
 
 ### Changed
+- **Cross-run update state consolidated into a single owner
+  (`actions.State`).** The five package-level mutex-guarded maps that
+  individual features had accreted in `internal/actions` — rollback cooldowns,
+  image-cooldown clocks, previous-image rotation, rejected init digests,
+  self-update notification dedup — plus the audit's unmanaged-container dedup
+  now live behind one small type, constructed exactly once in `cmd.Run` and
+  threaded explicitly into `actions.Update` / `actions.AuditUnmanaged`. No
+  behavior change; it removes the "every feature adds a global + mutex +
+  `Reset…ForTest` helper" pattern (tests now build a fresh `State` per spec,
+  which also stops state leaking between specs) and creates exactly one place
+  to add state persistence if it ever becomes necessary. Breaking for
+  external importers of the `internal/actions` Go API; the CLI surface is
+  unchanged.
 - **Run-scoped context propagation through the entire update call tree.** The
   `pkg/container.Client` interface, `actions.Update` and its helpers, the
   lifecycle-hook runners, `initrerun`, and the registry digest/auth HTTP paths
