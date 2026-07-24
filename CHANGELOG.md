@@ -11,6 +11,8 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-07-24
+
 ### Added
 - **Liveness watchdog: exit instead of wedging silently (`--no-watchdog` to
   opt out).** A production instance was observed spending two days "healthy"
@@ -1593,7 +1595,8 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   imageInfo fallbacks. Existing `ImageID()` / `SafeImageID()` semantics are
   unchanged. ([9fa9e44](https://github.com/openserbia/watchtower/commit/9fa9e44))
 
-[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.18.3...HEAD
+[Unreleased]: https://github.com/openserbia/watchtower/compare/v1.19.0...HEAD
+[1.19.0]: https://github.com/openserbia/watchtower/compare/v1.18.3...v1.19.0
 [1.18.3]: https://github.com/openserbia/watchtower/compare/v1.18.2...v1.18.3
 [1.18.2]: https://github.com/openserbia/watchtower/compare/v1.17.0...v1.18.2
 [1.17.0]: https://github.com/openserbia/watchtower/compare/v1.15.1...v1.17.0
