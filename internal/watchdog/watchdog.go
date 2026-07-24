@@ -14,10 +14,20 @@
 //
 // Three rules implement that, evaluated by probe:
 //
-//   - Stuck-update: a single run may not exceed the stuck deadline. While a
-//     run is in flight this is the only active rule — an --update-on-start
-//     scan runs before the scheduler has even started, so "no ticks" is not
-//     evidence of anything while an update is legitimately progressing.
+//   - Stuck-update: an in-flight run may not go longer than the stuck
+//     deadline without making progress (a container scanned, recreated, or an
+//     init dep completed — reported via RunProgress). Keying on progress
+//     rather than run age means a slow-but-advancing run over hundreds of
+//     containers is never killed, while a wedged pull is caught one deadline
+//     after its last progress. The remedy is TWO-STAGE: first cancel the
+//     run's context (every Docker/registry call aborts, the run ends with a
+//     partial failure report, the update lock is released, the process stays
+//     healthy); escalate to process exit only if the run is still in flight
+//     a grace period after cancellation — a call that ignores its context.
+//     While a run is in flight this is the only active rule — an
+//     --update-on-start scan runs before the scheduler has even started, so
+//     "no ticks" is not evidence of anything while an update is legitimately
+//     progressing.
 //   - Schedule-anchored tick: once SetSchedule has been called, the scheduler
 //     is declared dead only when it verifiably missed a fire — the first fire
 //     due after the last observed tick lies more than the tick grace in the
@@ -49,11 +59,18 @@ const (
 	// boot phase, before a schedule is known) may run before the process is
 	// declared wedged. Overridable via --watchdog-tick-grace.
 	DefaultTickGrace = 15 * time.Minute
-	// DefaultStuckUpdateDeadline bounds a single update run. Generous on
-	// purpose: a full cycle legitimately spans many image pulls on a slow
-	// link, and a false trip aborts (and restarts) a working update.
-	// Overridable via --watchdog-stuck-deadline.
+	// DefaultStuckUpdateDeadline bounds how long an in-flight update run may
+	// go without progress. Generous on purpose: a single image pull on a slow
+	// link legitimately takes a long time, and a false trip aborts a working
+	// update. Overridable via --watchdog-stuck-deadline.
 	DefaultStuckUpdateDeadline = time.Hour
+	// cancelEscalationGrace is how long after the stage-1 run cancellation
+	// the run may remain in flight before the watchdog escalates to process
+	// exit. Cancelled Docker/registry calls return within milliseconds and
+	// the run then drains through fast-failing iterations, so anything still
+	// wedged this long is a call that ignores its context (a notification
+	// send, a hung syscall) — only a restart clears those.
+	cancelEscalationGrace = 2 * time.Minute
 	// defaultProbeInterval is how often the watchdog re-evaluates.
 	defaultProbeInterval = 30 * time.Second
 	// exitReasonGrace is how long the best-effort reason writers get before
@@ -91,8 +108,14 @@ type Watchdog struct {
 	// updateStart is the unix-nano time the in-flight update run began, or 0
 	// when no update is running.
 	updateStart atomic.Int64
-	// stuckDeadline bounds a single update run. Set once at construction,
-	// before the Run goroutine starts.
+	// lastProgress is the unix-nano time of the run's most recent progress
+	// report (RunProgress). Reset alongside updateStart.
+	lastProgress atomic.Int64
+	// cancelledAt is the unix-nano time the stage-1 run cancellation fired
+	// for the current run, or 0 while the run is uncancelled.
+	cancelledAt atomic.Int64
+	// stuckDeadline bounds an in-flight run's progress gap. Set once at
+	// construction, before the Run goroutine starts.
 	stuckDeadline time.Duration
 	probeInterval time.Duration
 
@@ -100,6 +123,11 @@ type Watchdog struct {
 	// the Run goroutine is already probing.
 	scheduleMu sync.Mutex
 	schedule   Schedule
+
+	// runCancelMu guards runCancel, the stage-1 cancel func for the run
+	// currently in flight (nil when idle).
+	runCancelMu sync.Mutex
+	runCancel   context.CancelFunc
 
 	now  func() time.Time
 	exit func()
@@ -163,15 +191,22 @@ func (w *Watchdog) DisableTickRule() {
 	w.tickGrace.Store(0)
 }
 
-// UpdateStarted records that an update run took the update lock. Paired with
-// UpdateFinished; every trigger path funnels through
+// UpdateStarted records that an update run took the update lock, along with
+// the cancel func for the run's context — the watchdog's stage-1 remedy for a
+// wedged run. Paired with UpdateFinished; every trigger path funnels through
 // runUpdatesWithNotifications, so instrumenting that chokepoint covers the
 // scheduler, the Docker-event watcher, --update-on-start, and the HTTP API.
-func (w *Watchdog) UpdateStarted() {
+func (w *Watchdog) UpdateStarted(cancel context.CancelFunc) {
 	if w == nil {
 		return
 	}
-	w.updateStart.Store(w.now().UnixNano())
+	w.runCancelMu.Lock()
+	w.runCancel = cancel
+	w.runCancelMu.Unlock()
+	now := w.now().UnixNano()
+	w.updateStart.Store(now)
+	w.lastProgress.Store(now)
+	w.cancelledAt.Store(0)
 }
 
 // UpdateFinished clears the in-flight update marker and re-baselines the tick
@@ -182,8 +217,24 @@ func (w *Watchdog) UpdateFinished() {
 	if w == nil {
 		return
 	}
+	w.runCancelMu.Lock()
+	w.runCancel = nil
+	w.runCancelMu.Unlock()
 	w.updateStart.Store(0)
+	w.cancelledAt.Store(0)
 	w.lastTick.Store(w.now().UnixNano())
+}
+
+// RunProgress records one unit of update-run progress (a container scanned or
+// recreated, an init dep completed). The stuck rule keys on the time of the
+// LAST progress, not the run's age, so a slow-but-advancing run over hundreds
+// of containers is never treated as wedged while a run that stops advancing
+// is caught one stuck deadline after its last step.
+func (w *Watchdog) RunProgress() {
+	if w == nil {
+		return
+	}
+	w.lastProgress.Store(w.now().UnixNano())
 }
 
 // UpdateRunningFor reports how long the in-flight update run has been going,
@@ -216,48 +267,96 @@ func (w *Watchdog) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if reason := w.probe(w.now()); reason != "" {
+			action, reason := w.probe(w.now())
+			switch action {
+			case probeCancelRun:
+				w.cancelRun(reason)
+			case probeExit:
 				w.terminate(reason)
 				return
+			case probeHealthy:
 			}
 		}
 	}
 }
 
-// probe evaluates the liveness rules and returns a non-empty reason when the
-// process should terminate. Pure with respect to the clock, for tests.
-func (w *Watchdog) probe(now time.Time) string {
+// probeAction is what a probe decided should happen.
+type probeAction int
+
+const (
+	probeHealthy probeAction = iota
+	// probeCancelRun is the stuck rule's stage 1: cancel the wedged run's
+	// context and keep the process alive.
+	probeCancelRun
+	// probeExit terminates the process (tick/boot rules, or the stuck rule's
+	// stage-2 escalation when cancellation didn't drain the run).
+	probeExit
+)
+
+// probe evaluates the liveness rules and returns the action to take with its
+// reason. Pure with respect to the clock, for tests.
+func (w *Watchdog) probe(now time.Time) (probeAction, string) {
 	if start := w.updateStart.Load(); start != 0 {
-		if age := now.Sub(time.Unix(0, start)); w.stuckDeadline > 0 && age > w.stuckDeadline {
-			return fmt.Sprintf("update run stuck for %s (deadline %s) — assuming a wedged pull/notification/docker call", age.Round(time.Second), w.stuckDeadline)
+		if w.stuckDeadline > 0 {
+			lastActivity := w.lastProgress.Load()
+			if lastActivity < start {
+				lastActivity = start
+			}
+			if idle := now.Sub(time.Unix(0, lastActivity)); idle > w.stuckDeadline {
+				cancelled := w.cancelledAt.Load()
+				if cancelled == 0 {
+					return probeCancelRun, fmt.Sprintf("update run has made no progress for %s (deadline %s) — cancelling the run's context to abort the wedged pull/docker call", idle.Round(time.Second), w.stuckDeadline)
+				}
+				if since := now.Sub(time.Unix(0, cancelled)); since > cancelEscalationGrace {
+					return probeExit, fmt.Sprintf("update run still in flight %s after its context was cancelled — assuming a call that ignores cancellation (notification send, hung syscall)", since.Round(time.Second))
+				}
+			}
 		}
 		// An in-flight run is bounded by the stuck rule alone. The tick rules
 		// are suspended: an --update-on-start scan runs before the scheduler
 		// has started, so no tick can arrive however healthy the process is,
 		// and a slow-but-working run must not be converted into an outage by
 		// the (much tighter) tick deadline.
-		return ""
+		return probeHealthy, ""
 	}
 	grace := time.Duration(w.tickGrace.Load())
 	if grace <= 0 {
-		return ""
+		return probeHealthy, ""
 	}
 	lastTick := time.Unix(0, w.lastTick.Load())
 	if sched := w.currentSchedule(); sched != nil {
 		due := sched.Next(lastTick)
 		if due.IsZero() {
 			// The spec never fires again; there is nothing to enforce.
-			return ""
+			return probeHealthy, ""
 		}
 		if overdue := now.Sub(due); overdue > grace {
-			return fmt.Sprintf("scheduler missed its %s fire by %s (grace %s) — assuming a dead scheduler", due.Format(time.RFC3339), overdue.Round(time.Second), grace)
+			return probeExit, fmt.Sprintf("scheduler missed its %s fire by %s (grace %s) — assuming a dead scheduler", due.Format(time.RFC3339), overdue.Round(time.Second), grace)
 		}
-		return ""
+		return probeHealthy, ""
 	}
 	if age := now.Sub(lastTick); age > grace {
-		return fmt.Sprintf("no scheduler tick for %s (grace %s) — assuming a wedged boot or dead scheduler", age.Round(time.Second), grace)
+		return probeExit, fmt.Sprintf("no scheduler tick for %s (grace %s) — assuming a wedged boot or dead scheduler", age.Round(time.Second), grace)
 	}
-	return ""
+	return probeHealthy, ""
+}
+
+// cancelRun is the stuck rule's stage-1 remedy: cancel the run's context so
+// every in-flight Docker/registry call aborts, the run finishes with a
+// partial failure report, and the update lock is released — the process stays
+// healthy. Recorded via cancelledAt so probe escalates to probeExit if the
+// run is still in flight cancelEscalationGrace later. The log write runs in
+// its own goroutine for the same reason terminate's does: the notification
+// hook it feeds may itself be the wedge.
+func (w *Watchdog) cancelRun(reason string) {
+	w.cancelledAt.Store(w.now().UnixNano())
+	w.runCancelMu.Lock()
+	cancel := w.runCancel
+	w.runCancelMu.Unlock()
+	go log.WithField("reason", reason).Error("watchtower watchdog: cancelling wedged update run; escalating to process exit if it does not drain")
+	if cancel != nil {
+		cancel()
+	}
 }
 
 func (w *Watchdog) currentSchedule() Schedule {

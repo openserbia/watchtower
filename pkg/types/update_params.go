@@ -69,4 +69,20 @@ type UpdateParams struct {
 	// outside a container or the operator overrode --hostname to a value
 	// that no longer matches the container short ID).
 	SelfContainerID ContainerID
+	// RerunStrandedInitDeps additionally EXECUTES the one-shot init siblings
+	// that stranded-init-deps detection recovers (a target whose
+	// com.docker.compose.depends_on label is present but empty while its
+	// project still holds migrate/pg-ready one-shots). Without it the
+	// detection only warns and drives the watchtower_stranded_init_deps
+	// gauge — running containers a target never declared is opt-in because a
+	// dep-less compose service that shares a project with an unrelated
+	// one-shot is indistinguishable from a stranded target by labels alone.
+	// Requires RerunInitDeps; no effect on declared init deps.
+	RerunStrandedInitDeps bool
+	// Heartbeat, when non-nil, is invoked by the update flow after each unit
+	// of progress (a container scanned, recreated, or an init dep completed).
+	// Wired to the liveness watchdog so its stuck rule can key on "no
+	// progress" instead of run age — a slow-but-advancing run over hundreds
+	// of containers is not a wedge.
+	Heartbeat func()
 }

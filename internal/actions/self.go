@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"context"
 	"os"
 	"strings"
 
@@ -28,14 +29,14 @@ import (
 // e.g. watchtower is running outside a container, or the operator overrode
 // --hostname so it no longer matches the container's short ID. Callers fall
 // back to the legacy IsWatchtower label match in that case.
-func DetectSelfContainerID(client container.Client) types.ContainerID {
+func DetectSelfContainerID(ctx context.Context, client container.Client) types.ContainerID {
 	hostname, err := os.Hostname()
 	if err != nil || hostname == "" {
 		log.Debug("Self-detection: os.Hostname() returned empty or errored; rename-respawn will fall back to IsWatchtower label match")
 		return ""
 	}
 
-	candidates, err := client.ListContainers(filters.WatchtowerContainersFilter)
+	candidates, err := client.ListContainers(ctx, filters.WatchtowerContainersFilter)
 	if err != nil {
 		log.WithError(err).Debug("Self-detection: ListContainers failed; rename-respawn will fall back to IsWatchtower label match")
 		return ""

@@ -213,14 +213,14 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"no-watchdog",
 		"",
 		envBool("WATCHTOWER_NO_WATCHDOG"),
-		"Disable the liveness watchdog. By default watchtower exits (for the container restart policy to revive it) when the scheduler misses a scheduled scan or a single update run exceeds the stuck deadline — a wedged pull, notification send, or Docker API call otherwise strands the update lock and silently stops all scanning while the container still reports healthy. Prefer tuning --watchdog-stuck-deadline / --watchdog-tick-grace over disabling the protection entirely.",
+		"Disable the liveness watchdog. By default watchtower cancels an update run that stops making progress for the stuck deadline (aborting the wedged pull/Docker call and releasing the update lock) and exits (for the container restart policy to revive it) when the scheduler misses a scheduled scan or the cancellation itself does not drain the run — a wedged call otherwise strands the update lock and silently stops all scanning while the container still reports healthy. Prefer tuning --watchdog-stuck-deadline / --watchdog-tick-grace over disabling the protection entirely.",
 	)
 
 	flags.DurationP(
 		"watchdog-stuck-deadline",
 		"",
 		envDuration("WATCHTOWER_WATCHDOG_STUCK_DEADLINE", watchdog.DefaultStuckUpdateDeadline),
-		"How long a single update run may take before the liveness watchdog declares it wedged and exits the process. Raise this instead of reaching for --no-watchdog when legitimate runs exceed the default (large stacks over slow links).",
+		"How long an in-flight update run may go without making progress before the liveness watchdog declares it wedged — the run's context is cancelled first (aborting the stuck call, releasing the update lock, keeping the process alive) and the process exits only if the cancellation does not drain the run. Raise this instead of reaching for --no-watchdog when individual steps legitimately exceed the default (multi-GB pulls over slow links).",
 	)
 
 	flags.DurationP(
@@ -293,6 +293,13 @@ func RegisterSystemFlags(rootCmd *cobra.Command) {
 		"",
 		envBool("WATCHTOWER_RERUN_INIT_DEPS"),
 		"Re-create Compose `service_completed_successfully` init containers against the new image before recreating the target. Restores the every-restart-runs-migrations contract for stacks whose bootstrap (goose, schema init) lives in a sibling Compose service. The old target keeps serving while the init runs, so migrations MUST be backwards-compatible with the previous image. If the init container exits non-zero, the failed digest is cached in memory and the target keeps its old image until a new digest arrives. Independent of --compose-depends-on; both can be enabled.",
+	)
+
+	flags.BoolP(
+		"rerun-stranded-init-deps",
+		"",
+		envBool("WATCHTOWER_RERUN_STRANDED_INIT_DEPS"),
+		"Additionally EXECUTE the one-shot init siblings that stranded-init-deps detection recovers: targets whose com.docker.compose.depends_on label is present but empty (the `docker compose up --no-deps` stamp) while their Compose project still holds migrate/pg-ready one-shots. Without this flag the detection only warns and drives the watchtower_stranded_init_deps gauge. Opt-in because a dep-less service sharing a project with an unrelated one-shot is indistinguishable from a stranded target by labels alone. Requires --rerun-init-deps.",
 	)
 
 	flags.BoolP(

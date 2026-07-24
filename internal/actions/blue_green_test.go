@@ -1,6 +1,7 @@
 package actions_test
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -60,7 +61,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			report, err := actions.Update(client, blueGreenParams)
+			report, err := actions.Update(context.Background(), client, blueGreenParams)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Green was started under a temporary name, then renamed back to
@@ -86,7 +87,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			report, err := actions.Update(client, blueGreenParams)
+			report, err := actions.Update(context.Background(), client, blueGreenParams)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Green was started but never promoted — no rename to the canonical name.
@@ -108,14 +109,14 @@ var _ = Describe("the blue-green update strategy", func() {
 			client := CreateMockClient(data, false, false)
 
 			// First poll: unhealthy green -> rollback -> cooldown armed.
-			_, err := actions.Update(client, blueGreenParams)
+			_, err := actions.Update(context.Background(), client, blueGreenParams)
 			Expect(err).NotTo(HaveOccurred())
 			firstPollStarts := len(client.TestData.StartedContainers)
 			Expect(firstPollStarts).To(Equal(1))
 
 			// Second poll immediately after: the container is on cooldown, so
 			// it is never marked stale and no green is started.
-			_, err = actions.Update(client, blueGreenParams)
+			_, err = actions.Update(context.Background(), client, blueGreenParams)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.StartedContainers).To(HaveLen(firstPollStarts))
 		})
@@ -135,7 +136,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			report, err := actions.Update(client, blueGreenParams)
+			report, err := actions.Update(context.Background(), client, blueGreenParams)
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(client.TestData.StartedContainers).To(HaveLen(1))
@@ -159,7 +160,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			report, err := actions.Update(client, blueGreenParams)
+			report, err := actions.Update(context.Background(), client, blueGreenParams)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Recreate path: blue is stopped then restarted under its own name,
@@ -187,7 +188,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			// Global strategy is recreate; only the labeled container opts in.
 			client := CreateMockClient(data, false, false)
 
-			report, err := actions.Update(client, types.UpdateParams{Strategy: types.StrategyRecreate})
+			report, err := actions.Update(context.Background(), client, types.UpdateParams{Strategy: types.StrategyRecreate})
 			Expect(err).NotTo(HaveOccurred())
 
 			// Exactly one blue-green cutover happened — the labeled container's
@@ -222,7 +223,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			report, err := actions.Update(client, blueGreenParams)
+			report, err := actions.Update(context.Background(), client, blueGreenParams)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Self-update is the rename-and-respawn path: exactly one rename to
@@ -248,13 +249,13 @@ var _ = Describe("the blue-green update strategy", func() {
 			client := CreateMockClient(data, false, false)
 
 			// First poll: green comes up healthy, blue fails to stop -> cooldown armed.
-			_, err := actions.Update(client, blueGreenParams)
+			_, err := actions.Update(context.Background(), client, blueGreenParams)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.StartedContainers).To(HaveLen(1))
 
 			// Second poll immediately after: the container is on cooldown, so no
 			// second green is started — no thrash, no orphan accumulation.
-			_, err = actions.Update(client, blueGreenParams)
+			_, err = actions.Update(context.Background(), client, blueGreenParams)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.StartedContainers).To(HaveLen(1))
 		})
@@ -270,7 +271,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			_, err := actions.Update(client, types.UpdateParams{Strategy: types.StrategyBlueGreen, NoRestart: true})
+			_, err := actions.Update(context.Background(), client, types.UpdateParams{Strategy: types.StrategyBlueGreen, NoRestart: true})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.StartedContainers).To(BeEmpty())
 			Expect(client.TestData.RenameCalls).To(BeEmpty())
@@ -284,7 +285,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			data := &TestData{Containers: []types.Container{canonical, orphan}}
 			client := CreateMockClient(data, false, false)
 
-			Expect(actions.CleanupOrphanBlueGreen(client, "")).To(Succeed())
+			Expect(actions.CleanupOrphanBlueGreen(context.Background(), client, "")).To(Succeed())
 
 			// Green is removed; the canonical container (blue) is left serving.
 			Expect(client.TestData.StoppedContainers).To(HaveLen(1))
@@ -297,7 +298,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			data := &TestData{Containers: []types.Container{orphan}}
 			client := CreateMockClient(data, false, false)
 
-			Expect(actions.CleanupOrphanBlueGreen(client, "")).To(Succeed())
+			Expect(actions.CleanupOrphanBlueGreen(context.Background(), client, "")).To(Succeed())
 
 			Expect(client.TestData.StoppedContainers).To(BeEmpty())
 			Expect(client.TestData.RenameCalls).To(HaveLen(1))
@@ -309,7 +310,7 @@ var _ = Describe("the blue-green update strategy", func() {
 			data := &TestData{Containers: []types.Container{normal}}
 			client := CreateMockClient(data, false, false)
 
-			Expect(actions.CleanupOrphanBlueGreen(client, "")).To(Succeed())
+			Expect(actions.CleanupOrphanBlueGreen(context.Background(), client, "")).To(Succeed())
 
 			Expect(client.TestData.StoppedContainers).To(BeEmpty())
 			Expect(client.TestData.RenameCalls).To(BeEmpty())

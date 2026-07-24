@@ -111,7 +111,7 @@ func CreateMockClient(data *TestData, pullImages, removeVolumes bool) MockClient
 }
 
 // ListContainers is a mock method returning the provided container testdata
-func (client MockClient) ListContainers(_ t.Filter) ([]t.Container, error) {
+func (client MockClient) ListContainers(_ context.Context, _ t.Filter) ([]t.Container, error) {
 	return client.TestData.Containers, nil
 }
 
@@ -119,7 +119,7 @@ func (client MockClient) ListContainers(_ t.Filter) ([]t.Container, error) {
 // lookup. Returns AllContainers when seeded, else falls back to Containers
 // so tests that don't care about the scan/lookup distinction keep working
 // unchanged.
-func (client MockClient) ListAllContainers(_ t.Filter) ([]t.Container, error) {
+func (client MockClient) ListAllContainers(_ context.Context, _ t.Filter) ([]t.Container, error) {
 	if client.TestData.AllContainers != nil {
 		return client.TestData.AllContainers, nil
 	}
@@ -127,7 +127,7 @@ func (client MockClient) ListAllContainers(_ t.Filter) ([]t.Container, error) {
 }
 
 // StopContainer is a mock method
-func (client MockClient) StopContainer(c t.Container, _ time.Duration) error {
+func (client MockClient) StopContainer(_ context.Context, c t.Container, _ time.Duration) error {
 	client.TestData.StoppedContainers = append(client.TestData.StoppedContainers, c)
 	if client.TestData.VanishedContainers[c.Name()] {
 		return container.ErrContainerNotFound
@@ -145,7 +145,7 @@ func (client MockClient) StopContainer(c t.Container, _ time.Duration) error {
 // that exercise rollback can assert the old container came back, and returns
 // pre-seeded IDs from NextStartContainerIDs when set so "new" and "rolled-back"
 // containers can be addressed separately.
-func (client MockClient) StartContainer(c t.Container) (t.ContainerID, error) {
+func (client MockClient) StartContainer(_ context.Context, c t.Container) (t.ContainerID, error) {
 	client.TestData.StartedContainers = append(client.TestData.StartedContainers, c)
 	if err, ok := client.TestData.StartContainerErrors[c.Name()]; ok {
 		return "", err
@@ -161,7 +161,7 @@ func (client MockClient) StartContainer(c t.Container) (t.ContainerID, error) {
 // RenameContainer is a mock method. Records each invocation in
 // TestData.RenameCalls so self-update tests can assert both the initial
 // random rename and any follow-up safety-net restore.
-func (client MockClient) RenameContainer(c t.Container, newName string) error {
+func (client MockClient) RenameContainer(_ context.Context, c t.Container, newName string) error {
 	client.TestData.RenameCalls = append(client.TestData.RenameCalls, RenameCall{
 		ContainerID: c.ID(),
 		OldName:     c.Name(),
@@ -172,7 +172,7 @@ func (client MockClient) RenameContainer(c t.Container, newName string) error {
 
 // RemoveImageByID records each image ID it was asked to remove so tests can
 // assert that cleanup targets the old image rather than the newly-pulled one.
-func (client MockClient) RemoveImageByID(id t.ImageID) error {
+func (client MockClient) RemoveImageByID(_ context.Context, id t.ImageID) error {
 	client.TestData.TriedToRemoveImageCount++
 	client.TestData.TriedToRemoveImageIDs = append(client.TestData.TriedToRemoveImageIDs, id)
 	return nil
@@ -186,7 +186,7 @@ func (client MockClient) RemoveImageByID(id t.ImageID) error {
 //     state, used by --health-check-gated rollback tests.
 //  3. Containers[0] — default fallback for legacy tests that only need
 //     "some container" back from GetContainer.
-func (client MockClient) GetContainer(id t.ContainerID) (t.Container, error) {
+func (client MockClient) GetContainer(_ context.Context, id t.ContainerID) (t.Container, error) {
 	if cont, ok := client.TestData.ContainerByID[id]; ok {
 		return cont, nil
 	}
@@ -199,7 +199,7 @@ func (client MockClient) GetContainer(id t.ContainerID) (t.Container, error) {
 // RerunInitContainer is a mock method. Records each init container it was
 // asked to re-run so tests can assert orchestration order, and returns a
 // per-container exit code from InitExitByName (defaults to 0 if unset).
-func (client MockClient) RerunInitContainer(c t.Container, _ time.Duration) (int, error) {
+func (client MockClient) RerunInitContainer(_ context.Context, c t.Container, _ time.Duration) (int, error) {
 	client.TestData.RerunInitContainers = append(client.TestData.RerunInitContainers, c)
 	if client.TestData.InitExitByName != nil {
 		if code, ok := client.TestData.InitExitByName[c.Name()]; ok {
@@ -210,7 +210,7 @@ func (client MockClient) RerunInitContainer(c t.Container, _ time.Duration) (int
 }
 
 // ExecuteCommand is a mock method
-func (client MockClient) ExecuteCommand(_ t.ContainerID, command string, _ int) (skipUpdate bool, err error) {
+func (client MockClient) ExecuteCommand(_ context.Context, _ t.ContainerID, command string, _ int) (skipUpdate bool, err error) {
 	switch command {
 	case "/PreUpdateReturn0.sh":
 		return false, nil
@@ -224,7 +224,7 @@ func (client MockClient) ExecuteCommand(_ t.ContainerID, command string, _ int) 
 }
 
 // IsContainerStale is true if not explicitly stated in TestData for the mock client
-func (client MockClient) IsContainerStale(cont t.Container, _ t.UpdateParams) (bool, t.ImageID, error) {
+func (client MockClient) IsContainerStale(_ context.Context, cont t.Container, _ t.UpdateParams) (bool, t.ImageID, error) {
 	if err, ok := client.TestData.StalenessErrors[cont.Name()]; ok {
 		return false, cont.SafeImageID(), err
 	}

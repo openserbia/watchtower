@@ -183,7 +183,7 @@ var _ = Describe("the client", func() {
 					mocks.GetContainerHandler(cid, nil),
 				)
 
-				Expect(dockerClient{api: docker}.StopContainer(ctr, time.Minute)).To(Succeed())
+				Expect(dockerClient{api: docker}.StopContainer(context.Background(), ctr, time.Minute)).To(Succeed())
 			})
 		})
 		When("the container does not exist after stopping", func() {
@@ -197,7 +197,7 @@ var _ = Describe("the client", func() {
 					mocks.RemoveContainerHandler(cid, mocks.Missing),
 				)
 
-				err := dockerClient{api: docker}.StopContainer(ctr, time.Minute)
+				err := dockerClient{api: docker}.StopContainer(context.Background(), ctr, time.Minute)
 				Expect(err).To(MatchError(ErrContainerNotFound))
 			})
 		})
@@ -210,7 +210,7 @@ var _ = Describe("the client", func() {
 					mocks.KillContainerHandler(cid, mocks.Missing),
 				)
 
-				err := dockerClient{api: docker}.StopContainer(ctr, time.Minute)
+				err := dockerClient{api: docker}.StopContainer(context.Background(), ctr, time.Minute)
 				Expect(err).To(MatchError(ErrContainerNotFound))
 			})
 		})
@@ -227,7 +227,7 @@ var _ = Describe("the client", func() {
 				resetLogrus, logbuf := captureLogrus(logrus.DebugLevel)
 				defer resetLogrus()
 
-				Expect(c.RemoveImageByID(t.ImageID(imageA))).To(Succeed())
+				Expect(c.RemoveImageByID(context.Background(), t.ImageID(imageA))).To(Succeed())
 
 				shortA := t.ImageID(imageA).ShortID()
 				shortAParent := t.ImageID(imageAParent).ShortID()
@@ -241,7 +241,7 @@ var _ = Describe("the client", func() {
 				mockServer.AppendHandlers(mocks.RemoveImageHandler(nil))
 				c := dockerClient{api: docker}
 
-				Expect(c.RemoveImageByID(t.ImageID(image))).To(Succeed())
+				Expect(c.RemoveImageByID(context.Background(), t.ImageID(image))).To(Succeed())
 			})
 		})
 		When("the daemon reports the image is still in use by another container", func() {
@@ -256,7 +256,7 @@ var _ = Describe("the client", func() {
 					),
 				)
 				c := dockerClient{api: docker}
-				Expect(c.RemoveImageByID(t.ImageID(image))).To(Succeed())
+				Expect(c.RemoveImageByID(context.Background(), t.ImageID(image))).To(Succeed())
 			})
 		})
 	})
@@ -269,7 +269,7 @@ var _ = Describe("the client", func() {
 					api:           docker,
 					ClientOptions: ClientOptions{},
 				}
-				containers, err := client.ListContainers(filters.NoFilter)
+				containers, err := client.ListContainers(context.Background(), filters.NoFilter)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(containers).To(HaveLen(2))
 			})
@@ -283,7 +283,7 @@ var _ = Describe("the client", func() {
 					api:           docker,
 					ClientOptions: ClientOptions{},
 				}
-				containers, err := client.ListContainers(filter)
+				containers, err := client.ListContainers(context.Background(), filter)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(containers).To(BeEmpty())
 			})
@@ -296,7 +296,7 @@ var _ = Describe("the client", func() {
 					api:           docker,
 					ClientOptions: ClientOptions{},
 				}
-				containers, err := client.ListContainers(filters.WatchtowerContainersFilter)
+				containers, err := client.ListContainers(context.Background(), filters.WatchtowerContainersFilter)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(containers).To(ConsistOf(withContainerImageName(Equal("containrrr/watchtower:latest"))))
 			})
@@ -309,7 +309,7 @@ var _ = Describe("the client", func() {
 					api:           docker,
 					ClientOptions: ClientOptions{IncludeStopped: true},
 				}
-				containers, err := client.ListContainers(filters.NoFilter)
+				containers, err := client.ListContainers(context.Background(), filters.NoFilter)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(containers).To(ContainElement(havingRunningState(false)))
 			})
@@ -322,7 +322,7 @@ var _ = Describe("the client", func() {
 					api:           docker,
 					ClientOptions: ClientOptions{IncludeRestarting: true},
 				}
-				containers, err := client.ListContainers(filters.NoFilter)
+				containers, err := client.ListContainers(context.Background(), filters.NoFilter)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(containers).To(ContainElement(havingRestartingState(true)))
 			})
@@ -335,7 +335,7 @@ var _ = Describe("the client", func() {
 					api:           docker,
 					ClientOptions: ClientOptions{IncludeRestarting: false},
 				}
-				containers, err := client.ListContainers(filters.NoFilter)
+				containers, err := client.ListContainers(context.Background(), filters.NoFilter)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(containers).NotTo(ContainElement(havingRestartingState(true)))
 			})
@@ -347,7 +347,7 @@ var _ = Describe("the client", func() {
 				mockServer.AppendHandlers(mocks.GetContainerHandler(string(mocks.Running.ContainerID()), nil))
 
 				client := dockerClient{api: docker, ClientOptions: ClientOptions{}}
-				containers, err := client.ListContainers(filters.NoFilter)
+				containers, err := client.ListContainers(context.Background(), filters.NoFilter)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(containers).To(HaveLen(1))
 			})
@@ -369,7 +369,7 @@ var _ = Describe("the client", func() {
 				mockServer.AppendHandlers(mocks.GetContainerHandlers(&mocks.Watchtower, &mocks.Running)...)
 
 				client := dockerClient{api: docker, ClientOptions: ClientOptions{}}
-				containers, err := client.ListContainers(filters.NoFilter)
+				containers, err := client.ListContainers(context.Background(), filters.NoFilter)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(containers).To(HaveLen(2))
 			})
@@ -379,7 +379,7 @@ var _ = Describe("the client", func() {
 				mockServer.AppendHandlers(ghttp.RespondWith(http.StatusServiceUnavailable, `{"message":"daemon restarting"}`))
 
 				client := dockerClient{api: docker, ClientOptions: ClientOptions{}}
-				_, err := client.ListContainers(filters.NoFilter)
+				_, err := client.ListContainers(context.Background(), filters.NoFilter)
 				Expect(err).To(HaveOccurred())
 			})
 			It(`does not retry on 400 InvalidArgument`, func() {
@@ -389,7 +389,7 @@ var _ = Describe("the client", func() {
 				mockServer.AppendHandlers(ghttp.RespondWith(http.StatusBadRequest, `{"message":"invalid filter"}`))
 
 				client := dockerClient{api: docker, ClientOptions: ClientOptions{}}
-				_, err := client.ListContainers(filters.NoFilter)
+				_, err := client.ListContainers(context.Background(), filters.NoFilter)
 				Expect(err).To(HaveOccurred())
 			})
 		})
@@ -402,7 +402,7 @@ var _ = Describe("the client", func() {
 						api:           docker,
 						ClientOptions: ClientOptions{},
 					}
-					container, err := client.GetContainer(consumerContainerRef.ContainerID())
+					container, err := client.GetContainer(context.Background(), consumerContainerRef.ContainerID())
 					Expect(err).NotTo(HaveOccurred())
 					networkMode := container.ContainerInfo().HostConfig.NetworkMode
 					Expect(networkMode.ConnectedContainer()).To(Equal(mocks.NetSupplierContainerName))
@@ -416,7 +416,7 @@ var _ = Describe("the client", func() {
 						api:           docker,
 						ClientOptions: ClientOptions{},
 					}
-					container, err := client.GetContainer(consumerContainerRef.ContainerID())
+					container, err := client.GetContainer(context.Background(), consumerContainerRef.ContainerID())
 					Expect(err).NotTo(HaveOccurred())
 					networkMode := container.ContainerInfo().HostConfig.NetworkMode
 					Expect(networkMode.ConnectedContainer()).To(Equal(mocks.NetSupplierNotFoundID))
@@ -529,7 +529,7 @@ var _ = Describe("the client", func() {
 					),
 				)
 
-				_, err := client.ExecuteCommand(containerID, cmd, 1)
+				_, err := client.ExecuteCommand(context.Background(), containerID, cmd, 1)
 				Expect(err).NotTo(HaveOccurred())
 				// Note: Since Execute requires opening up a raw TCP stream to the daemon for the output, this will fail
 				// when using the mock API server. Regardless of the outcome, the log should include the container ID
@@ -580,7 +580,7 @@ var _ = Describe("the client", func() {
 					),
 				)
 
-				_, err := dockerClient{api: docker}.StartContainer(runningHostNetContainer())
+				_, err := dockerClient{api: docker}.StartContainer(context.Background(), runningHostNetContainer())
 				Expect(err).To(HaveOccurred())
 				Expect(removed).To(BeTrue(), "expected the partially-created container to be force-removed")
 				// All three handlers must have been consumed in order.
@@ -647,7 +647,7 @@ var _ = Describe("the client", func() {
 					),
 				)
 
-				id, err := dockerClient{api: docker}.StartContainer(selfRecreate())
+				id, err := dockerClient{api: docker}.StartContainer(context.Background(), selfRecreate())
 				Expect(err).NotTo(HaveOccurred())
 				Expect(removed).To(BeTrue(), "expected the stale watchtower blocker to be force-removed")
 				Expect(id).To(BeEquivalentTo("new-self-id"))
@@ -677,7 +677,7 @@ var _ = Describe("the client", func() {
 					),
 				)
 
-				_, err := dockerClient{api: docker}.StartContainer(selfRecreate())
+				_, err := dockerClient{api: docker}.StartContainer(context.Background(), selfRecreate())
 				Expect(err).To(HaveOccurred())
 				// Inspect happened, but no DELETE and no retry create: we bailed
 				// the moment the blocker proved not to be a watchtower container.
@@ -738,7 +738,7 @@ var _ = Describe("the client", func() {
 					),
 				)
 
-				result, err := dockerClient{api: docker}.GetContainer(t.ContainerID(containerID))
+				result, err := dockerClient{api: docker}.GetContainer(context.Background(), t.ContainerID(containerID))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.ImageInfo()).NotTo(BeNil())
 				Expect(string(result.SafeImageID())).To(Equal(fallbackID))
@@ -758,7 +758,7 @@ var _ = Describe("the client", func() {
 					),
 				)
 
-				result, err := dockerClient{api: docker}.GetContainer(t.ContainerID(containerID))
+				result, err := dockerClient{api: docker}.GetContainer(context.Background(), t.ContainerID(containerID))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.ImageInfo()).To(BeNil())
 			})
@@ -793,7 +793,7 @@ var _ = Describe("the client", func() {
 					),
 				)
 
-				result, err := dockerClient{api: docker}.GetContainer(t.ContainerID(containerID))
+				result, err := dockerClient{api: docker}.GetContainer(context.Background(), t.ContainerID(containerID))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.ImageInfo()).NotTo(BeNil())
 				Expect(result.(*Container).ImageIdentity()).NotTo(BeNil())
@@ -817,7 +817,7 @@ var _ = Describe("the client", func() {
 					),
 				)
 
-				result, err := dockerClient{api: docker}.GetContainer(t.ContainerID(containerID))
+				result, err := dockerClient{api: docker}.GetContainer(context.Background(), t.ContainerID(containerID))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.(*Container).ImageIdentity()).NotTo(BeNil())
 				Expect(result.(*Container).ImageIdentity().Pull).To(HaveLen(1))
@@ -839,7 +839,7 @@ var _ = Describe("the client", func() {
 					),
 				)
 
-				result, err := dockerClient{api: docker}.GetContainer(t.ContainerID(containerID))
+				result, err := dockerClient{api: docker}.GetContainer(context.Background(), t.ContainerID(containerID))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.(*Container).ImageIdentity()).To(BeNil())
 				// Falls through to the legacy empty-RepoDigests heuristic.
@@ -870,7 +870,7 @@ var _ = Describe("the client", func() {
 					),
 				)
 
-				result, err := dockerClient{api: legacyClient}.GetContainer(t.ContainerID(containerID))
+				result, err := dockerClient{api: legacyClient}.GetContainer(context.Background(), t.ContainerID(containerID))
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.(*Container).ImageIdentity()).To(BeNil())
 				// ImageIsLocal's Identity branch doesn't fire; the
@@ -1145,7 +1145,7 @@ var _ = Describe("the client", func() {
 			accessDeniedPull(srv, "tg-antispam", newID)
 
 			stale, latest, err := dockerClient{api: newDockerFor(srv)}.
-				IsContainerStale(staleContainer("tg-antispam:latest"), t.UpdateParams{})
+				IsContainerStale(context.Background(), staleContainer("tg-antispam:latest"), t.UpdateParams{})
 			// The 401 must NOT propagate: it falls through to HasNewImage,
 			// which finds a different image ID and reports stale.
 			Expect(err).NotTo(HaveOccurred())
@@ -1161,7 +1161,7 @@ var _ = Describe("the client", func() {
 			accessDeniedPull(srv, host+"/foo/app", "sha256:irrelevant")
 
 			stale, _, err := dockerClient{api: newDockerFor(srv)}.
-				IsContainerStale(staleContainer(imageRef), t.UpdateParams{})
+				IsContainerStale(context.Background(), staleContainer(imageRef), t.UpdateParams{})
 			// Hostname-qualified: a real auth failure must surface loudly.
 			Expect(err).To(HaveOccurred())
 			Expect(err).To(MatchError(ContainSubstring("pull access denied")))

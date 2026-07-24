@@ -26,7 +26,7 @@ import (
 const ChallengeHeader = "WWW-Authenticate"
 
 // GetToken fetches a token for the registry hosting the provided image
-func GetToken(container types.Container, registryAuth string) (string, error) {
+func GetToken(ctx context.Context, container types.Container, registryAuth string) (string, error) {
 	normalizedRef, err := ref.ParseNormalizedNamed(container.ImageName())
 	if err != nil {
 		return "", err
@@ -35,7 +35,7 @@ func GetToken(container types.Container, registryAuth string) (string, error) {
 	challengeURL := GetChallengeURL(normalizedRef)
 	logrus.WithField("URL", challengeURL.String()).Debug("Built challenge URL")
 
-	req, err := GetChallengeRequest(challengeURL)
+	req, err := GetChallengeRequest(ctx, challengeURL)
 	if err != nil {
 		return "", err
 	}
@@ -62,15 +62,15 @@ func GetToken(container types.Container, registryAuth string) (string, error) {
 		return "Basic " + registryAuth, nil
 	}
 	if strings.HasPrefix(challenge, "bearer") {
-		return GetBearerHeader(challenge, normalizedRef, registryAuth)
+		return GetBearerHeader(ctx, challenge, normalizedRef, registryAuth)
 	}
 
 	return "", errors.New("unsupported challenge type from registry")
 }
 
 // GetChallengeRequest creates a request for getting challenge instructions
-func GetChallengeRequest(challengeURL url.URL) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, challengeURL.String(), http.NoBody)
+func GetChallengeRequest(ctx context.Context, challengeURL url.URL) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, challengeURL.String(), http.NoBody)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func GetChallengeRequest(challengeURL url.URL) (*http.Request, error) {
 }
 
 // GetBearerHeader tries to fetch a bearer token from the registry based on the challenge instructions
-func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) (string, error) {
+func GetBearerHeader(ctx context.Context, challenge string, imageRef ref.Named, registryAuth string) (string, error) {
 	authURL, err := GetAuthURL(challenge, imageRef)
 	if err != nil {
 		return "", err
@@ -96,7 +96,7 @@ func GetBearerHeader(challenge string, imageRef ref.Named, registryAuth string) 
 	}
 	metrics.RegisterAuthCacheMiss()
 
-	r, err := http.NewRequestWithContext(context.Background(), http.MethodGet, authURLString, http.NoBody)
+	r, err := http.NewRequestWithContext(ctx, http.MethodGet, authURLString, http.NoBody)
 	if err != nil {
 		return "", err
 	}

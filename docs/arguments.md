@@ -286,10 +286,16 @@ By default watchtower runs an internal watchdog that terminates the process (exi
 loop has verifiably stopped making progress, so the container restart policy can revive a working
 instance. Two conditions trip it:
 
-- **A stuck update run**: a single update cycle has been running past the stuck deadline (default one
-  hour, tunable via `--watchdog-stuck-deadline`). A stalled registry pull, a notification send without
-  a timeout, or a dead Docker socket otherwise strands the shared update lock — every subsequent
-  scheduled scan is skipped and updating silently stops while the container keeps reporting healthy.
+- **A stuck update run**: an in-flight update cycle has made no progress — no container scanned or
+  recreated, no init dep completed — for the stuck deadline (default one hour, tunable via
+  `--watchdog-stuck-deadline`). A stalled registry pull or a dead Docker socket otherwise strands the
+  shared update lock — every subsequent scheduled scan is skipped and updating silently stops while
+  the container keeps reporting healthy. Keying on *progress* rather than run age means a slow but
+  advancing run over hundreds of containers is never flagged. The remedy is two-stage: first the
+  run's context is **cancelled** — every in-flight Docker and registry call aborts, the run ends with
+  a partial failure report (visible in notifications), the update lock is released, and the process
+  stays up. Only if the run is still wedged two minutes after cancellation (a call that ignores its
+  context, e.g. a notification send) does the watchdog fall back to the process exit.
 - **A missed scheduled scan**: the scheduler failed to fire a scan that was due more than the tick grace
   ago (default 15 minutes, tunable via `--watchdog-tick-grace`). The deadline is anchored to the actual
   schedule, so irregular cron expressions (business hours, weekends) are safe: a legitimate overnight or
@@ -314,9 +320,10 @@ Environment Variable: WATCHTOWER_NO_WATCHDOG
 ```
 
 ## Watchdog stuck-update deadline
-How long a single update run may take before the liveness watchdog declares it wedged and exits the
-process. Raise this instead of reaching for `--no-watchdog` when legitimate update cycles exceed the
-default — for example a large stack pulled over a slow link.
+How long an in-flight update run may go **without making progress** before the liveness watchdog
+declares it wedged — cancelling the run first, and exiting the process only if the cancellation does
+not drain it. Raise this instead of reaching for `--no-watchdog` when individual steps legitimately
+exceed the default — for example a single multi-GB image pull over a slow link.
 
 ```text
             Argument: --watchdog-stuck-deadline
@@ -787,11 +794,15 @@ init siblings as part of the target's update transaction.
    digest in memory, leave the failed init container in `Exited(N)` for `docker logs`, and keep the
    *old* target container serving traffic.
 
-**Cached rejected digests.** A failed init container marks its digest as rejected for the rest of the
-Watchtower process lifetime. Subsequent polls that resolve the same digest are skipped without
-re-running the init. When the operator pushes a fix and the registry serves a new digest, the cache
-naturally misses and the update is attempted again. The cache is in-memory only — restarting Watchtower
-forces exactly one retry.
+**Cached rejected digests.** A failed init container (non-zero exit) marks its digest as rejected for
+one hour. Polls inside that window skip the digest without re-running the init; after it the rerun is
+retried, so a transient failure (the database was briefly down when a `pg-ready` probe ran) heals
+itself without operator action. When the operator pushes a fix and the registry serves a new digest,
+the cache naturally misses and the update is attempted immediately. Orchestration failures — the init
+container's exited carcass was removed by `docker system prune`, or the daemon refused a
+stop/create/start — are **not** cached: they say nothing about the digest, so the skip is re-attempted
+(and re-warned) every poll until the dep is restored, e.g. by `docker compose up -d`. The cache is
+in-memory only — restarting Watchtower also forces a retry.
 
 **Migrations must be backwards-compatible.** Because the old target keeps serving while the new
 image's init container runs, the schema after migrate must still be readable by the old code. This is
@@ -876,16 +887,35 @@ gets a new digest, Watchtower:
     readable by the old code — add columns/tables in one release, remove the old ones in a later release.
     Breaking schema changes need a planned downtime window instead, not this flag.
 
-**Stranded init dependencies.** A blue-green cutover recreates the "green" container by inheriting the
-old container's labels and never re-derives Compose metadata, so once `com.docker.compose.depends_on`
-goes empty it stays empty across every subsequent cutover. `--rerun-init-deps` then sees no init deps
-and silently skips the migration — new code runs against an un-migrated schema, with no log and no
-rejection. Watchtower detects this signature (a stale, Compose-managed target with no declared init
-deps whose project still holds a one-shot init sibling — a `migrate`/`pg-ready` container with restart
-policy `no`), logs a `WARN` naming the offending siblings, and increments
-`watchtower_stranded_init_deps_total`. This is **detection only** — update behaviour is unchanged.
-Recover by redeploying the service through Compose, which rewrites the label from the Compose file:
-`docker compose up -d --force-recreate <service>`.
+**Stranded init dependencies.** A `docker compose up --no-deps <svc>` in-place recreate (the
+.env-only update pattern) stamps a **present-but-empty** `com.docker.compose.depends_on` label —
+`--no-deps` tells Compose to disregard the dependency graph — and every later blue-green cutover
+carries that emptied label verbatim. `--rerun-init-deps` then sees no init deps and silently skips the
+migration — new code runs against an un-migrated schema, with no log and no rejection. Watchtower
+detects exactly this signature (a stale, Compose-managed target whose `depends_on` label is present
+but empty, in a project that still holds a one-shot init sibling — a `migrate`/`pg-ready` container
+with restart policy `no`; an *absent* label, or one populated only with
+`service_started`/`service_healthy` entries, is an intact contract and never flagged), logs a `WARN`
+naming the siblings, increments `watchtower_stranded_init_deps_total`, and drives the
+`watchtower_stranded_init_deps` gauge. By default this is **detection only** — update behaviour is
+unchanged. Recover by redeploying the service through Compose, which rewrites the label from the
+Compose file: `docker compose up -d --force-recreate <service>`.
+
+**Automatic recovery (`--rerun-stranded-init-deps`).** Opt in to additionally *execute* the detected
+one-shot siblings before updating a stranded target, ordered by each sibling's own init-dep count
+(leaves like `pg-ready` before the `migrate` that gates on them) — a safety net so the new image does
+not start on an un-migrated schema while the label is still dropped. Opt-in on purpose: a dep-less
+compose service that shares a project with an *unrelated* one-shot (a manual backup job, a debug
+container) is indistinguishable from a stranded target by labels alone, and running containers a
+target never declared is a decision the operator should make. The detection warning stays either way
+until the label is re-armed. Requires `--rerun-init-deps`.
+
+```text
+            Argument: --rerun-stranded-init-deps
+Environment Variable: WATCHTOWER_RERUN_STRANDED_INIT_DEPS
+                Type: Boolean
+             Default: false
+```
 
 **Opting out (`com.centurylinklabs.watchtower.no-init-deps=true`).** A service can legitimately have no
 init deps of its own — e.g. a web tier that shares a Compose project with init one-shots owned by a

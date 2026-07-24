@@ -20,13 +20,21 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   when a single update run wedges (a stalled pull, a notification send without
   a timeout, a dead socket): the shared update lock is never returned and every
   later tick skips at debug level, invisible at the default log level. The new
-  watchdog goroutine arms before anything that can block and terminates the
-  process (exit 1, for the restart policy to revive) when a single update run
-  exceeds the stuck deadline (default 1h, tunable via the new
-  `--watchdog-stuck-deadline`) or the scheduler verifiably misses a scheduled
-  scan by more than the tick grace (default 15m, tunable via the new
-  `--watchdog-tick-grace`; the same grace bounds a boot that wedges before
-  reaching the scheduler). The scheduler rule is anchored to the actual cron
+  watchdog goroutine arms before anything that can block. A run that makes no
+  progress (no container scanned or recreated, no init dep completed) for the
+  stuck deadline (default 1h, tunable via the new `--watchdog-stuck-deadline`)
+  gets a TWO-STAGE remedy: first the run's context is cancelled — possible
+  because the whole update call tree now propagates a run-scoped
+  `context.Context` (see Changed) — so every in-flight Docker/registry call
+  aborts, the run ends with a partial failure report, the update lock is
+  released, and the process stays up; only a run still wedged two minutes
+  after cancellation (a call that ignores its context) costs the process exit
+  (exit 1, for the restart policy to revive). Keying the rule on progress
+  rather than run age means a slow-but-advancing run over hundreds of
+  containers is never flagged. The process also exits when the scheduler
+  verifiably misses a scheduled scan by more than the tick grace (default
+  15m, tunable via the new `--watchdog-tick-grace`; the same grace bounds a
+  boot that wedges before reaching the scheduler). The scheduler rule is anchored to the actual cron
   schedule — it trips only when a due fire was missed, so irregular specs
   (business hours, weekends) never turn a legitimate gap into a kill — and it
   knows when it doesn't apply: it suspends while an update run is in flight
@@ -110,27 +118,43 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   present-but-**empty** `com.docker.compose.depends_on` label that a
   `docker compose up --no-deps <svc>` recreate stamps; absent or populated
   labels are never flagged.
-- **`--rerun-init-deps` now recovers a stranded target instead of only warning
-  about it.** When a compose target's `com.docker.compose.depends_on` is
-  present but empty while its project still holds one-shot `migrate`/`pg-ready`
-  siblings — the state
+- **Stranded-target recovery is available behind the new opt-in
+  `--rerun-stranded-init-deps` (detection stays always-on).** When a compose
+  target's `com.docker.compose.depends_on` is present but empty while its
+  project still holds one-shot `migrate`/`pg-ready` siblings — the state
   a `docker compose up --no-deps <svc>` in-place recreate leaves behind (it
   stamps an EMPTY `depends_on` because `--no-deps` tells Compose to disregard the
   dependency graph), then carried verbatim across every later blue-green cutover
   — the update path previously skipped the init rerun and let the new image start
-  against the old schema, logging only a warning. It now re-runs the detected
-  one-shot siblings before recreating the target, gated identically to declared
+  against the old schema, logging only a warning. With the opt-in enabled it
+  re-runs the detected one-shot siblings before recreating the target, gated
+  identically to declared
   init deps (a failing sibling caches the digest as rejected and leaves the old
   container serving). Siblings are ordered by each one's own init-dep count so a
   leaf (`pg-ready`) runs before a `migrate` that gates on it. The
   `watchtower_stranded_init_deps` gauge still fires so the operator re-arms the
   label with `docker compose up -d --force-recreate <service>` to restore the
-  declared contract and exact ordering. Also corrects the prior misattribution
+  declared contract and exact ordering. Without the opt-in the detection warns
+  (naming the flag) and drives the gauge but executes nothing — running
+  containers a target never declared is a judgment call the labels alone
+  cannot settle, so it stays with the operator. Also corrects the prior misattribution
   of the empty label to blue-green cutovers: green inherits blue's labels
   verbatim (`GetCreateConfig` copies them), so it only ever propagates an
   already-empty value — the emptying happens at the `--no-deps` recreate.
 
 ### Changed
+- **Run-scoped context propagation through the entire update call tree.** The
+  `pkg/container.Client` interface, `actions.Update` and its helpers, the
+  lifecycle-hook runners, `initrerun`, and the registry digest/auth HTTP paths
+  all take a `context.Context` now; per-call timeouts derive from it and every
+  outbound request carries it. Each update run gets its own cancellable
+  context — the seam the two-stage watchdog uses to abort a wedged run without
+  killing the process. One deliberate exception: the recreate executor's
+  restart half runs under `context.WithoutCancel`, so a cancellation landing
+  between the stop and the start phases can never strand already-stopped
+  containers (each call stays bounded by its per-call timeout; a wedge there
+  escalates to the watchdog's process exit). Breaking for external importers
+  of these Go packages; the CLI surface is unchanged.
 - **Go dependencies refreshed (minor/patch only).** Direct: `docker/cli`
   v29.6.0 → v29.6.2, `shoutrrr` v0.16.1 → v0.16.2,
   `prometheus/client_golang` v1.23.2 → v1.24.1. Indirect sweep includes

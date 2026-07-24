@@ -1,6 +1,7 @@
 package digest_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -69,7 +70,7 @@ var _ = Describe("Digests", func() {
 			"should return true if digests match",
 			SkipIfCredentialsEmpty(GHCRCredentials, func() {
 				creds := fmt.Sprintf("%s:%s", GHCRCredentials.Username, GHCRCredentials.Password)
-				matches, err := digest.CompareDigest(mockContainer, creds)
+				matches, err := digest.CompareDigest(context.Background(), mockContainer, creds)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(matches).To(Equal(true))
 			}),
@@ -80,7 +81,7 @@ var _ = Describe("Digests", func() {
 		It("should return an error if the registry isn't available", func() {
 		})
 		It("should return an error when container contains no image info", func() {
-			matches, err := digest.CompareDigest(mockContainerNoImage, `user:pass`)
+			matches, err := digest.CompareDigest(context.Background(), mockContainerNoImage, `user:pass`)
 			Expect(err).To(HaveOccurred())
 			Expect(matches).To(Equal(false))
 		})
@@ -120,7 +121,7 @@ var _ = Describe("Digests", func() {
 					}),
 				),
 			)
-			dig, err := digest.GetDigest(server.URL(), "token")
+			dig, err := digest.GetDigest(context.Background(), server.URL(), "token")
 			Expect(server.ReceivedRequests()).Should(HaveLen(1))
 			Expect(err).NotTo(HaveOccurred())
 			Expect(dig).To(Equal(mockDigest))
@@ -140,7 +141,7 @@ var _ = Describe("Digests", func() {
 			server.RouteToHandler(http.MethodGet, "/", ghttp.RespondWith(http.StatusOK, "manifest-body", http.Header{
 				digest.ContentDigestHeader: []string{mockDigest},
 			}))
-			dig, err := digest.GetDigest(server.URL(), "token")
+			dig, err := digest.GetDigest(context.Background(), server.URL(), "token")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(dig).To(Equal(mockDigest))
 			// HEAD will be retried by retry.DoHTTP (it treats 401 as
@@ -152,7 +153,7 @@ var _ = Describe("Digests", func() {
 		It("falls back to GET and computes SHA256 of the body when the server omits the digest header", func() {
 			server.RouteToHandler(http.MethodHead, "/", ghttp.RespondWith(http.StatusUnauthorized, ""))
 			server.RouteToHandler(http.MethodGet, "/", ghttp.RespondWith(http.StatusOK, "canonical-manifest-bytes"))
-			dig, err := digest.GetDigest(server.URL(), "token")
+			dig, err := digest.GetDigest(context.Background(), server.URL(), "token")
 			Expect(err).NotTo(HaveOccurred())
 			// Shape check: "sha256:" prefix + 64 hex chars. Computed
 			// body-hash is deterministic but we don't hard-code the hex
@@ -164,7 +165,7 @@ var _ = Describe("Digests", func() {
 		It("surfaces both errors when GET also fails", func() {
 			server.RouteToHandler(http.MethodHead, "/", ghttp.RespondWith(http.StatusUnauthorized, ""))
 			server.RouteToHandler(http.MethodGet, "/", ghttp.RespondWith(http.StatusUnauthorized, ""))
-			_, err := digest.GetDigest(server.URL(), "token")
+			_, err := digest.GetDigest(context.Background(), server.URL(), "token")
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("HEAD manifest"))
 			Expect(err.Error()).To(ContainSubstring("GET manifest"))

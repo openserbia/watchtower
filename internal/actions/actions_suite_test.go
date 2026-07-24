@@ -1,6 +1,7 @@
 package actions_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -36,7 +37,7 @@ var _ = Describe("the actions package", func() {
 					// removeVolumes:
 					false,
 				)
-				Expect(actions.CheckForMultipleWatchtowerInstances(client, false, "")).To(Succeed())
+				Expect(actions.CheckForMultipleWatchtowerInstances(context.Background(), client, false, "")).To(Succeed())
 			})
 		})
 		When("given an array of one", func() {
@@ -57,7 +58,7 @@ var _ = Describe("the actions package", func() {
 					// removeVolumes:
 					false,
 				)
-				Expect(actions.CheckForMultipleWatchtowerInstances(client, false, "")).To(Succeed())
+				Expect(actions.CheckForMultipleWatchtowerInstances(context.Background(), client, false, "")).To(Succeed())
 			})
 		})
 		When("given multiple containers", func() {
@@ -89,7 +90,7 @@ var _ = Describe("the actions package", func() {
 			})
 
 			It("should stop all but the latest one", func() {
-				err := actions.CheckForMultipleWatchtowerInstances(client, false, "")
+				err := actions.CheckForMultipleWatchtowerInstances(context.Background(), client, false, "")
 				Expect(err).NotTo(HaveOccurred())
 			})
 		})
@@ -120,7 +121,7 @@ var _ = Describe("the actions package", func() {
 					false,
 					false,
 				)
-				Expect(actions.CheckForMultipleWatchtowerInstances(client, false, "")).To(Succeed())
+				Expect(actions.CheckForMultipleWatchtowerInstances(context.Background(), client, false, "")).To(Succeed())
 				Expect(client.TestData.StoppedContainers).To(HaveLen(1))
 				Expect(client.TestData.StoppedContainers[0].Name()).To(Equal("watchtower-wt-self-AbCdEfGh"))
 			})
@@ -147,7 +148,7 @@ var _ = Describe("the actions package", func() {
 					false,
 					false,
 				)
-				err := actions.CheckForMultipleWatchtowerInstances(client, true, "")
+				err := actions.CheckForMultipleWatchtowerInstances(context.Background(), client, true, "")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImage()).To(BeTrue())
 			})
@@ -174,7 +175,7 @@ var _ = Describe("the actions package", func() {
 					false,
 					false,
 				)
-				err := actions.CheckForMultipleWatchtowerInstances(client, true, "")
+				err := actions.CheckForMultipleWatchtowerInstances(context.Background(), client, true, "")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImage()).To(BeFalse())
 			})
@@ -199,7 +200,7 @@ var _ = Describe("the actions package", func() {
 					false,
 					false,
 				)
-				err := actions.CheckForMultipleWatchtowerInstances(client, false, "")
+				err := actions.CheckForMultipleWatchtowerInstances(context.Background(), client, false, "")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImage()).To(BeFalse())
 			})

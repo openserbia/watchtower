@@ -36,29 +36,30 @@ import (
 )
 
 var (
-	client             container.Client
-	scheduleSpec       string
-	cleanup            bool
-	noRestart          bool
-	noPull             bool
-	monitorOnly        bool
-	enableLabel        bool
-	auditUnmanaged     bool
-	healthCheckGated   bool
-	healthCheckTimeout time.Duration
-	imageCooldown      time.Duration
-	disableContainers  []string
-	notifier           t.Notifier
-	timeout            time.Duration
-	lifecycleHooks     bool
-	updateStrategy     t.UpdateStrategy
-	blueGreenDrain     time.Duration
-	composeDependsOn   bool
-	rerunInitDeps      bool
-	scope              string
-	labelPrecedence    bool
-	runOnce            bool
-	selfContainerID    t.ContainerID
+	client                container.Client
+	scheduleSpec          string
+	cleanup               bool
+	noRestart             bool
+	noPull                bool
+	monitorOnly           bool
+	enableLabel           bool
+	auditUnmanaged        bool
+	healthCheckGated      bool
+	healthCheckTimeout    time.Duration
+	imageCooldown         time.Duration
+	disableContainers     []string
+	notifier              t.Notifier
+	timeout               time.Duration
+	lifecycleHooks        bool
+	updateStrategy        t.UpdateStrategy
+	blueGreenDrain        time.Duration
+	composeDependsOn      bool
+	rerunInitDeps         bool
+	rerunStrandedInitDeps bool
+	scope                 string
+	labelPrecedence       bool
+	runOnce               bool
+	selfContainerID       t.ContainerID
 	// livenessWatchdog is nil when disabled (--no-watchdog or --run-once);
 	// all its methods are nil-safe.
 	livenessWatchdog *watchdog.Watchdog
@@ -135,6 +136,7 @@ func PreRun(cmd *cobra.Command, _ []string) {
 	blueGreenDrain, _ = f.GetDuration("blue-green-drain")
 	composeDependsOn, _ = f.GetBool("compose-depends-on")
 	rerunInitDeps, _ = f.GetBool("rerun-init-deps")
+	rerunStrandedInitDeps, _ = f.GetBool("rerun-stranded-init-deps")
 	scope, _ = f.GetString("scope")
 	labelPrecedence, _ = f.GetBool("label-take-precedence")
 
@@ -224,13 +226,18 @@ func Run(c *cobra.Command, names []string) {
 
 	awaitDockerClient()
 
+	// Boot-phase context: these one-shot startup calls are bounded by the
+	// client's per-call timeouts and, collectively, by the watchdog's boot
+	// rule — there is no run to cancel yet.
+	bootCtx := context.Background()
+
 	// Detect our own container ID once after the daemon is reachable, so
 	// restartStaleContainer can distinguish the actual running self (rename-
 	// and-respawn) from orphan watchtower-labeled containers (stop+remove,
 	// no respawn). Empty result falls back to the IsWatchtower label check.
-	selfContainerID = actions.DetectSelfContainerID(client)
+	selfContainerID = actions.DetectSelfContainerID(bootCtx, client)
 
-	if err := actions.CheckForSanity(client, filter, updateStrategy.IsRollingOrBlueGreen()); err != nil {
+	if err := actions.CheckForSanity(bootCtx, client, filter, updateStrategy.IsRollingOrBlueGreen()); err != nil {
 		logNotifyExit(err)
 	}
 
@@ -238,7 +245,7 @@ func Run(c *cobra.Command, names []string) {
 		// Reconcile any "green" containers stranded by an interrupted cutover
 		// (a failed blue stop or a crash before the rename) before scheduling.
 		// Non-fatal: a sweep failure must not block startup.
-		if err := actions.CleanupOrphanBlueGreen(client, scope); err != nil {
+		if err := actions.CleanupOrphanBlueGreen(bootCtx, client, scope); err != nil {
 			log.WithError(err).Warn("blue-green: orphan-green cleanup sweep failed; continuing startup")
 		}
 	}
@@ -249,7 +256,7 @@ func Run(c *cobra.Command, names []string) {
 	// Runs for every strategy, before both the --run-once path and
 	// CheckForMultipleWatchtowerInstances (so a promoted self survives the
 	// keep-newest reaper). Non-fatal: a sweep failure must not block startup.
-	if err := actions.CleanupOrphanSelf(client, scope, selfContainerID); err != nil {
+	if err := actions.CleanupOrphanSelf(bootCtx, client, scope, selfContainerID); err != nil {
 		log.WithError(err).Warn("self-update: orphan self-temp cleanup sweep failed; continuing startup")
 	}
 
@@ -259,7 +266,7 @@ func Run(c *cobra.Command, names []string) {
 		// label. A list error here is non-fatal to preflight itself — fall
 		// back to probing without exec; the next list call surfaces it loudly.
 		var watched []t.Container
-		if containers, err := client.ListContainers(filter); err == nil {
+		if containers, err := client.ListContainers(bootCtx, filter); err == nil {
 			watched = containers
 		}
 		watchEvents, _ := c.PersistentFlags().GetBool("watch-docker-events")
@@ -284,7 +291,7 @@ func Run(c *cobra.Command, names []string) {
 		return
 	}
 
-	if err := actions.CheckForMultipleWatchtowerInstances(client, cleanup, scope); err != nil {
+	if err := actions.CheckForMultipleWatchtowerInstances(bootCtx, client, cleanup, scope); err != nil {
 		logNotifyExit(err)
 	}
 
@@ -590,11 +597,15 @@ func runUpgradesOnSchedule(c *cobra.Command, filter t.Filter, filtering string, 
 
 func runUpdatesWithNotifications(filter t.Filter) (metricResults *metrics.Metric) {
 	// Every trigger path (scheduler, event watcher, --update-on-start, HTTP
-	// API) funnels through here, so this single pair bounds any update run:
-	// if the cycle wedges (stalled pull, blocked notification, dead socket)
-	// the watchdog exits the process instead of stranding the update lock —
-	// and with it all future scans — forever.
-	livenessWatchdog.UpdateStarted()
+	// API) funnels through here, so this single pair bounds any update run.
+	// The run gets its own cancellable context, handed to the watchdog as
+	// its stage-1 remedy: a run that stops making progress is first
+	// cancelled (every Docker/registry call aborts, a partial report is
+	// emitted, the lock is released, the process stays healthy) and only a
+	// run that survives cancellation costs a process exit.
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	livenessWatchdog.UpdateStarted(cancelRun)
 	defer livenessWatchdog.UpdateFinished()
 
 	// Defense in depth: a panic anywhere in an update cycle must not take down
@@ -627,30 +638,34 @@ func runUpdatesWithNotifications(filter t.Filter) (metricResults *metrics.Metric
 	// Always-on: classify containers and publish managed/excluded/unmanaged
 	// gauges so the Grafana dashboard has data to show. Log warnings are
 	// opt-in via --audit-unmanaged (only meaningful under --label-enable).
-	if err := actions.AuditUnmanaged(client, scope, auditUnmanaged && enableLabel); err != nil {
+	if err := actions.AuditUnmanaged(runCtx, client, scope, auditUnmanaged && enableLabel); err != nil {
 		log.WithError(err).Warn("Failed to audit container watch status")
 	}
 	updateParams := t.UpdateParams{
-		Filter:             filter,
-		Cleanup:            cleanup,
-		NoRestart:          noRestart,
-		Timeout:            timeout,
-		MonitorOnly:        monitorOnly,
-		LifecycleHooks:     lifecycleHooks,
-		Strategy:           updateStrategy,
-		BlueGreenDrain:     blueGreenDrain,
-		RollingRestart:     updateStrategy == t.StrategyRollingRestart,
-		LabelPrecedence:    labelPrecedence,
-		NoPull:             noPull,
-		HealthCheckGated:   healthCheckGated,
-		HealthCheckTimeout: healthCheckTimeout,
-		ImageCooldown:      imageCooldown,
-		ComposeDependsOn:   composeDependsOn,
-		RerunInitDeps:      rerunInitDeps,
-		RunOnce:            runOnce,
-		SelfContainerID:    selfContainerID,
+		Filter:                filter,
+		Cleanup:               cleanup,
+		NoRestart:             noRestart,
+		Timeout:               timeout,
+		MonitorOnly:           monitorOnly,
+		LifecycleHooks:        lifecycleHooks,
+		Strategy:              updateStrategy,
+		BlueGreenDrain:        blueGreenDrain,
+		RollingRestart:        updateStrategy == t.StrategyRollingRestart,
+		LabelPrecedence:       labelPrecedence,
+		NoPull:                noPull,
+		HealthCheckGated:      healthCheckGated,
+		HealthCheckTimeout:    healthCheckTimeout,
+		ImageCooldown:         imageCooldown,
+		ComposeDependsOn:      composeDependsOn,
+		RerunInitDeps:         rerunInitDeps,
+		RerunStrandedInitDeps: rerunStrandedInitDeps,
+		RunOnce:               runOnce,
+		SelfContainerID:       selfContainerID,
+		// Progress heartbeat for the watchdog's stuck rule (nil-safe on a
+		// disabled watchdog).
+		Heartbeat: livenessWatchdog.RunProgress,
 	}
-	result, err := actions.Update(client, updateParams)
+	result, err := actions.Update(runCtx, client, updateParams)
 	if err != nil {
 		log.Error(err)
 	}

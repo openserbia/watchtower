@@ -17,6 +17,7 @@
 package initrerun
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -50,8 +51,8 @@ func (r Result) Succeeded() bool { return r.Err == nil && r.ExitCode == 0 }
 // Deps whose image differs from the target's keep their own pinning untouched
 // — only same-image init containers (the migrate-sibling-of-same-image
 // pattern) inherit the target's freshly-resolved digest.
-func Run(client container.Client, target t.Container, allContainers []t.Container, timeout time.Duration) []Result {
-	return RunDeps(client, target, target.ComposeInitDependencies(), allContainers, timeout)
+func Run(ctx context.Context, client container.Client, target t.Container, allContainers []t.Container, timeout time.Duration) []Result {
+	return RunDeps(ctx, client, target, target.ComposeInitDependencies(), allContainers, timeout)
 }
 
 // RunDeps is Run with an explicit list of init-dep service names, for callers
@@ -61,7 +62,7 @@ func Run(client container.Client, target t.Container, allContainers []t.Containe
 // com.docker.compose.depends_on, so ComposeInitDependencies() returns nothing
 // even though the project still holds one-shot init siblings. depSvcs are
 // compose service names in the target's project, run in the given order.
-func RunDeps(client container.Client, target t.Container, depSvcs []string, allContainers []t.Container, timeout time.Duration) []Result {
+func RunDeps(ctx context.Context, client container.Client, target t.Container, depSvcs []string, allContainers []t.Container, timeout time.Duration) []Result {
 	if len(depSvcs) == 0 {
 		return nil
 	}
@@ -106,7 +107,7 @@ func RunDeps(client container.Client, target t.Container, depSvcs []string, allC
 			"digest":  target.TargetImageID().ShortID(),
 		}).Info("--rerun-init-deps: re-running init container against new image")
 
-		exitCode, err := client.RerunInitContainer(dep, timeout)
+		exitCode, err := client.RerunInitContainer(ctx, dep, timeout)
 		result := Result{
 			TargetName: target.Name(),
 			DepName:    depSvc,

@@ -14,43 +14,43 @@ import (
 // broke that assumption.
 type clientAdapter struct{ fake *fakeClient }
 
-func (c *clientAdapter) ListContainers(_ t.Filter) ([]t.Container, error) {
+func (c *clientAdapter) ListContainers(_ context.Context, _ t.Filter) ([]t.Container, error) {
 	panic("unexpected call: ListContainers")
 }
 
-func (c *clientAdapter) ListAllContainers(_ t.Filter) ([]t.Container, error) {
+func (c *clientAdapter) ListAllContainers(_ context.Context, _ t.Filter) ([]t.Container, error) {
 	panic("unexpected call: ListAllContainers")
 }
 
-func (c *clientAdapter) GetContainer(_ t.ContainerID) (t.Container, error) {
+func (c *clientAdapter) GetContainer(_ context.Context, _ t.ContainerID) (t.Container, error) {
 	panic("unexpected call: GetContainer")
 }
 
-func (c *clientAdapter) StopContainer(_ t.Container, _ time.Duration) error {
+func (c *clientAdapter) StopContainer(_ context.Context, _ t.Container, _ time.Duration) error {
 	panic("unexpected call: StopContainer")
 }
 
-func (c *clientAdapter) StartContainer(_ t.Container) (t.ContainerID, error) {
+func (c *clientAdapter) StartContainer(_ context.Context, _ t.Container) (t.ContainerID, error) {
 	panic("unexpected call: StartContainer")
 }
 
-func (c *clientAdapter) RenameContainer(_ t.Container, _ string) error {
+func (c *clientAdapter) RenameContainer(_ context.Context, _ t.Container, _ string) error {
 	panic("unexpected call: RenameContainer")
 }
 
-func (c *clientAdapter) IsContainerStale(_ t.Container, _ t.UpdateParams) (bool, t.ImageID, error) {
+func (c *clientAdapter) IsContainerStale(_ context.Context, _ t.Container, _ t.UpdateParams) (bool, t.ImageID, error) {
 	panic("unexpected call: IsContainerStale")
 }
 
-func (c *clientAdapter) RerunInitContainer(_ t.Container, _ time.Duration) (int, error) {
+func (c *clientAdapter) RerunInitContainer(_ context.Context, _ t.Container, _ time.Duration) (int, error) {
 	panic("unexpected call: RerunInitContainer")
 }
 
-func (c *clientAdapter) ExecuteCommand(_ t.ContainerID, _ string, _ int) (bool, error) {
+func (c *clientAdapter) ExecuteCommand(_ context.Context, _ t.ContainerID, _ string, _ int) (bool, error) {
 	panic("unexpected call: ExecuteCommand")
 }
 
-func (c *clientAdapter) RemoveImageByID(_ t.ImageID) error {
+func (c *clientAdapter) RemoveImageByID(_ context.Context, _ t.ImageID) error {
 	panic("unexpected call: RemoveImageByID")
 }
 

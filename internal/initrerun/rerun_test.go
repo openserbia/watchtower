@@ -1,6 +1,7 @@
 package initrerun_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -43,7 +44,7 @@ func newComposeContainer(name, service, image, dependsOn string) t.Container {
 func TestRun_NoInitDeps_ReturnsNil(t1 *testing.T) {
 	client := mocks.CreateMockClient(&mocks.TestData{}, false, false)
 	target := newComposeContainer("api", "api", "myapp:latest", "")
-	got := initrerun.Run(client, target, []t.Container{target}, time.Minute)
+	got := initrerun.Run(context.Background(), client, target, []t.Container{target}, time.Minute)
 	if got != nil {
 		t1.Fatalf("expected nil results for target with no init deps, got %d", len(got))
 	}
@@ -62,11 +63,11 @@ func TestRunDeps_StrandedTarget_ExplicitSiblingsRun(t1 *testing.T) {
 	target.SetTargetImageID(t.ImageID("sha256:newdigest"))
 
 	// Sanity: the label-driven path skips a stranded target.
-	if got := initrerun.Run(client, target, []t.Container{migrate, target}, time.Minute); got != nil {
+	if got := initrerun.Run(context.Background(), client, target, []t.Container{migrate, target}, time.Minute); got != nil {
 		t1.Fatalf("Run should skip a target with empty depends_on, got %d results", len(got))
 	}
 
-	got := initrerun.RunDeps(client, target, []string{"migrate"}, []t.Container{migrate, target}, time.Minute)
+	got := initrerun.RunDeps(context.Background(), client, target, []string{"migrate"}, []t.Container{migrate, target}, time.Minute)
 	if len(got) != 1 || !got[0].Succeeded() {
 		t1.Fatalf("expected one successful rerun, got %+v", got)
 	}
@@ -84,7 +85,7 @@ func TestRun_HappyPath_OneSameImageDep(t1 *testing.T) {
 		"migrate:service_completed_successfully:true")
 	target.SetTargetImageID(t.ImageID("sha256:newdigest"))
 
-	got := initrerun.Run(client, target, []t.Container{migrate, target}, time.Minute)
+	got := initrerun.Run(context.Background(), client, target, []t.Container{migrate, target}, time.Minute)
 	if len(got) != 1 {
 		t1.Fatalf("expected 1 result, got %d", len(got))
 	}
@@ -119,7 +120,7 @@ func TestRun_FailedInit_StopsAtFirstFailure(t1 *testing.T) {
 	target := newComposeContainer("api", "api", "myapp:latest",
 		"migrate:service_completed_successfully:true,seed:service_completed_successfully:true")
 
-	got := initrerun.Run(client, target, []t.Container{migrate, seed, target}, time.Minute)
+	got := initrerun.Run(context.Background(), client, target, []t.Container{migrate, seed, target}, time.Minute)
 	if len(got) != 1 {
 		t1.Fatalf("expected exactly 1 result (stopped at first failure), got %d", len(got))
 	}
@@ -140,7 +141,7 @@ func TestRun_MissingDep_ReturnsError(t1 *testing.T) {
 	target := newComposeContainer("api", "api", "myapp:latest",
 		"missing:service_completed_successfully:true")
 
-	got := initrerun.Run(client, target, []t.Container{target}, time.Minute)
+	got := initrerun.Run(context.Background(), client, target, []t.Container{target}, time.Minute)
 	if len(got) != 1 {
 		t1.Fatalf("expected 1 error result, got %d", len(got))
 	}
@@ -166,7 +167,7 @@ func TestRun_DifferentImageDep_DoesNotInheritDigest(t1 *testing.T) {
 		"pg-ready:service_completed_successfully:true")
 	target.SetTargetImageID(t.ImageID("sha256:myapp-newdigest"))
 
-	got := initrerun.Run(client, target, []t.Container{pgReady, target}, time.Minute)
+	got := initrerun.Run(context.Background(), client, target, []t.Container{pgReady, target}, time.Minute)
 	if len(got) != 1 || !got[0].Succeeded() {
 		t1.Fatalf("expected one successful result, got %+v", got)
 	}
@@ -188,7 +189,7 @@ func TestRun_NonInitConditionsAreIgnored(t1 *testing.T) {
 	target := newComposeContainer("api", "api", "myapp:latest",
 		"peer:service_started:true,migrate:service_completed_successfully:true")
 
-	got := initrerun.Run(client, target, []t.Container{peer, migrate, target}, time.Minute)
+	got := initrerun.Run(context.Background(), client, target, []t.Container{peer, migrate, target}, time.Minute)
 	if len(got) != 1 || got[0].DepName != "migrate" {
 		t1.Fatalf("expected only migrate to be considered; got %+v", got)
 	}

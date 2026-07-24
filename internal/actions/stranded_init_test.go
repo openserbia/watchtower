@@ -112,14 +112,14 @@ func captureWarn(t *testing.T, fn func()) string {
 func TestWarnStrandedInitDeps(t *testing.T) {
 	// warnStrandedInitDeps no longer detects — the caller passes the siblings
 	// that strandedInitSiblings already found — so it always logs. The message
-	// must name the recovered siblings, explain the --no-deps cause, and give
-	// the re-arm remedy. The old "migrations will NOT be re-run" wording is gone:
-	// they ARE re-run now, as a safety net.
-	t.Run("logs the safety-net recovery line with siblings, cause and remedy", func(t *testing.T) {
+	// must name the siblings, explain the --no-deps cause, give the re-arm
+	// remedy, and say truthfully whether the siblings will be executed
+	// (--rerun-stranded-init-deps) or only warned about.
+	t.Run("recovering=true logs the safety-net line with siblings, cause and remedy", func(t *testing.T) {
 		target := newStrandedFixture("api", "unless-stopped")
 
 		out := captureWarn(t, func() {
-			warnStrandedInitDeps(target, []string{"migrate", "pg-ready"})
+			warnStrandedInitDeps(target, []string{"migrate", "pg-ready"}, true)
 		})
 		for _, want := range []string{"safety net", "migrate", "pg-ready", "--no-deps", "--force-recreate"} {
 			if !strings.Contains(out, want) {
@@ -127,7 +127,23 @@ func TestWarnStrandedInitDeps(t *testing.T) {
 			}
 		}
 		if strings.Contains(out, "will NOT be re-run") {
-			t.Fatalf("stale wording — siblings are re-run now, got: %q", out)
+			t.Fatalf("wrong wording for the recovering case, got: %q", out)
+		}
+	})
+
+	t.Run("recovering=false says migrations will NOT run and names the opt-in", func(t *testing.T) {
+		target := newStrandedFixture("api", "unless-stopped")
+
+		out := captureWarn(t, func() {
+			warnStrandedInitDeps(target, []string{"migrate"}, false)
+		})
+		for _, want := range []string{"NOT be re-run", "--rerun-stranded-init-deps", "--force-recreate"} {
+			if !strings.Contains(out, want) {
+				t.Fatalf("expected warn-only message to contain %q, got: %q", want, out)
+			}
+		}
+		if strings.Contains(out, "safety net") {
+			t.Fatalf("wrong wording for the warn-only case, got: %q", out)
 		}
 	})
 }

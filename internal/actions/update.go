@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -397,7 +398,7 @@ var errNoHealthcheck = errors.New("container has no HEALTHCHECK; gating skipped"
 // here is tracked separately and risks behavior drift on the hot path.
 //
 //nolint:cyclop // central update orchestration: image-cooldown checks,
-func Update(client container.Client, params types.UpdateParams) (types.Report, error) {
+func Update(ctx context.Context, client container.Client, params types.UpdateParams) (types.Report, error) {
 	log.Debug("Checking containers for updated images")
 	start := time.Now()
 	defer func() {
@@ -408,10 +409,10 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 	progress := &session.Progress{}
 
 	if params.LifecycleHooks {
-		lifecycle.ExecutePreChecks(client, params)
+		lifecycle.ExecutePreChecks(ctx, client, params)
 	}
 
-	containers, err := client.ListContainers(params.Filter)
+	containers, err := client.ListContainers(ctx, params.Filter)
 	if err != nil {
 		return nil, err
 	}
@@ -419,7 +420,7 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 	staleCheckFailed := 0
 
 	for i, targetContainer := range containers {
-		stale, newestImage, err := client.IsContainerStale(targetContainer, params)
+		stale, newestImage, err := client.IsContainerStale(ctx, targetContainer, params)
 		if stale && err == nil && newestImage != "" {
 			// Pin the upcoming recreate to the digest we just resolved so a
 			// concurrent rebuild that untags name:latest between scan and
@@ -507,6 +508,7 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 			progress.AddScanned(targetContainer, newestImage)
 		}
 		containers[i].SetStale(stale)
+		beat(params)
 	}
 
 	// --rerun-init-deps: re-execute compose service_completed_successfully
@@ -528,7 +530,7 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 		var depLookup []types.Container
 		ensureDepLookup := func() []types.Container {
 			if depLookup == nil {
-				all, listErr := client.ListAllContainers(filters.NoFilter)
+				all, listErr := client.ListAllContainers(ctx, filters.NoFilter)
 				if listErr != nil {
 					log.WithError(listErr).Warn("--rerun-init-deps: listing all containers for dep lookup failed; falling back to the scan-filtered list")
 					all = containers
@@ -561,17 +563,25 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 				// (the .env-only update pattern), which stamps an EMPTY
 				// depends_on that is then carried verbatim across every later
 				// blue-green cutover. Left alone the rerun would skip the target
-				// and the new image would start on the old schema. Recover it:
-				// re-run the detected one-shot siblings anyway, and still flag the
-				// empty label so the operator re-arms the declared contract.
+				// and the new image would start on the old schema. Detection
+				// always warns and drives the stranded gauge; actually
+				// EXECUTING the recovered siblings is gated behind
+				// --rerun-stranded-init-deps, because running containers the
+				// target never declared is a judgment call the labels alone
+				// cannot settle (a dep-less service sharing a project with an
+				// unrelated one-shot looks identical to a stranded target).
 				siblings := strandedInitSiblings(target, ensureDepLookup())
 				if len(siblings) == 0 {
 					continue
 				}
-				warnStrandedInitDeps(target, siblings)
+				warnStrandedInitDeps(target, siblings, params.RerunStrandedInitDeps)
+				if !params.RerunStrandedInitDeps {
+					continue
+				}
 				initDeps = orderInitSiblings(siblings, ensureDepLookup(), target.ComposeProject())
 			}
-			results := initrerun.RunDeps(client, target, initDeps, ensureDepLookup(), initrerun.DefaultTimeout)
+			results := initrerun.RunDeps(ctx, client, target, initDeps, ensureDepLookup(), initrerun.DefaultTimeout)
+			beat(params)
 			if len(results) == 0 {
 				continue
 			}
@@ -657,25 +667,40 @@ func Update(client container.Client, params types.UpdateParams) (types.Report, e
 	recreateSet, rollingSet, blueGreenSet := partitionByStrategy(containersToUpdate, params)
 
 	for _, c := range blueGreenSet {
-		if err := performBlueGreenUpdate(c, containers, client, params); err != nil {
+		if err := performBlueGreenUpdate(ctx, c, containers, client, params); err != nil {
 			progress.UpdateFailed(map[types.ContainerID]error{c.ID(): err})
 		}
+		beat(params)
 	}
 
 	if len(rollingSet) > 0 {
-		progress.UpdateFailed(performRollingRestart(rollingSet, containers, client, params, progress))
+		progress.UpdateFailed(performRollingRestart(ctx, rollingSet, containers, client, params, progress))
 	}
 
 	if len(recreateSet) > 0 {
-		failedStop, stoppedImages := stopContainersInReversedOrder(recreateSet, client, params, progress)
+		failedStop, stoppedImages := stopContainersInReversedOrder(ctx, recreateSet, client, params, progress)
 		progress.UpdateFailed(failedStop)
-		progress.UpdateFailed(restartContainersInSortedOrder(recreateSet, containers, client, params, stoppedImages))
+		// The restart half must complete even if the run's context is
+		// cancelled mid-flight (the watchdog's stage-1 remedy): aborting
+		// between the stop and the start phases would strand every
+		// already-stopped container. WithoutCancel keeps each call bounded by
+		// its per-call timeout; a wedge inside this phase escalates to the
+		// watchdog's stage-2 process exit instead.
+		progress.UpdateFailed(restartContainersInSortedOrder(context.WithoutCancel(ctx), recreateSet, containers, client, params, stoppedImages))
 	}
 
 	if params.LifecycleHooks {
-		lifecycle.ExecutePostChecks(client, params)
+		lifecycle.ExecutePostChecks(ctx, client, params)
 	}
 	return progress.Report(), nil
+}
+
+// beat records one unit of scan/update progress with the process watchdog via
+// the optional params callback. See types.UpdateParams.Heartbeat.
+func beat(params types.UpdateParams) {
+	if params.Heartbeat != nil {
+		params.Heartbeat()
+	}
 }
 
 // strandedInitSiblings returns the one-shot init siblings (migrate, pg-ready,
@@ -753,18 +778,24 @@ func strandedInitSiblings(target types.Container, all []types.Container) []strin
 // warnStrandedInitDeps records the stranded-init-deps history counter and logs
 // the actionable line for a stale target whose com.docker.compose.depends_on was
 // emptied out-of-band (detection in strandedInitSiblings; siblings is its
-// non-empty result). --rerun-init-deps now RE-RUNS these siblings as a safety
-// net, so this no longer means "migrations will NOT run" — but the empty label
-// still needs re-arming to restore the declared contract (and exact ordering),
-// which is why the companion per-scan gauge (watchtower_stranded_init_deps)
-// keeps the alert firing until an operator redeploys with deps.
-func warnStrandedInitDeps(target types.Container, siblings []string) {
+// non-empty result). With --rerun-stranded-init-deps the siblings are re-run as
+// a safety net (recovering=true selects that wording); without it the warning
+// says plainly that migrations will NOT run. Either way the empty label needs
+// re-arming to restore the declared contract (and exact ordering), which is why
+// the companion per-scan gauge (watchtower_stranded_init_deps) keeps the alert
+// firing until an operator redeploys with deps.
+func warnStrandedInitDeps(target types.Container, siblings []string, recovering bool) {
 	metrics.RegisterStrandedInitDeps()
-	log.WithFields(log.Fields{
+	entry := log.WithFields(log.Fields{
 		fieldContainer: target.Name(),
 		"project":      target.ComposeProject(),
 		"siblings":     strings.Join(siblings, ","),
-	}).Warn("--rerun-init-deps: target's com.docker.compose.depends_on is empty but its compose project still holds one-shot init siblings (typically a `docker compose up --no-deps <svc>` recreate emptied the label); re-running the detected siblings as a safety net so the new image does not start on an un-migrated schema. Re-arm with `docker compose up -d --force-recreate <service>` to restore the declared depends_on.")
+	})
+	if recovering {
+		entry.Warn("--rerun-init-deps: target's com.docker.compose.depends_on is empty but its compose project still holds one-shot init siblings (typically a `docker compose up --no-deps <svc>` recreate emptied the label); re-running the detected siblings as a safety net so the new image does not start on an un-migrated schema. Re-arm with `docker compose up -d --force-recreate <service>` to restore the declared depends_on.")
+		return
+	}
+	entry.Warn("--rerun-init-deps: target's com.docker.compose.depends_on is empty but its compose project still holds one-shot init siblings (typically a `docker compose up --no-deps <svc>` recreate emptied the label); they will NOT be re-run automatically, so the new image may start on an un-migrated schema. Re-arm with `docker compose up -d --force-recreate <service>` to restore the declared depends_on, or opt in to automatic recovery with --rerun-stranded-init-deps.")
 }
 
 // orderInitSiblings best-effort orders recovered one-shot siblings so each runs
@@ -857,7 +888,7 @@ func partitionByStrategy(containersToUpdate []types.Container, params types.Upda
 // requests on blue can finish, then retires blue and renames green to blue's
 // canonical name. On a failed health check it removes green and leaves blue serving.
 // The caller guarantees the container has no published host ports and is not self.
-func performBlueGreenUpdate(blue types.Container, scanView []types.Container, client container.Client, params types.UpdateParams) error {
+func performBlueGreenUpdate(ctx context.Context, blue types.Container, scanView []types.Container, client container.Client, params types.UpdateParams) error {
 	if params.NoRestart {
 		// --no-restart means "update images but never start containers". A
 		// blue-green cutover exists only to start green, so there is nothing to
@@ -870,7 +901,7 @@ func performBlueGreenUpdate(blue types.Container, scanView []types.Container, cl
 	}
 
 	if params.LifecycleHooks {
-		if err := runBlueGreenPreUpdate(client, blue); err != nil {
+		if err := runBlueGreenPreUpdate(ctx, client, blue); err != nil {
 			return err
 		}
 	}
@@ -884,7 +915,7 @@ func performBlueGreenUpdate(blue types.Container, scanView []types.Container, cl
 	// retag, so green comes up on the new image carrying blue's labels (the proxy
 	// treats them as one service with two backends).
 	blue.SetCreateName(greenName)
-	greenID, err := client.StartContainer(blue)
+	greenID, err := client.StartContainer(ctx, blue)
 	blue.SetCreateName(canonical) // restore so later log lines use the real name
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{fieldContainer: bareName, fieldImage: blue.ImageName()}).Errorf("blue-green: failed to start green container %s (image %s): %v; old container left untouched", bareName, blue.ImageName(), err)
@@ -893,7 +924,7 @@ func performBlueGreenUpdate(blue types.Container, scanView []types.Container, cl
 	}
 	log.WithFields(log.Fields{fieldContainer: bareName, fieldGreen: greenName}).Info("blue-green: started green container, waiting for it to become healthy")
 
-	if err := awaitBlueGreenHealthy(client, blue, greenID, greenName, bareName, params); err != nil {
+	if err := awaitBlueGreenHealthy(ctx, client, blue, greenID, greenName, bareName, params); err != nil {
 		return err
 	}
 
@@ -902,7 +933,7 @@ func performBlueGreenUpdate(blue types.Container, scanView []types.Container, cl
 		time.Sleep(drain)
 	}
 
-	if err := client.StopContainer(blue, params.Timeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
+	if err := client.StopContainer(ctx, blue, params.Timeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
 		// Green is live and healthy but blue refuses to stop (StopContainer
 		// already exhausted its transient-error retries). Without arming the
 		// cooldown here the next poll re-runs the entire cutover — starting yet
@@ -920,19 +951,19 @@ func performBlueGreenUpdate(blue types.Container, scanView []types.Container, cl
 		return err
 	}
 
-	if greenSnap, gerr := client.GetContainer(greenID); gerr == nil {
-		if rerr := client.RenameContainer(greenSnap, bareName); rerr != nil {
+	if greenSnap, gerr := client.GetContainer(ctx, greenID); gerr == nil {
+		if rerr := client.RenameContainer(ctx, greenSnap, bareName); rerr != nil {
 			log.WithError(rerr).WithFields(log.Fields{"from": greenName, "to": bareName, fieldImage: blue.ImageName()}).Warnf("blue-green: failed to rename green to the canonical name %s (image %s): %v; it keeps its temporary name until the next update", bareName, blue.ImageName(), rerr)
 		}
 	}
 
 	if params.LifecycleHooks {
-		lifecycle.ExecutePostUpdateCommand(client, greenID)
+		lifecycle.ExecutePostUpdateCommand(ctx, client, greenID)
 	}
 
 	if params.Cleanup {
 		if prior := rotatePreviousImage(blue.Name(), blue.SourceImageID()); prior != "" {
-			cleanupImages(client, map[types.ImageID]bool{prior: true}, scanView)
+			cleanupImages(ctx, client, map[types.ImageID]bool{prior: true}, scanView)
 		}
 	}
 
@@ -944,8 +975,8 @@ func performBlueGreenUpdate(blue types.Container, scanView []types.Container, cl
 // runBlueGreenPreUpdate runs the pre-update lifecycle command before a
 // blue-green cutover. It returns a non-nil error to abort the update when the
 // command failed or signaled EX_TEMPFAIL (exit 75).
-func runBlueGreenPreUpdate(client container.Client, blue types.Container) error {
-	skipUpdate, err := lifecycle.ExecutePreUpdateCommand(client, blue)
+func runBlueGreenPreUpdate(ctx context.Context, client container.Client, blue types.Container) error {
+	skipUpdate, err := lifecycle.ExecutePreUpdateCommand(ctx, client, blue)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{fieldContainer: blue.Name(), fieldImage: blue.ImageName()}).Warn("Skipping blue-green update: pre-update lifecycle command failed")
 
@@ -964,9 +995,9 @@ func runBlueGreenPreUpdate(client container.Client, blue types.Container) error 
 // missing HEALTHCHECK is a warning (the drain window is the only gate). A real
 // health failure removes green, arms the rollback cooldown, and returns an
 // error so blue keeps serving.
-func awaitBlueGreenHealthy(client container.Client, blue types.Container, greenID types.ContainerID, greenName, bareName string, params types.UpdateParams) error {
+func awaitBlueGreenHealthy(ctx context.Context, client container.Client, blue types.Container, greenID types.ContainerID, greenName, bareName string, params types.UpdateParams) error {
 	timeout := resolveHealthCheckTimeout(blue, params)
-	werr := waitForHealthy(client, greenID, timeout)
+	werr := waitForHealthy(ctx, client, greenID, timeout)
 	switch {
 	case errors.Is(werr, errNoHealthcheck):
 		log.WithField(fieldContainer, bareName).Warn("blue-green: green container has no HEALTHCHECK — readiness cannot be verified; relying on the drain window only. Add a HEALTHCHECK for a real readiness gate.")
@@ -977,10 +1008,10 @@ func awaitBlueGreenHealthy(client container.Client, blue types.Container, greenI
 	}
 
 	fields := log.Fields{fieldContainer: bareName, fieldImage: blue.ImageName(), fieldGreen: greenName}
-	maps.Copy(fields, healthFailureContext(client, greenID))
+	maps.Copy(fields, healthFailureContext(ctx, client, greenID))
 	log.WithError(werr).WithFields(fields).Errorf("blue-green: green container %s (image %s) failed health check (%v) — removing green and keeping the old container", bareName, blue.ImageName(), werr)
-	if greenSnap, gerr := client.GetContainer(greenID); gerr == nil {
-		if serr := client.StopContainer(greenSnap, params.Timeout); serr != nil && !errors.Is(serr, container.ErrContainerNotFound) {
+	if greenSnap, gerr := client.GetContainer(ctx, greenID); gerr == nil {
+		if serr := client.StopContainer(ctx, greenSnap, params.Timeout); serr != nil && !errors.Is(serr, container.ErrContainerNotFound) {
 			log.WithError(serr).WithFields(log.Fields{fieldGreen: greenName, fieldImage: blue.ImageName()}).Errorf("blue-green: failed to remove the failed green container %s (image %s): %v", greenName, blue.ImageName(), serr)
 		}
 	}
@@ -990,13 +1021,14 @@ func awaitBlueGreenHealthy(client container.Client, blue types.Container, greenI
 	return fmt.Errorf("blue-green update of %s aborted after failed health check: %w", blue.Name(), werr)
 }
 
-func performRollingRestart(containers, scanView []types.Container, client container.Client, params types.UpdateParams, progress *session.Progress) map[types.ContainerID]error {
+func performRollingRestart(ctx context.Context, containers, scanView []types.Container, client container.Client, params types.UpdateParams, progress *session.Progress) map[types.ContainerID]error {
 	cleanupImageIDs := make(map[types.ImageID]bool, len(containers))
 	failed := make(map[types.ContainerID]error, len(containers))
 
 	for i := len(containers) - 1; i >= 0; i-- {
+		beat(params)
 		if containers[i].ToRestart() {
-			err := stopStaleContainer(containers[i], client, params)
+			err := stopStaleContainer(ctx, containers[i], client, params)
 			switch {
 			case errors.Is(err, container.ErrContainerNotFound):
 				// Vanished mid-scan (typically a Compose recreate beat us to it).
@@ -1008,7 +1040,7 @@ func performRollingRestart(containers, scanView []types.Container, client contai
 			case err != nil:
 				failed[containers[i].ID()] = err
 			default:
-				if err := restartStaleContainer(containers[i], client, params); err != nil {
+				if err := restartStaleContainer(ctx, containers[i], client, params); err != nil {
 					failed[containers[i].ID()] = err
 				} else if containers[i].IsStale() {
 					// Defer cleanup by one generation: hand --cleanup the
@@ -1028,16 +1060,17 @@ func performRollingRestart(containers, scanView []types.Container, client contai
 	}
 
 	if params.Cleanup {
-		cleanupImages(client, cleanupImageIDs, scanView)
+		cleanupImages(ctx, client, cleanupImageIDs, scanView)
 	}
 	return failed
 }
 
-func stopContainersInReversedOrder(containers []types.Container, client container.Client, params types.UpdateParams, progress *session.Progress) (failed map[types.ContainerID]error, stopped map[types.ImageID]bool) {
+func stopContainersInReversedOrder(ctx context.Context, containers []types.Container, client container.Client, params types.UpdateParams, progress *session.Progress) (failed map[types.ContainerID]error, stopped map[types.ImageID]bool) {
 	failed = make(map[types.ContainerID]error, len(containers))
 	stopped = make(map[types.ImageID]bool, len(containers))
 	for i := len(containers) - 1; i >= 0; i-- {
-		err := stopStaleContainer(containers[i], client, params)
+		beat(params)
+		err := stopStaleContainer(ctx, containers[i], client, params)
 		switch {
 		case errors.Is(err, container.ErrContainerNotFound):
 			// Vanished mid-scan — most often a Compose recreate that beat us
@@ -1070,7 +1103,7 @@ func isRunningSelf(cont types.Container, params types.UpdateParams) bool {
 	return cont.IsWatchtower()
 }
 
-func stopStaleContainer(cont types.Container, client container.Client, params types.UpdateParams) error {
+func stopStaleContainer(ctx context.Context, cont types.Container, client container.Client, params types.UpdateParams) error {
 	// Only the actual running self skips the stop — it can't kill itself, so
 	// restartStaleContainer's rename-and-respawn pattern handles it instead.
 	// Other watchtower-labeled containers (orphans from a prior self-update
@@ -1093,7 +1126,7 @@ func stopStaleContainer(cont types.Container, client container.Client, params ty
 	}
 
 	if params.LifecycleHooks {
-		skipUpdate, err := lifecycle.ExecutePreUpdateCommand(client, cont)
+		skipUpdate, err := lifecycle.ExecutePreUpdateCommand(ctx, client, cont)
 		if err != nil {
 			// Pre-update command is a user-defined hook running inside the
 			// container; a failure reflects on the hook script, not on
@@ -1111,7 +1144,7 @@ func stopStaleContainer(cont types.Container, client container.Client, params ty
 		}
 	}
 
-	if err := client.StopContainer(cont, params.Timeout); err != nil {
+	if err := client.StopContainer(ctx, cont, params.Timeout); err != nil {
 		if errors.Is(err, container.ErrContainerNotFound) {
 			log.WithField(fieldContainer, cont.Name()).Debug("Container vanished before stop — skipping")
 			return err
@@ -1125,16 +1158,17 @@ func stopStaleContainer(cont types.Container, client container.Client, params ty
 	return nil
 }
 
-func restartContainersInSortedOrder(containers, scanView []types.Container, client container.Client, params types.UpdateParams, stoppedImages map[types.ImageID]bool) map[types.ContainerID]error {
+func restartContainersInSortedOrder(ctx context.Context, containers, scanView []types.Container, client container.Client, params types.UpdateParams, stoppedImages map[types.ImageID]bool) map[types.ContainerID]error {
 	cleanupImageIDs := make(map[types.ImageID]bool, len(containers))
 	failed := make(map[types.ContainerID]error, len(containers))
 
 	for _, c := range containers {
+		beat(params)
 		if !c.ToRestart() {
 			continue
 		}
 		if stoppedImages[c.SafeImageID()] {
-			if err := restartStaleContainer(c, client, params); err != nil {
+			if err := restartStaleContainer(ctx, c, client, params); err != nil {
 				failed[c.ID()] = err
 			} else if c.IsStale() {
 				// Defer cleanup by one generation — see performRollingRestart
@@ -1147,7 +1181,7 @@ func restartContainersInSortedOrder(containers, scanView []types.Container, clie
 	}
 
 	if params.Cleanup {
-		cleanupImages(client, cleanupImageIDs, scanView)
+		cleanupImages(ctx, client, cleanupImageIDs, scanView)
 	}
 
 	return failed
@@ -1160,7 +1194,7 @@ func restartContainersInSortedOrder(containers, scanView []types.Container, clie
 // recreated. The check only sees containers visible to the active filter
 // (label-enable/scope), so containers outside the scan are not protected
 // here; that's the cost of avoiding an extra unfiltered Docker API call.
-func cleanupImages(client container.Client, imageIDs map[types.ImageID]bool, scanView []types.Container) {
+func cleanupImages(ctx context.Context, client container.Client, imageIDs map[types.ImageID]bool, scanView []types.Container) {
 	for imageID := range imageIDs {
 		if imageID == "" {
 			continue
@@ -1169,7 +1203,7 @@ func cleanupImages(client container.Client, imageIDs map[types.ImageID]bool, sca
 			log.WithField(fieldImage, imageID.ShortID()).Debug("Image still referenced by an active container — deferring cleanup")
 			continue
 		}
-		if err := client.RemoveImageByID(imageID); err != nil {
+		if err := client.RemoveImageByID(ctx, imageID); err != nil {
 			log.WithError(err).WithField(fieldImage, imageID.ShortID()).Error("Failed to remove image")
 		}
 	}
@@ -1244,7 +1278,7 @@ func selfTempName(canonical string) string {
 // state-machine across helpers. Refactor tracked separately.
 //
 //nolint:cyclop // linear orchestrator: split would scatter the
-func restartStaleContainer(container types.Container, client container.Client, params types.UpdateParams) error {
+func restartStaleContainer(ctx context.Context, container types.Container, client container.Client, params types.UpdateParams) error {
 	// Orphan watchtower-labeled containers (random-named leftovers from a
 	// previous self-update whose CheckForMultipleWatchtowerInstances pass did
 	// not complete) reach this point already stopped+removed by
@@ -1315,7 +1349,7 @@ func restartStaleContainer(container types.Container, client container.Client, p
 		// form: selfCanonicalName re-derives it on the next poll and the
 		// startup CleanupOrphanSelf sweep promotes it. Built from the recovered
 		// bare canonical, so a prior "-wt-self-" suffix is never re-embedded.
-		if err := client.RenameContainer(container, selfTempName(selfCanonical)); err != nil {
+		if err := client.RenameContainer(ctx, container, selfTempName(selfCanonical)); err != nil {
 			log.WithError(err).WithFields(log.Fields{
 				fieldContainer: originalName,
 				fieldImage:     container.ImageName(),
@@ -1326,7 +1360,7 @@ func restartStaleContainer(container types.Container, client container.Client, p
 	}
 
 	if !params.NoRestart {
-		newContainerID, err := client.StartContainer(container)
+		newContainerID, err := client.StartContainer(ctx, container)
 		if err != nil {
 			if wasRunningSelf {
 				// The destructive rename already moved the live self to its temp
@@ -1335,7 +1369,7 @@ func restartStaleContainer(container types.Container, client container.Client, p
 				// of being stranded as "<canonical>-wt-self-XXXXXXXX". Best-
 				// effort: on failure selfCanonicalName (next poll) and the
 				// startup CleanupOrphanSelf sweep still reconcile it.
-				if rerr := client.RenameContainer(container, selfCanonical); rerr != nil {
+				if rerr := client.RenameContainer(ctx, container, selfCanonical); rerr != nil {
 					log.WithError(rerr).WithField(fieldContainer, originalName).Warn(
 						"Self-update: failed to restore the canonical name after a failed respawn; it will be reconciled on the next poll or startup sweep",
 					)
@@ -1359,10 +1393,10 @@ func restartStaleContainer(container types.Container, client container.Client, p
 			return err
 		}
 		if container.ToRestart() && params.LifecycleHooks {
-			lifecycle.ExecutePostUpdateCommand(client, newContainerID)
+			lifecycle.ExecutePostUpdateCommand(ctx, client, newContainerID)
 		}
 		if params.HealthCheckGated {
-			if err := gateOnHealthCheck(client, container, newContainerID, params); err != nil {
+			if err := gateOnHealthCheck(ctx, client, container, newContainerID, params); err != nil {
 				return err
 			}
 		}
@@ -1442,9 +1476,9 @@ func containerOrImageHealthcheck(c types.Container) *dockercontainer.HealthConfi
 // gateOnHealthCheck blocks until the replacement container is healthy or until
 // the resolved timeout elapses. On failure it stops the new container and
 // restarts the old one from the same config+image that were running before.
-func gateOnHealthCheck(client container.Client, old types.Container, newID types.ContainerID, params types.UpdateParams) error {
+func gateOnHealthCheck(ctx context.Context, client container.Client, old types.Container, newID types.ContainerID, params types.UpdateParams) error {
 	timeout := resolveHealthCheckTimeout(old, params)
-	err := waitForHealthy(client, newID, timeout)
+	err := waitForHealthy(ctx, client, newID, timeout)
 	if errors.Is(err, errNoHealthcheck) {
 		log.WithField(fieldContainer, old.Name()).Warn(
 			"--health-check-gated is set but the container has no HEALTHCHECK — update proceeded without gating. Add a HEALTHCHECK or remove the flag to silence this warning.",
@@ -1466,9 +1500,9 @@ func gateOnHealthCheck(client container.Client, old types.Container, newID types
 	// why the gate failed — OOM-kill, non-zero exit, or the trimmed output of
 	// the last failing probe. Without this an operator only sees "rolling
 	// back" and has to reproduce locally to find the cause.
-	maps.Copy(fields, healthFailureContext(client, newID))
+	maps.Copy(fields, healthFailureContext(ctx, client, newID))
 	log.WithError(err).WithFields(fields).Errorf("Health check failed after updating %s (image %s): %v — rolling back to the previous image", old.Name(), old.ImageName(), err)
-	if rbErr := rollback(client, old, newID, params); rbErr != nil {
+	if rbErr := rollback(ctx, client, old, newID, params); rbErr != nil {
 		return fmt.Errorf("rollback failed for %s: %w (original health-check error: %w)", old.Name(), rbErr, err)
 	}
 	return fmt.Errorf("update of %s rolled back after failed health check: %w", old.Name(), err)
@@ -1480,9 +1514,9 @@ func gateOnHealthCheck(client container.Client, old types.Container, newID types
 // into the rollback log so an operator can see *why* the new image failed
 // without re-inspecting the container — which is impossible after rollback,
 // since the new container has been stopped and removed by then.
-func healthFailureContext(client container.Client, id types.ContainerID) log.Fields {
+func healthFailureContext(ctx context.Context, client container.Client, id types.ContainerID) log.Fields {
 	fields := log.Fields{}
-	c, err := client.GetContainer(id)
+	c, err := client.GetContainer(ctx, id)
 	if err != nil {
 		return fields
 	}
@@ -1516,13 +1550,13 @@ func healthFailureContext(client container.Client, id types.ContainerID) log.Fie
 // waitForHealthy polls the container's State.Health.Status every
 // healthPollInterval. Returns nil once the status is Healthy, errNoHealthcheck
 // if the container has no HEALTHCHECK, or an error on Unhealthy / timeout.
-func waitForHealthy(client container.Client, id types.ContainerID, timeout time.Duration) error {
+func waitForHealthy(ctx context.Context, client container.Client, id types.ContainerID, timeout time.Duration) error {
 	if timeout <= 0 {
 		timeout = defaultHealthCheckTimeout
 	}
 	deadline := time.Now().Add(timeout)
 	for {
-		c, err := client.GetContainer(id)
+		c, err := client.GetContainer(ctx, id)
 		if err != nil {
 			return fmt.Errorf("inspect new container: %w", err)
 		}
@@ -1555,17 +1589,17 @@ func waitForHealthy(client container.Client, id types.ContainerID, timeout time.
 // Every rollback — successful or not — arms the cooldown so the same
 // container isn't stopped and started every poll while the image author
 // re-pushes broken versions.
-func rollback(client container.Client, old types.Container, newID types.ContainerID, params types.UpdateParams) error {
+func rollback(ctx context.Context, client container.Client, old types.Container, newID types.ContainerID, params types.UpdateParams) error {
 	defer recordRollback(old.Name())
 
-	newSnapshot, err := client.GetContainer(newID)
+	newSnapshot, err := client.GetContainer(ctx, newID)
 	if err != nil {
 		log.WithError(err).WithFields(log.Fields{
 			fieldContainer: old.Name(),
 			fieldImage:     old.ImageName(),
 			"new_id":       newID.ShortID(),
 		}).Warn("rollback: could not inspect new container, attempting restart of old anyway")
-	} else if stopErr := client.StopContainer(newSnapshot, params.Timeout); stopErr != nil {
+	} else if stopErr := client.StopContainer(ctx, newSnapshot, params.Timeout); stopErr != nil {
 		log.WithError(stopErr).WithFields(log.Fields{
 			fieldContainer: newSnapshot.Name(),
 			fieldImage:     newSnapshot.ImageName(),
@@ -1576,7 +1610,7 @@ func rollback(client container.Client, old types.Container, newID types.Containe
 	// targetImageID set on the forward path would still hold the *new* image
 	// and rollback would re-create with the broken version we just rejected.
 	old.SetTargetImageID(old.ImageID())
-	rolledBackID, err := client.StartContainer(old)
+	rolledBackID, err := client.StartContainer(ctx, old)
 	if err != nil {
 		return err
 	}
@@ -1595,7 +1629,7 @@ func rollback(client container.Client, old types.Container, newID types.Containe
 	if rollbackTimeout < floor {
 		rollbackTimeout = floor
 	}
-	if err := waitForHealthy(client, rolledBackID, rollbackTimeout); err != nil {
+	if err := waitForHealthy(ctx, client, rolledBackID, rollbackTimeout); err != nil {
 		if errors.Is(err, errNoHealthcheck) {
 			log.WithFields(log.Fields{
 				fieldContainer: old.Name(),

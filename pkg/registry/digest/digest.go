@@ -44,7 +44,7 @@ var manifestAccept = []string{
 // (true, nil) when up-to-date, (false, nil) when the registry has a newer
 // digest, or (false, err) when the comparison itself failed (network,
 // auth, parse).
-func CompareDigest(container types.Container, registryAuth string) (bool, error) {
+func CompareDigest(ctx context.Context, container types.Container, registryAuth string) (bool, error) {
 	if !container.HasImageInfo() {
 		return false, errors.New("container image info missing")
 	}
@@ -52,7 +52,7 @@ func CompareDigest(container types.Container, registryAuth string) (bool, error)
 	var digest string
 
 	registryAuth = TransformAuth(registryAuth)
-	token, err := auth.GetToken(container, registryAuth)
+	token, err := auth.GetToken(ctx, container, registryAuth)
 	if err != nil {
 		return false, err
 	}
@@ -62,7 +62,7 @@ func CompareDigest(container types.Container, registryAuth string) (bool, error)
 		return false, err
 	}
 
-	if digest, err = GetDigest(digestURL, token); err != nil {
+	if digest, err = GetDigest(ctx, digestURL, token); err != nil {
 		return false, err
 	}
 
@@ -110,18 +110,18 @@ func TransformAuth(registryAuth string) string {
 // compute the digest as sha256 of the manifest body ourselves — the OCI
 // image-spec guarantees the two match for the canonical bytes the registry
 // returns.
-func GetDigest(url, token string) (string, error) {
+func GetDigest(ctx context.Context, url, token string) (string, error) {
 	if token == "" {
 		return "", errors.New("could not fetch token")
 	}
 
-	digest, headErr := fetchManifestDigest(url, token, http.MethodHead)
+	digest, headErr := fetchManifestDigest(ctx, url, token, http.MethodHead)
 	if headErr == nil {
 		return digest, nil
 	}
 
 	logrus.WithError(headErr).WithField("url", url).Debug("HEAD manifest failed — falling back to GET")
-	digest, getErr := fetchManifestDigest(url, token, http.MethodGet)
+	digest, getErr := fetchManifestDigest(ctx, url, token, http.MethodGet)
 	if getErr != nil {
 		// Surface both errors so operators can tell whether the issue was
 		// HEAD-specific (recoverable, GET may have worked once) or a real
@@ -136,14 +136,14 @@ func GetDigest(url, token string) (string, error) {
 // full retry budget; HEAD is best-effort with a single attempt because the
 // GET fallback path handles any real failure, and retrying HEAD on a
 // registry that just doesn't speak HEAD is pure latency.
-func fetchManifestDigest(url, token, method string) (string, error) {
+func fetchManifestDigest(ctx context.Context, url, token, method string) (string, error) {
 	parsed, err := neturl.Parse(url)
 	if err != nil {
 		return "", fmt.Errorf("parse manifest URL %q: %w", url, err)
 	}
 	client := transport.Client(parsed.Host)
 
-	req, err := http.NewRequestWithContext(context.Background(), method, url, http.NoBody)
+	req, err := http.NewRequestWithContext(ctx, method, url, http.NoBody)
 	if err != nil {
 		return "", fmt.Errorf("build %s request: %w", method, err)
 	}

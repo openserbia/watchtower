@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -62,7 +63,7 @@ var _ = Describe("the auth module", func() {
 			"should parse the token from the response",
 			SkipIfCredentialsEmpty(GHCRCredentials, func() {
 				creds := fmt.Sprintf("%s:%s", GHCRCredentials.Username, GHCRCredentials.Password)
-				token, err := auth.GetToken(mockContainer, creds)
+				token, err := auth.GetToken(context.Background(), mockContainer, creds)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(token).NotTo(Equal(""))
 			}),

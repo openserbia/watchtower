@@ -88,12 +88,12 @@ func New(client container.Client, scope string) *Handler {
 // Handle responds with the audit report as JSON. Errors during container
 // enumeration return 500 with a short plain-text message so operators can
 // distinguish "Docker socket unreachable" from "actually no containers".
-func (h *Handler) Handle(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 	filter := filters.NoFilter
 	if h.scope != "" {
 		filter = filters.FilterByScope(h.scope, filter)
 	}
-	containers, err := h.client.ListContainers(filter)
+	containers, err := h.client.ListContainers(r.Context(), filter)
 	if err != nil {
 		log.WithError(err).Warn("audit: failed to list containers")
 		http.Error(w, "failed to list containers: "+err.Error(), http.StatusInternalServerError)

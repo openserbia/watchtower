@@ -4,6 +4,8 @@
 package lifecycle
 
 import (
+	"context"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/openserbia/watchtower/pkg/container"
@@ -11,29 +13,29 @@ import (
 )
 
 // ExecutePreChecks tries to run the pre-check lifecycle hook for all containers included by the current filter.
-func ExecutePreChecks(client container.Client, params types.UpdateParams) {
-	containers, err := client.ListContainers(params.Filter)
+func ExecutePreChecks(ctx context.Context, client container.Client, params types.UpdateParams) {
+	containers, err := client.ListContainers(ctx, params.Filter)
 	if err != nil {
 		return
 	}
 	for _, currentContainer := range containers {
-		ExecutePreCheckCommand(client, currentContainer)
+		ExecutePreCheckCommand(ctx, client, currentContainer)
 	}
 }
 
 // ExecutePostChecks tries to run the post-check lifecycle hook for all containers included by the current filter.
-func ExecutePostChecks(client container.Client, params types.UpdateParams) {
-	containers, err := client.ListContainers(params.Filter)
+func ExecutePostChecks(ctx context.Context, client container.Client, params types.UpdateParams) {
+	containers, err := client.ListContainers(ctx, params.Filter)
 	if err != nil {
 		return
 	}
 	for _, currentContainer := range containers {
-		ExecutePostCheckCommand(client, currentContainer)
+		ExecutePostCheckCommand(ctx, client, currentContainer)
 	}
 }
 
 // ExecutePreCheckCommand tries to run the pre-check lifecycle hook for a single container.
-func ExecutePreCheckCommand(client container.Client, container types.Container) {
+func ExecutePreCheckCommand(ctx context.Context, client container.Client, container types.Container) {
 	clog := log.WithField("container", container.Name())
 	command := container.GetLifecyclePreCheckCommand()
 	if command == "" {
@@ -42,14 +44,14 @@ func ExecutePreCheckCommand(client container.Client, container types.Container) 
 	}
 
 	clog.Debug("Executing pre-check command.")
-	_, err := client.ExecuteCommand(container.ID(), command, 1)
+	_, err := client.ExecuteCommand(ctx, container.ID(), command, 1)
 	if err != nil {
 		clog.Error(err)
 	}
 }
 
 // ExecutePostCheckCommand tries to run the post-check lifecycle hook for a single container.
-func ExecutePostCheckCommand(client container.Client, container types.Container) {
+func ExecutePostCheckCommand(ctx context.Context, client container.Client, container types.Container) {
 	clog := log.WithField("container", container.Name())
 	command := container.GetLifecyclePostCheckCommand()
 	if command == "" {
@@ -58,14 +60,14 @@ func ExecutePostCheckCommand(client container.Client, container types.Container)
 	}
 
 	clog.Debug("Executing post-check command.")
-	_, err := client.ExecuteCommand(container.ID(), command, 1)
+	_, err := client.ExecuteCommand(ctx, container.ID(), command, 1)
 	if err != nil {
 		clog.Error(err)
 	}
 }
 
 // ExecutePreUpdateCommand tries to run the pre-update lifecycle hook for a single container.
-func ExecutePreUpdateCommand(client container.Client, container types.Container) (skipUpdate bool, err error) {
+func ExecutePreUpdateCommand(ctx context.Context, client container.Client, container types.Container) (skipUpdate bool, err error) {
 	timeout := container.PreUpdateTimeout()
 	command := container.GetLifecyclePreUpdateCommand()
 	clog := log.WithField("container", container.Name())
@@ -81,12 +83,12 @@ func ExecutePreUpdateCommand(client container.Client, container types.Container)
 	}
 
 	clog.Debug("Executing pre-update command.")
-	return client.ExecuteCommand(container.ID(), command, timeout)
+	return client.ExecuteCommand(ctx, container.ID(), command, timeout)
 }
 
 // ExecutePostUpdateCommand tries to run the post-update lifecycle hook for a single container.
-func ExecutePostUpdateCommand(client container.Client, newContainerID types.ContainerID) {
-	newContainer, err := client.GetContainer(newContainerID)
+func ExecutePostUpdateCommand(ctx context.Context, client container.Client, newContainerID types.ContainerID) {
+	newContainer, err := client.GetContainer(ctx, newContainerID)
 	timeout := newContainer.PostUpdateTimeout()
 
 	if err != nil {
@@ -102,7 +104,7 @@ func ExecutePostUpdateCommand(client container.Client, newContainerID types.Cont
 	}
 
 	clog.Debug("Executing post-update command.")
-	_, err = client.ExecuteCommand(newContainerID, command, timeout)
+	_, err = client.ExecuteCommand(ctx, newContainerID, command, timeout)
 	if err != nil {
 		clog.Error(err)
 	}

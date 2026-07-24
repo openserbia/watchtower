@@ -2,6 +2,7 @@ package actions_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"time"
@@ -108,7 +109,7 @@ var _ = Describe("the update action", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			report, err := actions.Update(client, params)
+			report, err := actions.Update(context.Background(), client, params)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.RerunInitContainers).To(HaveLen(1))
 			Expect(client.TestData.RerunInitContainers[0].Name()).To(Equal(dep.Name()))
@@ -130,7 +131,7 @@ var _ = Describe("the update action", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			report, err := actions.Update(client, params)
+			report, err := actions.Update(context.Background(), client, params)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.RerunInitContainers).To(BeEmpty())
 			Expect(report.Updated()).To(BeEmpty())
@@ -141,7 +142,7 @@ var _ = Describe("the update action", func() {
 			dep := buildComposeContainer("rerun-dep-missing-migrate", "migrate", "")
 			client.TestData.AllContainers = []types.Container{target, dep}
 
-			report, err = actions.Update(client, params)
+			report, err = actions.Update(context.Background(), client, params)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.RerunInitContainers).To(HaveLen(1))
 			Expect(report.Updated()).To(HaveLen(1))
@@ -162,14 +163,14 @@ var _ = Describe("the update action", func() {
 
 			// First poll: the migration genuinely fails → digest rejected,
 			// old container kept.
-			report, err := actions.Update(client, params)
+			report, err := actions.Update(context.Background(), client, params)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.RerunInitContainers).To(HaveLen(1))
 			Expect(report.Updated()).To(BeEmpty())
 
 			// Second poll inside the TTL: served from the cache — the failing
 			// migration must NOT be executed again.
-			report, err = actions.Update(client, params)
+			report, err = actions.Update(context.Background(), client, params)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.RerunInitContainers).To(HaveLen(1))
 			Expect(report.Updated()).To(BeEmpty())
@@ -177,10 +178,72 @@ var _ = Describe("the update action", func() {
 			// Past the TTL the rerun is retried (the failure may have been a
 			// transient dep, e.g. a briefly-down database).
 			actions.RewindRejectedInitDigestForTest(digest, 48*time.Hour)
-			report, err = actions.Update(client, params)
+			report, err = actions.Update(context.Background(), client, params)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.RerunInitContainers).To(HaveLen(2))
 			Expect(report.Updated()).To(BeEmpty())
+		})
+
+		// buildProjectContainer builds a compose-managed container with an
+		// explicit restart policy and a PRESENT-BUT-EMPTY depends_on label —
+		// the stranded-target stamp. The restart policy matters: "no" makes it
+		// a one-shot init sibling, a long-lived policy a recovery target.
+		buildProjectContainer := func(name, service, restartPolicy string, running bool) types.Container {
+			return packagecontainer.NewContainer(&dockerContainer.InspectResponse{
+				ID:    name,
+				Name:  name,
+				Image: "fake-image:latest",
+				State: &dockerContainer.State{Running: running},
+				HostConfig: &dockerContainer.HostConfig{
+					RestartPolicy: dockerContainer.RestartPolicy{Name: dockerContainer.RestartPolicyMode(restartPolicy)},
+					PortBindings:  network.PortMap{},
+				},
+				Config: &dockerContainer.Config{
+					Image: "fake-image:latest",
+					Labels: map[string]string{
+						"com.docker.compose.project":    "stranded-test",
+						"com.docker.compose.service":    service,
+						"com.docker.compose.depends_on": "",
+					},
+					ExposedPorts: network.PortSet{},
+				},
+			}, CreateMockImageInfo("fake-image:latest"))
+		}
+
+		It("stranded recovery is warn-only without --rerun-stranded-init-deps", func() {
+			target := buildProjectContainer("stranded-warn-target", "api", "unless-stopped", true)
+			oneShot := buildProjectContainer("stranded-warn-migrate", "migrate", "no", false)
+			data := &TestData{
+				Containers:        []types.Container{target},
+				AllContainers:     []types.Container{target, oneShot},
+				NewestImageByName: map[string]types.ImageID{target.Name(): "sha256:stranded-warn-digest"},
+			}
+			client := CreateMockClient(data, false, false)
+
+			report, err := actions.Update(context.Background(), client, params)
+			Expect(err).NotTo(HaveOccurred())
+			// Detection fires (warning + gauge) but the never-declared sibling
+			// must NOT be executed; the target itself still updates.
+			Expect(client.TestData.RerunInitContainers).To(BeEmpty())
+			Expect(report.Updated()).To(HaveLen(1))
+		})
+
+		It("executes recovered siblings under --rerun-stranded-init-deps", func() {
+			target := buildProjectContainer("stranded-run-target", "api", "unless-stopped", true)
+			oneShot := buildProjectContainer("stranded-run-migrate", "migrate", "no", false)
+			data := &TestData{
+				Containers:        []types.Container{target},
+				AllContainers:     []types.Container{target, oneShot},
+				NewestImageByName: map[string]types.ImageID{target.Name(): "sha256:stranded-run-digest"},
+			}
+			client := CreateMockClient(data, false, false)
+
+			recoverParams := types.UpdateParams{RerunInitDeps: true, RerunStrandedInitDeps: true}
+			report, err := actions.Update(context.Background(), client, recoverParams)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(client.TestData.RerunInitContainers).To(HaveLen(1))
+			Expect(client.TestData.RerunInitContainers[0].Name()).To(Equal(oneShot.Name()))
+			Expect(report.Updated()).To(HaveLen(1))
 		})
 
 		It("does not run init deps for monitor-only targets", func() {
@@ -198,7 +261,7 @@ var _ = Describe("the update action", func() {
 			client := CreateMockClient(data, false, false)
 
 			monitorParams := types.UpdateParams{RerunInitDeps: true, MonitorOnly: true}
-			report, err := actions.Update(client, monitorParams)
+			report, err := actions.Update(context.Background(), client, monitorParams)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.RerunInitContainers).To(BeEmpty())
 			Expect(report.Updated()).To(BeEmpty())
@@ -216,7 +279,7 @@ var _ = Describe("the update action", func() {
 			client := CreateMockClient(data, false, false)
 
 			noRestartParams := types.UpdateParams{RerunInitDeps: true, NoRestart: true}
-			_, err := actions.Update(client, noRestartParams)
+			_, err := actions.Update(context.Background(), client, noRestartParams)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.RerunInitContainers).To(BeEmpty())
 		})
@@ -253,7 +316,7 @@ var _ = Describe("the update action", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			_, err := actions.Update(client, params)
+			_, err := actions.Update(context.Background(), client, params)
 			Expect(err).NotTo(HaveOccurred())
 			// StartContainer should have been called twice: once for the new
 			// image, once for the rollback that restores the old state.
@@ -279,7 +342,7 @@ var _ = Describe("the update action", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			_, err := actions.Update(client, params)
+			_, err := actions.Update(context.Background(), client, params)
 			// Update() itself doesn't bubble the error up — it records it as
 			// failed in the progress report. Check that both containers got
 			// started and the second was the old one.
@@ -300,14 +363,14 @@ var _ = Describe("the update action", func() {
 			client := CreateMockClient(data, false, false)
 
 			// First poll: unhealthy new → rollback → cooldown recorded.
-			_, err := actions.Update(client, params)
+			_, err := actions.Update(context.Background(), client, params)
 			Expect(err).NotTo(HaveOccurred())
 			firstPollStarts := len(client.TestData.StartedContainers)
 			Expect(firstPollStarts).To(Equal(2))
 
 			// Second poll immediately after: should be a no-op because the
 			// container is still within the rollback cooldown window.
-			_, err = actions.Update(client, params)
+			_, err = actions.Update(context.Background(), client, params)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.StartedContainers).To(HaveLen(firstPollStarts))
 		})
@@ -320,7 +383,7 @@ var _ = Describe("the update action", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			_, err := actions.Update(client, params)
+			_, err := actions.Update(context.Background(), client, params)
 			Expect(err).NotTo(HaveOccurred())
 			// Only the new container should have been started — no rollback.
 			Expect(client.TestData.StartedContainers).To(HaveLen(1))
@@ -334,7 +397,7 @@ var _ = Describe("the update action", func() {
 			}
 			client := CreateMockClient(data, false, false)
 
-			_, err := actions.Update(client, params)
+			_, err := actions.Update(context.Background(), client, params)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(client.TestData.StartedContainers).To(HaveLen(1))
 		})
@@ -351,7 +414,7 @@ var _ = Describe("the update action", func() {
 					actions.SeedPreviousImageForTest(c.Name(), priorDigest)
 				}
 				client := CreateMockClient(data, false, false)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 			})
@@ -398,7 +461,7 @@ var _ = Describe("the update action", func() {
 				client := CreateMockClient(&TestData{
 					Containers: []types.Container{ctr},
 				}, false, false)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true})
 				Expect(err).NotTo(HaveOccurred())
 				// The seeded prior is what gets cleaned. The just-retired
 				// SourceImageID becomes the new prior; the fallback imageInfo
@@ -430,7 +493,7 @@ var _ = Describe("the update action", func() {
 					}
 				}
 				client := CreateMockClient(testData, false, false)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(sharedPrior, uniquePrior))
 			})
@@ -444,7 +507,7 @@ var _ = Describe("the update action", func() {
 				// because it isn't being recreated.
 				actions.SeedPreviousImageForTest("/test-container-02", types.ImageID("sha256:linked-untouched"))
 				client := CreateMockClient(data, false, false)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(stalePrior))
 			})
@@ -457,7 +520,7 @@ var _ = Describe("the update action", func() {
 					actions.SeedPreviousImageForTest(c.Name(), priorDigest)
 				}
 				client := CreateMockClient(data, false, false)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true, RollingRestart: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true, RollingRestart: true})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 			})
@@ -466,7 +529,7 @@ var _ = Describe("the update action", func() {
 			It("defers cleanup until the next update of that container", func() {
 				data := getCommonTestData()
 				client := CreateMockClient(data, false, false)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true})
 				Expect(err).NotTo(HaveOccurred())
 				// First-pass cleanup is empty — the just-retired digests have
 				// just been recorded as priors, awaiting the next update.
@@ -480,7 +543,7 @@ var _ = Describe("the update action", func() {
 			It("should gracefully fail", func() {
 				client := CreateMockClient(getLinkedTestData(false), false, false)
 
-				report, err := actions.Update(client, types.UpdateParams{})
+				report, err := actions.Update(context.Background(), client, types.UpdateParams{})
 				Expect(err).NotTo(HaveOccurred())
 				// Note: Linked containers that were skipped for recreation is not counted in Failed
 				// If this happens, an error is emitted to the logs, so a notification should still be sent.
@@ -523,7 +586,7 @@ var _ = Describe("the update action", func() {
 					false,
 					false,
 				)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true})
 				Expect(err).NotTo(HaveOccurred())
 				// Only the non-monitored container rotates; its seeded prior
 				// is what gets cleaned. Cleanup is deferred by one generation,
@@ -554,7 +617,7 @@ var _ = Describe("the update action", func() {
 					false,
 					false,
 				)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true, MonitorOnly: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true, MonitorOnly: true})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(0))
 			})
@@ -584,7 +647,7 @@ var _ = Describe("the update action", func() {
 						false,
 						false,
 					)
-					_, err := actions.Update(client, types.UpdateParams{Cleanup: true, MonitorOnly: true, LabelPrecedence: true})
+					_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true, MonitorOnly: true, LabelPrecedence: true})
 					Expect(err).NotTo(HaveOccurred())
 					Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 				})
@@ -611,7 +674,7 @@ var _ = Describe("the update action", func() {
 						false,
 						false,
 					)
-					_, err := actions.Update(client, types.UpdateParams{Cleanup: true, MonitorOnly: true, LabelPrecedence: true})
+					_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true, MonitorOnly: true, LabelPrecedence: true})
 					Expect(err).NotTo(HaveOccurred())
 					Expect(client.TestData.TriedToRemoveImageCount).To(Equal(0))
 				})
@@ -630,7 +693,7 @@ var _ = Describe("the update action", func() {
 						false,
 						false,
 					)
-					_, err := actions.Update(client, types.UpdateParams{Cleanup: true, MonitorOnly: true, LabelPrecedence: true})
+					_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true, MonitorOnly: true, LabelPrecedence: true})
 					Expect(err).NotTo(HaveOccurred())
 					Expect(client.TestData.TriedToRemoveImageCount).To(Equal(0))
 				})
@@ -666,7 +729,7 @@ var _ = Describe("the update action", func() {
 					false,
 				)
 
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(0))
 			})
@@ -698,7 +761,7 @@ var _ = Describe("the update action", func() {
 					false,
 					false,
 				)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageCount).To(Equal(0))
 			})
@@ -732,7 +795,7 @@ var _ = Describe("the update action", func() {
 					false,
 					false,
 				)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 			})
@@ -813,7 +876,7 @@ var _ = Describe("the update action", func() {
 					false,
 					false,
 				)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 			})
@@ -847,7 +910,7 @@ var _ = Describe("the update action", func() {
 					false,
 					false,
 				)
-				_, err := actions.Update(client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
+				_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true, LifecycleHooks: true})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(client.TestData.TriedToRemoveImageIDs).To(ConsistOf(priorDigest))
 			})
@@ -926,7 +989,7 @@ var _ = Describe("image cooldown under --run-once", func() {
 			Containers: []types.Container{target},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{
 			ImageCooldown: 1 * time.Hour,
 			RunOnce:       true,
 		})
@@ -964,7 +1027,7 @@ var _ = Describe("watchtower self-update port conflict", func() {
 			Containers: []types.Container{watchtowerWithPort},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 		// Skip means StartContainer is never called → rename-and-respawn
 		// path didn't run.
@@ -1004,7 +1067,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 			Containers: []types.Container{self},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(client.TestData.RenameCalls).To(HaveLen(1))
@@ -1042,7 +1105,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 			Containers: []types.Container{self},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(client.TestData.StartedContainers).To(HaveLen(1))
@@ -1063,7 +1126,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 			Containers: []types.Container{self},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(client.TestData.StartedContainers).To(HaveLen(1))
@@ -1086,7 +1149,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 			Containers: []types.Container{self},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(client.TestData.StartedContainers).To(HaveLen(1))
@@ -1117,7 +1180,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 			Containers: []types.Container{self},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(client.TestData.StartedContainers).To(HaveLen(1))
@@ -1137,7 +1200,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 			Containers: []types.Container{self},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{NoRestart: true})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{NoRestart: true})
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(client.TestData.RenameCalls).To(BeEmpty())
@@ -1154,7 +1217,7 @@ var _ = Describe("watchtower self-update name safety net", func() {
 			StartContainerErrors: map[string]error{"/watchtower": errors.New("address already in use")},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 
 		// Two renames: the temp rename, then the restore back to the canonical
@@ -1226,10 +1289,10 @@ var _ = Describe("watchtower self-update start-failure notification dedup", func
 		}
 
 		// First poll: the failure is new, so it must log at error (→ notify).
-		_, err := actions.Update(newClient(), types.UpdateParams{})
+		_, err := actions.Update(context.Background(), newClient(), types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 		// Second poll, identical failure within the cooldown: suppressed to debug.
-		_, err = actions.Update(newClient(), types.UpdateParams{})
+		_, err = actions.Update(context.Background(), newClient(), types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 
 		out := logBuf.String()
@@ -1242,13 +1305,13 @@ var _ = Describe("watchtower self-update start-failure notification dedup", func
 		firstErr := errors.New("Error response from daemon: address already in use")
 		secondErr := errors.New("Error response from daemon: no such image")
 
-		_, err := actions.Update(CreateMockClient(&TestData{
+		_, err := actions.Update(context.Background(), CreateMockClient(&TestData{
 			Containers:           []types.Container{buildSelf()},
 			StartContainerErrors: map[string]error{"/watchtower": firstErr},
 		}, false, false), types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = actions.Update(CreateMockClient(&TestData{
+		_, err = actions.Update(context.Background(), CreateMockClient(&TestData{
 			Containers:           []types.Container{buildSelf()},
 			StartContainerErrors: map[string]error{"/watchtower": secondErr},
 		}, false, false), types.UpdateParams{})
@@ -1301,7 +1364,7 @@ var _ = Describe("startup-failure log levels", func() {
 			false,
 		)
 
-		_, err := actions.Update(client, types.UpdateParams{LifecycleHooks: true})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{LifecycleHooks: true})
 		Expect(err).NotTo(HaveOccurred())
 
 		out := logBuf.String()
@@ -1345,7 +1408,7 @@ var _ = Describe("pinned-image containers", func() {
 			},
 		}, false, false)
 
-		report, err := actions.Update(client, types.UpdateParams{})
+		report, err := actions.Update(context.Background(), client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(report.Failed()).To(BeEmpty())
 
@@ -1373,7 +1436,7 @@ var _ = Describe("pinned-image containers", func() {
 			},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 		out := logBuf.String()
 		Expect(out).To(ContainSubstring(`level=warning`))
@@ -1400,7 +1463,7 @@ var _ = Describe("cleanup safety: image still in use", func() {
 			},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(stale.SafeImageID()))
 	})
@@ -1417,7 +1480,7 @@ var _ = Describe("cleanup safety: image still in use", func() {
 			Containers: []types.Container{only},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client.TestData.TriedToRemoveImageIDs).To(ContainElement(priorDigest))
 		Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(only.SafeImageID()))
@@ -1437,7 +1500,7 @@ var _ = Describe("cleanup safety: image still in use", func() {
 			Containers: []types.Container{first, second},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client.TestData.TriedToRemoveImageIDs).To(ContainElement(priorDigest))
 		Expect(client.TestData.TriedToRemoveImageIDs).NotTo(ContainElement(first.SafeImageID()))
@@ -1460,7 +1523,7 @@ var _ = Describe("image-ID pinning during update", func() {
 			NewestImageByName: map[string]types.ImageID{target.Name(): newestDigest},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client.TestData.StartedContainers).To(HaveLen(1))
 		Expect(client.TestData.StartedContainers[0].TargetImageID()).To(Equal(newestDigest))
@@ -1474,7 +1537,7 @@ var _ = Describe("image-ID pinning during update", func() {
 			Containers: []types.Container{target},
 		}, false, false)
 
-		_, err := actions.Update(client, types.UpdateParams{})
+		_, err := actions.Update(context.Background(), client, types.UpdateParams{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(client.TestData.StartedContainers).To(HaveLen(1))
 		Expect(client.TestData.StartedContainers[0].TargetImageID()).To(BeEmpty())
@@ -1507,7 +1570,7 @@ var _ = Describe("a container vanishing mid-scan", func() {
 			VanishedContainers: map[string]bool{vanished.Name(): true},
 		}, false, false)
 
-		report, err := actions.Update(client, types.UpdateParams{Cleanup: true})
+		report, err := actions.Update(context.Background(), client, types.UpdateParams{Cleanup: true})
 		Expect(err).NotTo(HaveOccurred())
 
 		// The vanished container is reported as Skipped, the surviving one
@@ -1556,7 +1619,7 @@ var _ = Describe("a container vanishing mid-scan", func() {
 			VanishedContainers: map[string]bool{vanished.Name(): true},
 		}, false, false)
 
-		report, err := actions.Update(client, types.UpdateParams{RollingRestart: true})
+		report, err := actions.Update(context.Background(), client, types.UpdateParams{RollingRestart: true})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(report.Failed()).To(BeEmpty())
 		skippedNames := []string{}

@@ -4,6 +4,7 @@
 package actions
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -44,11 +45,11 @@ var selfTempNameRe = regexp.MustCompile(`^(.+)-wt-self-[A-Za-z]{8}$`)
 // requireNoLinks is set (the rolling-restart and blue-green strategies, which
 // update containers one at a time and cannot honor inter-container links),
 // it rejects any configuration that declares container links.
-func CheckForSanity(client container.Client, filter types.Filter, requireNoLinks bool) error {
+func CheckForSanity(ctx context.Context, client container.Client, filter types.Filter, requireNoLinks bool) error {
 	log.Debug("Making sure everything is sane before starting")
 
 	if requireNoLinks {
-		containers, err := client.ListContainers(filter)
+		containers, err := client.ListContainers(ctx, filter)
 		if err != nil {
 			return err
 		}
@@ -94,12 +95,12 @@ func ResetAuditStateForTest() {
 // Metrics publication is unconditional — Prometheus gauges are always-on
 // observability. The logWarnings flag gates only the `docker logs` output,
 // typically wired to --audit-unmanaged.
-func AuditUnmanaged(client container.Client, scope string, logWarnings bool) error {
+func AuditUnmanaged(ctx context.Context, client container.Client, scope string, logWarnings bool) error {
 	filter := filters.NoFilter
 	if scope != "" {
 		filter = filters.FilterByScope(scope, filter)
 	}
-	containers, err := client.ListContainers(filter)
+	containers, err := client.ListContainers(ctx, filter)
 	if err != nil {
 		return err
 	}
@@ -176,12 +177,12 @@ func AuditUnmanaged(client container.Client, scope string, logWarnings bool) err
 // Failures are logged and skipped rather than returned, so one stuck container
 // can't block startup; the function only returns an error if the initial list
 // fails.
-func CleanupOrphanBlueGreen(client container.Client, scope string) error {
+func CleanupOrphanBlueGreen(ctx context.Context, client container.Client, scope string) error {
 	filter := filters.NoFilter
 	if scope != "" {
 		filter = filters.FilterByScope(scope, filter)
 	}
-	containers, err := client.ListContainers(filter)
+	containers, err := client.ListContainers(ctx, filter)
 	if err != nil {
 		return err
 	}
@@ -202,14 +203,14 @@ func CleanupOrphanBlueGreen(client container.Client, scope string) error {
 
 		if _, ok := present[canonical]; ok {
 			clog.Info("blue-green: removing orphan green container left by an interrupted cutover; the canonical container is still present")
-			if err := client.StopContainer(c, stopTimeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
+			if err := client.StopContainer(ctx, c, stopTimeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
 				clog.WithError(err).Warn("blue-green: failed to remove orphan green container; it will be retried on the next startup")
 			}
 			continue
 		}
 
 		clog.Info("blue-green: promoting orphan green to its canonical name; an earlier cutover stopped the old container but did not finish the rename")
-		if err := client.RenameContainer(c, canonical); err != nil {
+		if err := client.RenameContainer(ctx, c, canonical); err != nil {
 			clog.WithError(err).Warn("blue-green: failed to rename orphan green to its canonical name; it keeps the temporary name until the next update")
 			continue
 		}
@@ -247,12 +248,12 @@ func CleanupOrphanBlueGreen(client container.Client, scope string) error {
 // name is read straight out of the temp name's capture group. Failures are
 // logged and skipped rather than returned, so one stuck container can't block
 // startup; the function only returns an error if the initial list fails.
-func CleanupOrphanSelf(client container.Client, scope string, selfID types.ContainerID) error {
+func CleanupOrphanSelf(ctx context.Context, client container.Client, scope string, selfID types.ContainerID) error {
 	filter := filters.WatchtowerContainersFilter
 	if scope != "" {
 		filter = filters.FilterByScope(scope, filter)
 	}
-	containers, err := client.ListContainers(filter)
+	containers, err := client.ListContainers(ctx, filter)
 	if err != nil {
 		return err
 	}
@@ -288,7 +289,7 @@ func CleanupOrphanSelf(client container.Client, scope string, selfID types.Conta
 			// The respawn already produced the canonical self; the temps are
 			// stale outgoing selves the respawn replaced — remove them.
 			for _, c := range temps {
-				stopOrphanSelf(client, c, canonical, "the canonical self is already present")
+				stopOrphanSelf(ctx, client, c, canonical, "the canonical self is already present")
 			}
 
 			continue
@@ -299,13 +300,13 @@ func CleanupOrphanSelf(client container.Client, scope string, selfID types.Conta
 		sort.Sort(sorter.ByCreated(temps))
 		promote := temps[len(temps)-1]
 		for _, c := range temps[:len(temps)-1] {
-			stopOrphanSelf(client, c, canonical, "promoting a newer stranded self for this canonical name")
+			stopOrphanSelf(ctx, client, c, canonical, "promoting a newer stranded self for this canonical name")
 		}
 
 		log.WithFields(log.Fields{fieldSelf: strings.TrimPrefix(promote.Name(), "/"), fieldCanonical: canonical}).Info(
 			"self-update: promoting stranded self to its canonical name; an earlier self-update renamed it but never restored the name",
 		)
-		if err := client.RenameContainer(promote, canonical); err != nil {
+		if err := client.RenameContainer(ctx, promote, canonical); err != nil {
 			log.WithError(err).WithFields(log.Fields{fieldSelf: strings.TrimPrefix(promote.Name(), "/"), fieldCanonical: canonical}).Warn(
 				"self-update: failed to rename stranded self to its canonical name; it keeps the temporary name until the next update",
 			)
@@ -321,11 +322,11 @@ func CleanupOrphanSelf(client container.Client, scope string, selfID types.Conta
 // stopOrphanSelf removes a stale self-update temporary container, tolerating a
 // vanished container. Best-effort: a failure is logged and never returned so it
 // cannot block the startup sweep.
-func stopOrphanSelf(client container.Client, c types.Container, canonical, reason string) {
+func stopOrphanSelf(ctx context.Context, client container.Client, c types.Container, canonical, reason string) {
 	log.WithFields(log.Fields{fieldSelf: strings.TrimPrefix(c.Name(), "/"), fieldCanonical: canonical}).Infof(
 		"self-update: removing orphan self-update temporary container — %s", reason,
 	)
-	if err := client.StopContainer(c, stopTimeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
+	if err := client.StopContainer(ctx, c, stopTimeout); err != nil && !errors.Is(err, container.ErrContainerNotFound) {
 		log.WithError(err).WithField(fieldSelf, strings.TrimPrefix(c.Name(), "/")).Warn(
 			"self-update: failed to remove orphan self-update temporary container; it will be retried on the next startup",
 		)
@@ -336,12 +337,12 @@ func stopOrphanSelf(client container.Client, c types.Container, canonical, reaso
 // watchtower running simultaneously. If multiple watchtower containers are detected, this function
 // will stop and remove all but the most recently started container. This behaviour can be bypassed
 // if a scope UID is defined.
-func CheckForMultipleWatchtowerInstances(client container.Client, cleanup bool, scope string) error {
+func CheckForMultipleWatchtowerInstances(ctx context.Context, client container.Client, cleanup bool, scope string) error {
 	filter := filters.WatchtowerContainersFilter
 	if scope != "" {
 		filter = filters.FilterByScope(scope, filter)
 	}
-	containers, err := client.ListContainers(filter)
+	containers, err := client.ListContainers(ctx, filter)
 	if err != nil {
 		return err
 	}
@@ -352,12 +353,12 @@ func CheckForMultipleWatchtowerInstances(client container.Client, cleanup bool, 
 	}
 
 	log.Info("Found multiple running watchtower instances. Cleaning up.")
-	return cleanupExcessWatchtowers(containers, client, cleanup)
+	return cleanupExcessWatchtowers(ctx, containers, client, cleanup)
 }
 
 const stopTimeout = 10 * time.Minute
 
-func cleanupExcessWatchtowers(containers []types.Container, client container.Client, cleanup bool) error {
+func cleanupExcessWatchtowers(ctx context.Context, containers []types.Container, client container.Client, cleanup bool) error {
 	var stopErrors int
 
 	sort.Sort(sorter.ByCreated(containers))
@@ -386,7 +387,7 @@ func cleanupExcessWatchtowers(containers []types.Container, client container.Cli
 		if c.ID() == keep.ID() {
 			continue
 		}
-		if err := client.StopContainer(c, stopTimeout); err != nil {
+		if err := client.StopContainer(ctx, c, stopTimeout); err != nil {
 			if errors.Is(err, container.ErrContainerNotFound) {
 				log.WithField(fieldContainer, c.Name()).Debug("Excess watchtower vanished before stop — skipping")
 				continue
@@ -405,7 +406,7 @@ func cleanupExcessWatchtowers(containers []types.Container, client container.Cli
 				log.WithField(fieldImage, c.SourceImageID().ShortID()).Debug("Skipping image cleanup: still in use by the kept watchtower instance")
 				continue
 			}
-			if err := client.RemoveImageByID(c.SourceImageID()); err != nil {
+			if err := client.RemoveImageByID(ctx, c.SourceImageID()); err != nil {
 				log.WithError(err).Warning("Could not cleanup watchtower images, possibly because of other watchtowers instances in other scopes.")
 			}
 		}
