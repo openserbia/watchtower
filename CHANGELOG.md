@@ -67,6 +67,27 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   verbatim (`GetCreateConfig` copies them), so it only ever propagates an
   already-empty value — the emptying happens at the `--no-deps` recreate.
 
+### Security
+- **Go toolchain bumped 1.26.4 → 1.26.5 to fix a reachable `crypto/tls`
+  advisory (GO-2026-5856).** `govulncheck` flagged the Encrypted Client Hello
+  privacy leak in the standard library's `crypto/tls` as reachable from
+  Watchtower's real TLS paths: outbound notifications (shoutrrr `ServiceRouter.Send`),
+  the HTTP API listener (`http.Server.ListenAndServe`), and the Docker client's
+  exec/registry dials. The fix ships in the standard library of Go 1.26.5, so the
+  Devbox Go pin was raised to pick it up; no application code changed. Alongside
+  it, the `govulncheck` allowlist was emptied — its two former entries
+  (GO-2026-4887, GO-2026-4883) were daemon-side Moby advisories in
+  `github.com/docker/docker@v28.5.2+incompatible` that are no longer imported
+  after the Moby v29 client migration, so they are no longer reachable.
+- **Trivy misconfiguration DS-0002 ("image user should not be root") is now
+  documented as accepted, not silently failing.** Watchtower must run as root to
+  bind the Docker socket and drive container lifecycle calls, and a build-time
+  `USER nonroot` cannot work portably because the host's `docker` group GID is
+  unknown at image-build time — so a fixed non-root UID would lose socket access
+  on most hosts. A `.trivyignore` now records this rationale explicitly rather
+  than leaving the security sweep red; operators who can pin the socket GID may
+  still run non-root via `--user` at deploy time.
+
 ## [1.18.3] - 2026-06-25
 
 ### Changed

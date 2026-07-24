@@ -10,6 +10,7 @@ coverage.out
 *.coverprofile
 .devbox/
 .task/
+.dccache
 
 docs/assets/wasm_exec.js
 docs/assets/*.wasm

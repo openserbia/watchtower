@@ -20,21 +20,15 @@ import json
 import subprocess
 import sys
 
-# Allowlisted advisories (reviewed 2026-05-31). Both are Docker *daemon*-side
-# Moby vulnerabilities in github.com/docker/docker@v28.5.2+incompatible. They
-# carry no affected-symbol info, so govulncheck cannot do symbol-level
-# reachability and flags them at module level simply because we import the SDK —
-# but Watchtower is a daemon *client*: it hosts no AuthZ plugins and runs no
-# plugin-privilege code, so the vulnerable functionality is not exercised. No fix
-# exists for the v...+incompatible module path (only the new github.com/moby/moby/v2
-# path is fixed, in v2.0.0-beta.8), so there is nothing to bump to without an SDK
-# migration. Drop an entry when the wrapper reports a fix has become available.
-ALLOW = {
-    # AuthZ plugin bypass via oversized request bodies (CVE-2026-34040) — daemon-side.
-    "GO-2026-4887": "docker/docker v28.5.2 — daemon AuthZ-plugin bug, not reachable in client use; no fix for this module path",
-    # Off-by-one in plugin privilege validation (CVE-2026-33997) — daemon-side.
-    "GO-2026-4883": "docker/docker v28.5.2 — daemon plugin-privilege bug, not reachable in client use; no fix for this module path",
-}
+# Allowlisted advisories (reviewed 2026-07-24). Currently empty: the two former
+# entries (GO-2026-4887, GO-2026-4883) were daemon-side Moby bugs in
+# github.com/docker/docker@v28.5.2+incompatible that govulncheck could only flag
+# at module level. The Moby v29 client migration replaced that module path, so
+# those advisories are no longer imported or reachable and have been dropped.
+# Add an entry here only for a reachable advisory that has no available fix,
+# with a note explaining why it is not exercised; drop it once the wrapper
+# reports a fix has become available or that it is no longer reachable.
+ALLOW: dict[str, str] = {}
 
 
 def main() -> int:

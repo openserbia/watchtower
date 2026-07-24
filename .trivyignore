@@ -1,0 +1,15 @@
+# Trivy ignore file — auto-loaded by `trivy fs` / `trivy config` (Taskfile.security.yml).
+# Each suppression must carry a justification and be revisited if the rationale changes.
+
+# DS-0002 "Image user should not be 'root'" — accepted, by design.
+# Watchtower's whole job is to manage the Docker daemon on behalf of the host: it
+# binds /var/run/docker.sock and issues container create/stop/start/exec calls.
+# The published images therefore run as root, matching upstream containrrr/watchtower.
+# A build-time `USER nonroot` cannot work portably: the socket is owned by
+# root:docker and the host's `docker` group GID is unknown at image-build time, so a
+# fixed non-root UID/GID would lose socket access on most hosts and break the tool.
+# Operators who can pin the socket GID may still run non-root via `--user` at deploy
+# time; the image does not force it. Re-evaluate if a rootless socket-access path
+# becomes portable.
+AVD-DS-0002
+DS-0002
