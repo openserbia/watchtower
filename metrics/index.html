@@ -19,7 +19,7 @@
       
       
       <link rel="icon" href="../images/favicon.ico">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -27,7 +27,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1260,7 +1260,12 @@ change once per scan.</p>
 <tr>
 <td><code>watchtower_stranded_init_deps_total</code></td>
 <td>counter</td>
-<td>Times <a href="../arguments/#re-run_init_containers_service_completed_successfully"><code>--rerun-init-deps</code></a> found a stale Compose-managed target with no declared <code>service_completed_successfully</code> deps while its project still held one-shot init siblings (<code>migrate</code>/<code>pg-ready</code>) — the signature of a <code>com.docker.compose.depends_on</code> label dropped by a prior blue-green cutover. Non-zero means a service may be running new code against an un-migrated schema; redeploy it via <code>docker compose up -d --force-recreate &lt;service&gt;</code> to restore the label. Suppress a legitimate no-init-deps service with the <code>com.centurylinklabs.watchtower.no-init-deps=true</code> label.</td>
+<td>Times <a href="../arguments/#re-run_init_containers_service_completed_successfully"><code>--rerun-init-deps</code></a> found a stale Compose-managed target whose <code>com.docker.compose.depends_on</code> label is present but <strong>empty</strong> while its project still held one-shot init siblings (<code>migrate</code>/<code>pg-ready</code>) — the stamp a <code>docker compose up --no-deps &lt;svc&gt;</code> recreate leaves after dropping the dependency graph. (An absent label, or one populated only with <code>service_started</code>/<code>service_healthy</code> entries, is an intact contract and is never flagged.) Non-zero means a service may be running new code against an un-migrated schema; redeploy it via <code>docker compose up -d --force-recreate &lt;service&gt;</code> to restore the label. Suppress a legitimate no-init-deps service with the <code>com.centurylinklabs.watchtower.no-init-deps=true</code> label.</td>
+</tr>
+<tr>
+<td><code>watchtower_stranded_init_deps</code></td>
+<td>gauge</td>
+<td>Targets <strong>currently</strong> stranded by the same predicate, recomputed every scan. Alert on <code>&gt; 0</code>: unlike the <code>_total</code> counter this resolves on its own — it drops back to <code>0</code> on the first scan after the operator re-arms the service's <code>depends_on</code>.</td>
 </tr>
 <tr>
 <td><code>watchtower_containers_in_cooldown</code></td>
@@ -1441,7 +1446,7 @@ daemon restarts, and newly-appeared unmanaged containers.</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

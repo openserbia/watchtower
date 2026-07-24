@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../images/favicon.ico">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -29,7 +29,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -1510,7 +1510,12 @@ may work but aren't tested and are out of scope for bug reports.</p>
 <tr>
 <td>Compose <code>service_completed_successfully</code> init siblings</td>
 <td>Honored only by <code>docker compose up</code>; Watchtower-driven updates silently bypass them ("new code, old schema")</td>
-<td><strong><code>--rerun-init-deps</code></strong> re-executes each init sibling against the resolved new digest <em>before</em> recreating the target; old container keeps serving while the init runs; failed digests cached in-process so a broken image isn't retried until the registry serves a different digest</td>
+<td><strong><code>--rerun-init-deps</code></strong> re-executes each init sibling against the resolved new digest <em>before</em> recreating the target; old container keeps serving while the init runs; a failing digest is cached for 1h (transient dep failures self-heal, orchestration errors are never cached); dropped <code>depends_on</code> labels are detected (warn + <code>watchtower_stranded_init_deps</code> gauge) with opt-in recovery via <code>--rerun-stranded-init-deps</code></td>
+</tr>
+<tr>
+<td>Wedged scan loop</td>
+<td>A single stuck update run (stalled pull, hung daemon call) strands the shared update lock <strong>forever</strong> — scanning silently stops while the container keeps reporting healthy</td>
+<td><strong>Liveness watchdog</strong>: an update run that stops making progress is first <em>cancelled</em> (a run-scoped <code>context.Context</code> reaches every Docker/registry call, so the run drains with a partial report and the lock is released) with process exit only as escalation; a schedule-anchored rule catches a dead scheduler without false-killing irregular cron specs; tunable via <code>--watchdog-stuck-deadline</code> / <code>--watchdog-tick-grace</code>, opt out with <code>--no-watchdog</code></td>
 </tr>
 </tbody>
 </table>
@@ -1920,7 +1925,7 @@ images, blanket TLS skip, unmanaged-audit spam, buildkit noise, and more).</p>
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

@@ -21,7 +21,7 @@
       
       
       <link rel="icon" href="../images/favicon.ico">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -29,7 +29,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -679,6 +679,39 @@
     <span class="md-ellipsis">
       
         Watch Docker engine for local rebuilds
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#disable_the_liveness_watchdog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disable the liveness watchdog
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#watchdog_stuck-update_deadline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watchdog stuck-update deadline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#watchdog_tick_grace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watchdog tick grace
       
     </span>
   </a>
@@ -1697,6 +1730,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#disable_the_liveness_watchdog" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disable the liveness watchdog
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#watchdog_stuck-update_deadline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watchdog stuck-update deadline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#watchdog_tick_grace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watchdog tick grace
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#audit_unmanaged_containers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2317,6 +2383,59 @@ Environment Variable: WATCHTOWER_WATCH_DOCKER_EVENTS
                 Type: Boolean
              Default: false
 </code></pre></div>
+<h2 id="disable_the_liveness_watchdog">Disable the liveness watchdog<a class="headerlink" href="#disable_the_liveness_watchdog" title="Permanent link">&para;</a></h2>
+<p>By default watchtower runs an internal watchdog that terminates the process (exit code 1) when the scan
+loop has verifiably stopped making progress, so the container restart policy can revive a working
+instance. Two conditions trip it:</p>
+<ul>
+<li><strong>A stuck update run</strong>: an in-flight update cycle has made no progress — no container scanned or
+  recreated, no init dep completed — for the stuck deadline (default one hour, tunable via
+  <code>--watchdog-stuck-deadline</code>). A stalled registry pull or a dead Docker socket otherwise strands the
+  shared update lock — every subsequent scheduled scan is skipped and updating silently stops while
+  the container keeps reporting healthy. Keying on <em>progress</em> rather than run age means a slow but
+  advancing run over hundreds of containers is never flagged. The remedy is two-stage: first the
+  run's context is <strong>cancelled</strong> — every in-flight Docker and registry call aborts, the run ends with
+  a partial failure report (visible in notifications), the update lock is released, and the process
+  stays up. Only if the run is still wedged two minutes after cancellation (a call that ignores its
+  context, e.g. a notification send) does the watchdog fall back to the process exit.</li>
+<li><strong>A missed scheduled scan</strong>: the scheduler failed to fire a scan that was due more than the tick grace
+  ago (default 15 minutes, tunable via <code>--watchdog-tick-grace</code>). The deadline is anchored to the actual
+  schedule, so irregular cron expressions (business hours, weekends) are safe: a legitimate overnight or
+  weekend gap never counts as a miss. Before the scheduler exists, the same grace bounds the boot phase,
+  covering a startup that wedges before the first scan — for example a stale socket mount after a
+  rootless Docker daemon restart. While an update run is in flight only the stuck deadline applies (an
+  <code>--update-on-start</code> scan runs before the scheduler starts, so missing ticks prove nothing then), and
+  in HTTP-API-only mode (<code>--http-api-update</code> without <code>--http-api-periodic-polls</code>) this rule is disarmed
+  entirely because no scheduler ever runs — the stuck deadline still bounds API-triggered runs.</li>
+</ul>
+<p>The exit path deliberately depends on nothing else in the process (not the logger, not a writable
+stderr), so a wedge in those cannot keep the watchdog from firing. Long update runs also surface as a
+per-poll warning (<code>Skipped scheduled scan: the previous update is still running</code>) before the deadline
+trips. Prefer raising the deadlines below over disabling the watchdog; disable it only if your
+deployment has no restart policy.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --no-watchdog
+Environment Variable: WATCHTOWER_NO_WATCHDOG
+                Type: Boolean
+             Default: false
+</code></pre></div>
+<h2 id="watchdog_stuck-update_deadline">Watchdog stuck-update deadline<a class="headerlink" href="#watchdog_stuck-update_deadline" title="Permanent link">&para;</a></h2>
+<p>How long an in-flight update run may go <strong>without making progress</strong> before the liveness watchdog
+declares it wedged — cancelling the run first, and exiting the process only if the cancellation does
+not drain it. Raise this instead of reaching for <code>--no-watchdog</code> when individual steps legitimately
+exceed the default — for example a single multi-GB image pull over a slow link.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --watchdog-stuck-deadline
+Environment Variable: WATCHTOWER_WATCHDOG_STUCK_DEADLINE
+                Type: Duration
+             Default: 1h
+</code></pre></div>
+<h2 id="watchdog_tick_grace">Watchdog tick grace<a class="headerlink" href="#watchdog_tick_grace" title="Permanent link">&para;</a></h2>
+<p>How far past a due scheduled scan the scheduler may run before the liveness watchdog declares it dead
+and exits the process. Also bounds the boot phase: startup must reach the scheduler within this window.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --watchdog-tick-grace
+Environment Variable: WATCHTOWER_WATCHDOG_TICK_GRACE
+                Type: Duration
+             Default: 15m
+</code></pre></div>
 <h2 id="audit_unmanaged_containers">Audit unmanaged containers<a class="headerlink" href="#audit_unmanaged_containers" title="Permanent link">&para;</a></h2>
 <p>Warn when a container has no <code>com.centurylinklabs.watchtower.enable</code> label at all. Under <code>--label-enable</code>, such
 containers are silently skipped, which is indistinguishable from an intentional opt-out. Enabling this flag
@@ -2675,11 +2794,15 @@ init siblings as part of the target's update transaction.</p>
    digest in memory, leave the failed init container in <code>Exited(N)</code> for <code>docker logs</code>, and keep the
    <em>old</em> target container serving traffic.</li>
 </ol>
-<p><strong>Cached rejected digests.</strong> A failed init container marks its digest as rejected for the rest of the
-Watchtower process lifetime. Subsequent polls that resolve the same digest are skipped without
-re-running the init. When the operator pushes a fix and the registry serves a new digest, the cache
-naturally misses and the update is attempted again. The cache is in-memory only — restarting Watchtower
-forces exactly one retry.</p>
+<p><strong>Cached rejected digests.</strong> A failed init container (non-zero exit) marks its digest as rejected for
+one hour. Polls inside that window skip the digest without re-running the init; after it the rerun is
+retried, so a transient failure (the database was briefly down when a <code>pg-ready</code> probe ran) heals
+itself without operator action. When the operator pushes a fix and the registry serves a new digest,
+the cache naturally misses and the update is attempted immediately. Orchestration failures — the init
+container's exited carcass was removed by <code>docker system prune</code>, or the daemon refused a
+stop/create/start — are <strong>not</strong> cached: they say nothing about the digest, so the skip is re-attempted
+(and re-warned) every poll until the dep is restored, e.g. by <code>docker compose up -d</code>. The cache is
+in-memory only — restarting Watchtower also forces a retry.</p>
 <p><strong>Migrations must be backwards-compatible.</strong> Because the old target keeps serving while the new
 image's init container runs, the schema after migrate must still be readable by the old code. This is
 standard expand-then-contract migration practice. Don't enable this flag for stacks that rely on
@@ -2756,16 +2879,32 @@ gets a new digest, Watchtower:</p>
 readable by the old code — add columns/tables in one release, remove the old ones in a later release.
 Breaking schema changes need a planned downtime window instead, not this flag.</p>
 </div>
-<p><strong>Stranded init dependencies.</strong> A blue-green cutover recreates the "green" container by inheriting the
-old container's labels and never re-derives Compose metadata, so once <code>com.docker.compose.depends_on</code>
-goes empty it stays empty across every subsequent cutover. <code>--rerun-init-deps</code> then sees no init deps
-and silently skips the migration — new code runs against an un-migrated schema, with no log and no
-rejection. Watchtower detects this signature (a stale, Compose-managed target with no declared init
-deps whose project still holds a one-shot init sibling — a <code>migrate</code>/<code>pg-ready</code> container with restart
-policy <code>no</code>), logs a <code>WARN</code> naming the offending siblings, and increments
-<code>watchtower_stranded_init_deps_total</code>. This is <strong>detection only</strong> — update behaviour is unchanged.
-Recover by redeploying the service through Compose, which rewrites the label from the Compose file:
-<code>docker compose up -d --force-recreate &lt;service&gt;</code>.</p>
+<p><strong>Stranded init dependencies.</strong> A <code>docker compose up --no-deps &lt;svc&gt;</code> in-place recreate (the
+.env-only update pattern) stamps a <strong>present-but-empty</strong> <code>com.docker.compose.depends_on</code> label —
+<code>--no-deps</code> tells Compose to disregard the dependency graph — and every later blue-green cutover
+carries that emptied label verbatim. <code>--rerun-init-deps</code> then sees no init deps and silently skips the
+migration — new code runs against an un-migrated schema, with no log and no rejection. Watchtower
+detects exactly this signature (a stale, Compose-managed target whose <code>depends_on</code> label is present
+but empty, in a project that still holds a one-shot init sibling — a <code>migrate</code>/<code>pg-ready</code> container
+with restart policy <code>no</code>; an <em>absent</em> label, or one populated only with
+<code>service_started</code>/<code>service_healthy</code> entries, is an intact contract and never flagged), logs a <code>WARN</code>
+naming the siblings, increments <code>watchtower_stranded_init_deps_total</code>, and drives the
+<code>watchtower_stranded_init_deps</code> gauge. By default this is <strong>detection only</strong> — update behaviour is
+unchanged. Recover by redeploying the service through Compose, which rewrites the label from the
+Compose file: <code>docker compose up -d --force-recreate &lt;service&gt;</code>.</p>
+<p><strong>Automatic recovery (<code>--rerun-stranded-init-deps</code>).</strong> Opt in to additionally <em>execute</em> the detected
+one-shot siblings before updating a stranded target, ordered by each sibling's own init-dep count
+(leaves like <code>pg-ready</code> before the <code>migrate</code> that gates on them) — a safety net so the new image does
+not start on an un-migrated schema while the label is still dropped. Opt-in on purpose: a dep-less
+compose service that shares a project with an <em>unrelated</em> one-shot (a manual backup job, a debug
+container) is indistinguishable from a stranded target by labels alone, and running containers a
+target never declared is a decision the operator should make. The detection warning stays either way
+until the label is re-armed. Requires <code>--rerun-init-deps</code>.</p>
+<div class="highlight"><pre><span></span><code>            Argument: --rerun-stranded-init-deps
+Environment Variable: WATCHTOWER_RERUN_STRANDED_INIT_DEPS
+                Type: Boolean
+             Default: false
+</code></pre></div>
 <p><strong>Opting out (<code>com.centurylinklabs.watchtower.no-init-deps=true</code>).</strong> A service can legitimately have no
 init deps of its own — e.g. a web tier that shares a Compose project with init one-shots owned by a
 sibling API tier and whose only <code>depends_on</code> is the API. Its empty <code>depends_on</code> is a real state, not a
@@ -2906,7 +3045,7 @@ Environment Variable: WATCHTOWER_PORCELAIN
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
