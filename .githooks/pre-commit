@@ -1,0 +1,33 @@
+#!/bin/sh
+# Versioned pre-commit hook. Activated by `git config core.hooksPath .githooks`,
+# which devbox's shell init_hook applies automatically — so a fresh clone gets
+# this hook on its first `devbox shell` / `devbox run`.
+
+# code-review-graph pre-commit check (advisory, never blocks). Kept from the
+# hook CRG installs into .git/hooks, which core.hooksPath now shadows.
+if command -v code-review-graph >/dev/null 2>&1; then
+    code-review-graph detect-changes --brief || true
+fi
+
+# Lint gate: run golangci-lint before any commit that stages Go code or
+# lint/module config, using the Devbox-pinned toolchain so the verdict matches
+# CI. Deliberately check-only (`golangci-lint run`, NOT `task lint`): task lint
+# auto-runs gci+gofumpt which WRITE files, and rewriting the working tree
+# mid-commit would leave the staged snapshot unformatted. On a formatting
+# finding, fix with `devbox run -- task lint` and re-stage.
+# Bypass for a single commit with: git commit --no-verify
+if git diff --cached --name-only | grep -qE '\.go$|^go\.(mod|sum)$|^\.golangci\.yml$'; then
+    echo "pre-commit: linting staged Go changes (golangci-lint via devbox)..."
+    if command -v devbox >/dev/null 2>&1; then
+        devbox run -- golangci-lint run || {
+            echo "" >&2
+            echo "pre-commit: lint failed. Fix with 'devbox run -- task lint' (auto-formats)," >&2
+            echo "re-stage the result, or bypass once with 'git commit --no-verify'." >&2
+            exit 1
+        }
+    else
+        echo "pre-commit: devbox not on PATH — cannot run the CI-pinned linter." >&2
+        echo "Fix PATH or bypass once with 'git commit --no-verify'." >&2
+        exit 1
+    fi
+fi

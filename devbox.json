@@ -22,7 +22,8 @@
     "init_hook": [
       ". $VENV_DIR/bin/activate",
       "pip install --upgrade pip -qq",
-      "pip install -r requirements.txt -qq"
+      "pip install -r requirements.txt -qq",
+      "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git config core.hooksPath .githooks"
     ]
   }
 }

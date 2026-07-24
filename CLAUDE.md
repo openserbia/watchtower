@@ -18,6 +18,8 @@ devbox run -- <command>         # one-shot
 
 All Go code uses vendored deps — pass `-mod vendor` (the `task` targets already do). Running `go` directly outside Devbox picks up whatever Go is on your PATH and is **not** how CI builds.
 
+Versioned git hooks live in `.githooks/` (a pre-commit lint gate running the Devbox-pinned `golangci-lint run`, check-only). Devbox's `init_hook` sets `core.hooksPath` to it automatically, so the hook self-installs on the first `devbox shell`/`devbox run` after a clone. Bypass a single commit with `git commit --no-verify`.
+
 ## Common commands
 
 `Taskfile.yml` at the repo root is the single entry point:
