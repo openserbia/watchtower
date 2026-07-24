@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"sort"
 	"strings"
 	"time"
 
@@ -89,11 +88,17 @@ var errNoHealthcheck = errors.New("container has no HEALTHCHECK; gating skipped"
 // any of the images, the associated containers are stopped and restarted with
 // the new image.
 //
-// rejected-init-digest cache, pre-update hooks, health-gating, lifecycle
-// hooks, rollback, and self-update interleave intentionally. A refactor
-// here is tracked separately and risks behavior drift on the hot path.
+// The run is a pipeline of phases over the scanned container list:
 //
-//nolint:cyclop // central update orchestration: image-cooldown checks,
+//	scan -> init-reruns -> plan -> execute -> report
+//
+// scanPhase is the only writer of the per-container Stale flag (initRerunPhase
+// may veto it back to false for a failed migration — the one sanctioned
+// reversal); planPhase then answers "what will this run actually touch"
+// exactly once, and executePhase acts on that immutable plan. The willUpdate
+// predicate is the single source of truth for update eligibility, shared by
+// the scan and init-rerun phases, so the two can never drift apart again (the
+// bug class where monitor-only targets had their migrations executed).
 func Update(ctx context.Context, client container.Client, params types.UpdateParams, state *State) (types.Report, error) {
 	log.Debug("Checking containers for updated images")
 	start := time.Now()
@@ -113,8 +118,41 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 		return nil, err
 	}
 
-	staleCheckFailed := 0
+	scanPhase(ctx, client, containers, params, state, progress)
 
+	if params.RerunInitDeps {
+		initRerunPhase(ctx, client, containers, params, state, progress)
+	}
+
+	plan, err := planPhase(containers, params, progress)
+	if err != nil {
+		return nil, err
+	}
+
+	executePhase(ctx, client, plan, params, state, progress)
+
+	if params.LifecycleHooks {
+		lifecycle.ExecutePostChecks(ctx, client, params)
+	}
+	return progress.Report(), nil
+}
+
+// willUpdate reports whether this run will actually recreate the container:
+// it survived the scan gates as stale AND the executor is allowed to touch
+// it. This is THE update-eligibility predicate — every phase that needs the
+// answer asks here, so side-effecting work (init-dep reruns) can never run
+// for a target the executor would then skip. Only meaningful once scanPhase
+// has stamped the Stale flag. (The plan's optimistic report-marking
+// deliberately asks the broader ToRestart instead: a container restarted
+// because a linked dependency restarts is touched without being updated.)
+func willUpdate(c types.Container, params types.UpdateParams) bool {
+	return c.IsStale() && !params.NoRestart && !c.IsMonitorOnly(params)
+}
+
+// scanPhase runs the staleness check and the post-scan gates for every
+// container, records each outcome in the progress report, and stamps the
+// per-container Stale flag that the rest of the pipeline treats as input.
+func scanPhase(ctx context.Context, client container.Client, containers []types.Container, params types.UpdateParams, state *State, progress *session.Progress) {
 	for i, targetContainer := range containers {
 		stale, newestImage, err := client.IsContainerStale(ctx, targetContainer, params)
 		if stale && err == nil && newestImage != "" {
@@ -124,52 +162,11 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 			targetContainer.SetTargetImageID(newestImage)
 		}
 		if stale && err == nil {
-			if remaining := state.rollbackCooldownRemaining(targetContainer.Name()); remaining > 0 {
-				log.WithFields(log.Fields{
-					fieldContainer: targetContainer.Name(),
-					fieldRetryIn:   remaining.Round(time.Second),
-				}).Debug("Skipping update: container is on post-rollback cooldown")
-				stale = false
-			}
+			stale = applyScanGates(targetContainer, newestImage, params, state)
 		}
-		// --rerun-init-deps rejection gate: a digest that recently failed its
-		// init container stays skipped until the registry serves a new one
-		// (operator pushed a fix) or the rejection outlives its TTL (a
-		// transient dep failure heals itself). We check the resolved
-		// newestImage, not the container's currently-running digest, so a
-		// pushed fix is detected by digest change at the next poll.
-		if stale && err == nil && params.RerunInitDeps && newestImage != "" {
-			if reason, rejected := state.isRejectedInitDigest(newestImage); rejected {
-				log.WithFields(log.Fields{
-					fieldContainer: targetContainer.Name(),
-					fieldDigest:    newestImage.ShortID(),
-					"failed_dep":   reason.Dep,
-					"exit_code":    reason.ExitCode,
-					fieldRetryIn:   (rejectedInitDigestTTL - time.Since(reason.At)).Round(time.Second),
-				}).Debug("Skipping update: digest recently failed --rerun-init-deps")
-				stale = false
-			}
-		}
-		// Supply-chain gate: hold the update until the new digest has been
-		// stable for the configured cooldown window. Runs after the rollback
-		// cooldown so a freshly-rolled-back container doesn't also get
-		// gated twice. Bypassed under --run-once because "defer to next
-		// poll" is meaningless when the daemon exits after this cycle —
-		// the operator explicitly asked for an immediate, one-shot update.
-		if stale && err == nil && !params.RunOnce {
-			if cooldown := resolveImageCooldown(targetContainer, params); cooldown > 0 {
-				if proceed, remaining := state.evaluateImageCooldown(targetContainer.Name(), newestImage, cooldown); !proceed {
-					log.WithFields(log.Fields{
-						fieldContainer: targetContainer.Name(),
-						fieldDigest:    newestImage.ShortID(),
-						fieldRetryIn:   remaining.Round(time.Second),
-					}).Debug("Skipping update: image cooldown window has not elapsed")
-					stale = false
-				}
-			}
-		}
-		shouldUpdate := stale && !params.NoRestart && !targetContainer.IsMonitorOnly(params)
-		if err == nil && shouldUpdate {
+		containers[i].SetStale(stale)
+
+		if err == nil && willUpdate(targetContainer, params) {
 			// Check to make sure we have all the necessary information for recreating the container
 			err = targetContainer.VerifyConfiguration()
 			// If the image information is incomplete and trace logging is enabled, log it for further diagnosis
@@ -197,154 +194,220 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 					fieldImage:     targetContainer.ImageName(),
 				}).Warn("Unable to update container — proceeding to next")
 			}
-			stale = false
-			staleCheckFailed++
+			containers[i].SetStale(false)
 			progress.AddSkipped(targetContainer, err)
 		} else {
 			progress.AddScanned(targetContainer, newestImage)
 		}
-		containers[i].SetStale(stale)
 		beat(params)
 	}
+}
 
-	// --rerun-init-deps: re-execute compose service_completed_successfully
-	// siblings against the new image *before* the target is recreated. If
-	// the init container fails the target keeps its old image (Stale
-	// unset) and the new digest is cached so it isn't retried until a
-	// newer one appears. Runs after the staleness loop so each target's
-	// TargetImageID is already pinned to a resolved digest.
-	if params.RerunInitDeps {
-		// Dep-lookup list, fetched lazily on first need. The scan list
-		// (`containers`) is shaped by enable-label/scope/name filters —
-		// operators deliberately run migrate/pg-ready one-shots with
-		// com.centurylinklabs.watchtower.enable=false so they are neither
-		// update candidates nor unmanaged-container noise, which makes them
-		// invisible HERE. Resolving deps against the scan list therefore
-		// rejected every digest of such a target (dep "not found", exit -1)
-		// even though the init container sat Exited(0) on the daemon. Dep
-		// DISCOVERY must see the whole daemon: every state, no filter.
-		var depLookup []types.Container
-		ensureDepLookup := func() []types.Container {
-			if depLookup == nil {
-				all, listErr := client.ListAllContainers(ctx, filters.NoFilter)
-				if listErr != nil {
-					log.WithError(listErr).Warn("--rerun-init-deps: listing all containers for dep lookup failed; falling back to the scan-filtered list")
-					all = containers
-				}
-				depLookup = all
-			}
-			return depLookup
+// applyScanGates runs the post-staleness gates in order — rollback cooldown,
+// rejected init digest, image cooldown — and reports whether the container is
+// still due for an update after them.
+func applyScanGates(c types.Container, newestImage types.ImageID, params types.UpdateParams, state *State) bool {
+	if remaining := state.rollbackCooldownRemaining(c.Name()); remaining > 0 {
+		log.WithFields(log.Fields{
+			fieldContainer: c.Name(),
+			fieldRetryIn:   remaining.Round(time.Second),
+		}).Debug("Skipping update: container is on post-rollback cooldown")
+		return false
+	}
+	// --rerun-init-deps rejection gate: a digest that recently failed its
+	// init container stays skipped until the registry serves a new one
+	// (operator pushed a fix) or the rejection outlives its TTL (a
+	// transient dep failure heals itself). We check the resolved
+	// newestImage, not the container's currently-running digest, so a
+	// pushed fix is detected by digest change at the next poll.
+	if params.RerunInitDeps && newestImage != "" {
+		if reason, rejected := state.isRejectedInitDigest(newestImage); rejected {
+			log.WithFields(log.Fields{
+				fieldContainer: c.Name(),
+				fieldDigest:    newestImage.ShortID(),
+				"failed_dep":   reason.Dep,
+				"exit_code":    reason.ExitCode,
+				fieldRetryIn:   (rejectedInitDigestTTL - time.Since(reason.At)).Round(time.Second),
+			}).Debug("Skipping update: digest recently failed --rerun-init-deps")
+			return false
 		}
-		for i := range containers {
-			if !containers[i].IsStale() {
-				continue
-			}
-			target := containers[i]
-			// Stale is also set for containers the executor will never touch —
-			// monitor-only and global --no-restart targets keep it so reports
-			// can say "update available". Running their migrations would apply
-			// the new schema while deliberately never updating the app, i.e.
-			// side-effecting work under a flag operators read as "observe
-			// only". Gate on the same eligibility the executor uses.
-			if params.NoRestart || target.IsMonitorOnly(params) {
-				continue
-			}
-			initDeps := target.ComposeInitDependencies()
-			if len(initDeps) == 0 {
-				// No declared init deps is normal for most services. But if the
-				// target is compose-managed and its project still holds one-shot
-				// init siblings (migrate/pg-ready), its
-				// com.docker.compose.depends_on was emptied out-of-band — most
-				// often a `docker compose up --no-deps <svc>` in-place recreate
-				// (the .env-only update pattern), which stamps an EMPTY
-				// depends_on that is then carried verbatim across every later
-				// blue-green cutover. Left alone the rerun would skip the target
-				// and the new image would start on the old schema. Detection
-				// always warns and drives the stranded gauge; actually
-				// EXECUTING the recovered siblings is gated behind
-				// --rerun-stranded-init-deps, because running containers the
-				// target never declared is a judgment call the labels alone
-				// cannot settle (a dep-less service sharing a project with an
-				// unrelated one-shot looks identical to a stranded target).
-				siblings := strandedInitSiblings(target, ensureDepLookup())
-				if len(siblings) == 0 {
-					continue
-				}
-				warnStrandedInitDeps(target, siblings, params.RerunStrandedInitDeps)
-				if !params.RerunStrandedInitDeps {
-					continue
-				}
-				initDeps = orderInitSiblings(siblings, ensureDepLookup(), target.ComposeProject())
-			}
-			results := initrerun.RunDeps(ctx, client, target, initDeps, ensureDepLookup(), initrerun.DefaultTimeout)
-			beat(params)
-			if len(results) == 0 {
-				continue
-			}
-			last := results[len(results)-1]
-			if last.Succeeded() {
-				continue
-			}
-			containers[i].SetStale(false)
-			progress.AddSkipped(target, fmt.Errorf("--rerun-init-deps: init container %q failed (exit %d); old container kept", last.DepName, last.ExitCode))
-			if last.ExitCode < 0 {
-				// Orchestration failure — the dep's carcass vanished (a routine
-				// `docker system prune`), or the daemon refused a stop/create/
-				// start. That is no verdict on the digest: caching it would
-				// block this target's perfectly good image until a new push,
-				// and a permanently-missing dep would re-poison every future
-				// digest on first sight. Skip this cycle only; the next poll
-				// retries, and the Warn below fires every scan until the
-				// operator restores the dep (e.g. `docker compose up -d`).
+	}
+	// Supply-chain gate: hold the update until the new digest has been
+	// stable for the configured cooldown window. Runs after the rollback
+	// cooldown so a freshly-rolled-back container doesn't also get
+	// gated twice. Bypassed under --run-once because "defer to next
+	// poll" is meaningless when the daemon exits after this cycle —
+	// the operator explicitly asked for an immediate, one-shot update.
+	if !params.RunOnce {
+		if cooldown := resolveImageCooldown(c, params); cooldown > 0 {
+			if proceed, remaining := state.evaluateImageCooldown(c.Name(), newestImage, cooldown); !proceed {
 				log.WithFields(log.Fields{
-					fieldContainer: target.Name(),
-					"dep":          last.DepName,
-					fieldDigest:    target.TargetImageID().ShortID(),
-				}).WithError(last.Err).Warn("--rerun-init-deps: init dep could not be run; skipping target update this cycle, retrying next poll")
+					fieldContainer: c.Name(),
+					fieldDigest:    newestImage.ShortID(),
+					fieldRetryIn:   remaining.Round(time.Second),
+				}).Debug("Skipping update: image cooldown window has not elapsed")
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// initRerunPhase re-executes compose service_completed_successfully siblings
+// against the new image *before* each eligible target is recreated. If an
+// init container fails, the target's Stale flag is vetoed back to false (the
+// pipeline's one sanctioned reversal) and — for genuine non-zero exits — the
+// digest is cached as rejected. Runs after scanPhase so each target's
+// TargetImageID is already pinned to a resolved digest.
+func initRerunPhase(ctx context.Context, client container.Client, containers []types.Container, params types.UpdateParams, state *State, progress *session.Progress) {
+	// Dep-lookup view and its compose index, fetched lazily on first need.
+	// The scan list (`containers`) is shaped by enable-label/scope/name
+	// filters — operators deliberately run migrate/pg-ready one-shots with
+	// com.centurylinklabs.watchtower.enable=false so they are neither
+	// update candidates nor unmanaged-container noise, which makes them
+	// invisible HERE. Resolving deps against the scan list therefore
+	// rejected every digest of such a target (dep "not found", exit -1)
+	// even though the init container sat Exited(0) on the daemon. Dep
+	// DISCOVERY must see the whole daemon: every state, no filter.
+	var depLookup []types.Container
+	ensureDepLookup := func() []types.Container {
+		if depLookup == nil {
+			all, listErr := client.ListAllContainers(ctx, filters.NoFilter)
+			if listErr != nil {
+				log.WithError(listErr).Warn("--rerun-init-deps: listing all containers for dep lookup failed; falling back to the scan-filtered list")
+				all = containers
+			}
+			depLookup = all
+		}
+		return depLookup
+	}
+	var index *composeIndex
+	ensureIndex := func() *composeIndex {
+		if index == nil {
+			index = newComposeIndex(ensureDepLookup())
+		}
+		return index
+	}
+
+	for i := range containers {
+		// Same eligibility the executor uses — Stale is also set for
+		// containers the executor will never touch (monitor-only, global
+		// --no-restart) so reports can say "update available", and running
+		// their migrations would apply the new schema while deliberately
+		// never updating the app.
+		if !willUpdate(containers[i], params) {
+			continue
+		}
+		target := containers[i]
+		initDeps := target.ComposeInitDependencies()
+		if len(initDeps) == 0 {
+			// No declared init deps is normal for most services. But if the
+			// target is compose-managed and its project still holds one-shot
+			// init siblings (migrate/pg-ready), its
+			// com.docker.compose.depends_on was emptied out-of-band — most
+			// often a `docker compose up --no-deps <svc>` in-place recreate
+			// (the .env-only update pattern), which stamps an EMPTY
+			// depends_on that is then carried verbatim across every later
+			// blue-green cutover. Left alone the rerun would skip the target
+			// and the new image would start on the old schema. Detection
+			// always warns and drives the stranded gauge; actually
+			// EXECUTING the recovered siblings is gated behind
+			// --rerun-stranded-init-deps, because running containers the
+			// target never declared is a judgment call the labels alone
+			// cannot settle (a dep-less service sharing a project with an
+			// unrelated one-shot looks identical to a stranded target).
+			siblings := ensureIndex().strandedInitSiblings(target)
+			if len(siblings) == 0 {
 				continue
 			}
-			state.rejectInitDigest(target.TargetImageID(), rejectionReason{
-				Container: target.Name(),
-				Dep:       last.DepName,
-				ExitCode:  last.ExitCode,
-				At:        time.Now(),
-			})
+			warnStrandedInitDeps(target, siblings, params.RerunStrandedInitDeps)
+			if !params.RerunStrandedInitDeps {
+				continue
+			}
+			initDeps = ensureIndex().orderInitSiblings(siblings, target.ComposeProject())
+		}
+		results := initrerun.RunDeps(ctx, client, target, initDeps, ensureDepLookup(), initrerun.DefaultTimeout)
+		beat(params)
+		if len(results) == 0 {
+			continue
+		}
+		last := results[len(results)-1]
+		if last.Succeeded() {
+			continue
+		}
+		containers[i].SetStale(false)
+		progress.AddSkipped(target, fmt.Errorf("--rerun-init-deps: init container %q failed (exit %d); old container kept", last.DepName, last.ExitCode))
+		if last.ExitCode < 0 {
+			// Orchestration failure — the dep's carcass vanished (a routine
+			// `docker system prune`), or the daemon refused a stop/create/
+			// start. That is no verdict on the digest: caching it would
+			// block this target's perfectly good image until a new push,
+			// and a permanently-missing dep would re-poison every future
+			// digest on first sight. Skip this cycle only; the next poll
+			// retries, and the Warn below fires every scan until the
+			// operator restores the dep (e.g. `docker compose up -d`).
 			log.WithFields(log.Fields{
 				fieldContainer: target.Name(),
 				"dep":          last.DepName,
-				"exit_code":    last.ExitCode,
 				fieldDigest:    target.TargetImageID().ShortID(),
-				fieldRetryIn:   rejectedInitDigestTTL,
-			}).Warn("--rerun-init-deps: skipping target update, digest cached as rejected")
+			}).WithError(last.Err).Warn("--rerun-init-deps: init dep could not be run; skipping target update this cycle, retrying next poll")
+			continue
 		}
-
-		// Per-scan stranded gauge: recompute how many targets are stranded
-		// RIGHT NOW — empty depends_on but the project still holds a
-		// migrate/pg-ready one-shot — across ALL scanned containers, not just
-		// the ones stale this cycle. Published as watchtower_stranded_init_deps
-		// so the alert tracks live state: it stays firing until the operator
-		// re-arms the service and drops to 0 on the very next scan. The _total
-		// counter above still records per-detection history; this gauge is what
-		// resolves-on-fix. Reuses the memoized ensureDepLookup so a scan makes
-		// at most one extra ListAllContainers call regardless of container count.
-		stranded := 0
-		for i := range containers {
-			if len(strandedInitSiblings(containers[i], ensureDepLookup())) > 0 {
-				stranded++
-			}
-		}
-		metrics.SetStrandedInitDeps(stranded)
+		state.rejectInitDigest(target.TargetImageID(), rejectionReason{
+			Container: target.Name(),
+			Dep:       last.DepName,
+			ExitCode:  last.ExitCode,
+			At:        time.Now(),
+		})
+		log.WithFields(log.Fields{
+			fieldContainer: target.Name(),
+			"dep":          last.DepName,
+			"exit_code":    last.ExitCode,
+			fieldDigest:    target.TargetImageID().ShortID(),
+			fieldRetryIn:   rejectedInitDigestTTL,
+		}).Warn("--rerun-init-deps: skipping target update, digest cached as rejected")
 	}
 
-	containers, err = sorter.SortByDependencies(containers, params.ComposeDependsOn)
+	// Per-scan stranded gauge: recompute how many targets are stranded RIGHT
+	// NOW across ALL scanned containers, not just the ones stale this cycle.
+	// Published as watchtower_stranded_init_deps so the alert tracks live
+	// state: it stays firing until the operator re-arms the service and drops
+	// to 0 on the very next scan. The _total counter records per-detection
+	// history; this gauge is what resolves-on-fix. Reuses the memoized index
+	// so a scan makes at most one extra ListAllContainers call regardless of
+	// container count.
+	metrics.SetStrandedInitDeps(ensureIndex().countStranded(containers))
+}
+
+// updatePlan is the run's execution decision, computed exactly once by
+// planPhase after the scan and init-rerun phases have finalized every
+// container's Stale flag: the dependency-sorted scan view plus the
+// strategy-partitioned sets the executor will touch. executePhase consumes it
+// verbatim — nothing after planPhase re-decides eligibility.
+type updatePlan struct {
+	// sorted is the full dependency-sorted scan view; the executor helpers
+	// need it to resolve links and shared images.
+	sorted []types.Container
+	// recreate, rolling and blueGreen partition the executor-eligible
+	// containers by their resolved update strategy.
+	recreate  []types.Container
+	rolling   []types.Container
+	blueGreen []types.Container
+}
+
+// planPhase sorts the scan view by dependencies, propagates implicit restarts
+// to linked containers, records the optimistic updated-marking in the report,
+// and partitions the executor's work by strategy.
+func planPhase(containers []types.Container, params types.UpdateParams, progress *session.Progress) (*updatePlan, error) {
+	sorted, err := sorter.SortByDependencies(containers, params.ComposeDependsOn)
 	if err != nil {
 		return nil, err
 	}
 
-	UpdateImplicitRestart(containers)
+	UpdateImplicitRestart(sorted)
 
 	var containersToUpdate []types.Container
-	for _, c := range containers {
+	for _, c := range sorted {
 		if !c.IsMonitorOnly(params) {
 			containersToUpdate = append(containersToUpdate, c)
 			// Optimistically mark only containers the executor will actually
@@ -360,21 +423,27 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 		}
 	}
 
-	recreateSet, rollingSet, blueGreenSet := partitionByStrategy(containersToUpdate, params)
+	recreate, rolling, blueGreen := partitionByStrategy(containersToUpdate, params)
+	return &updatePlan{sorted: sorted, recreate: recreate, rolling: rolling, blueGreen: blueGreen}, nil
+}
 
-	for _, c := range blueGreenSet {
-		if err := performBlueGreenUpdate(ctx, c, containers, client, params, state); err != nil {
+// executePhase carries out the plan: blue-green cutovers first (each
+// self-contained), then the rolling-restart set, then the classic
+// stop-all-then-start-all recreate set.
+func executePhase(ctx context.Context, client container.Client, plan *updatePlan, params types.UpdateParams, state *State, progress *session.Progress) {
+	for _, c := range plan.blueGreen {
+		if err := performBlueGreenUpdate(ctx, c, plan.sorted, client, params, state); err != nil {
 			progress.UpdateFailed(map[types.ContainerID]error{c.ID(): err})
 		}
 		beat(params)
 	}
 
-	if len(rollingSet) > 0 {
-		progress.UpdateFailed(performRollingRestart(ctx, rollingSet, containers, client, params, progress, state))
+	if len(plan.rolling) > 0 {
+		progress.UpdateFailed(performRollingRestart(ctx, plan.rolling, plan.sorted, client, params, progress, state))
 	}
 
-	if len(recreateSet) > 0 {
-		failedStop, stoppedImages := stopContainersInReversedOrder(ctx, recreateSet, client, params, progress)
+	if len(plan.recreate) > 0 {
+		failedStop, stoppedImages := stopContainersInReversedOrder(ctx, plan.recreate, client, params, progress)
 		progress.UpdateFailed(failedStop)
 		// The restart half must complete even if the run's context is
 		// cancelled mid-flight (the watchdog's stage-1 remedy): aborting
@@ -382,13 +451,8 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 		// already-stopped container. WithoutCancel keeps each call bounded by
 		// its per-call timeout; a wedge inside this phase escalates to the
 		// watchdog's stage-2 process exit instead.
-		progress.UpdateFailed(restartContainersInSortedOrder(context.WithoutCancel(ctx), recreateSet, containers, client, params, stoppedImages, state))
+		progress.UpdateFailed(restartContainersInSortedOrder(context.WithoutCancel(ctx), plan.recreate, plan.sorted, client, params, stoppedImages, state))
 	}
-
-	if params.LifecycleHooks {
-		lifecycle.ExecutePostChecks(ctx, client, params)
-	}
-	return progress.Report(), nil
 }
 
 // beat records one unit of scan/update progress with the process watchdog via
@@ -396,151 +460,6 @@ func Update(ctx context.Context, client container.Client, params types.UpdatePar
 func beat(params types.UpdateParams) {
 	if params.Heartbeat != nil {
 		params.Heartbeat()
-	}
-}
-
-// strandedInitSiblings returns the one-shot init siblings (migrate, pg-ready,
-// bootstrap) that `target` should gate on but no longer declares. It is
-// non-empty exactly when target is a stranded-init-deps case: compose-managed,
-// a PRESENT but EMPTY com.docker.compose.depends_on, no no-init-deps opt-out,
-// yet its project still holds a one-shot init sibling. The usual cause is a
-// `docker compose up --no-deps <svc>` in-place recreate (the .env-only update
-// pattern), which stamps an EMPTY depends_on because --no-deps tells Compose to
-// disregard the dependency graph. Blue-green is NOT the cause: green faithfully
-// inherits blue's labels (GetCreateConfig copies them verbatim), so it only
-// propagates an already-empty value — a peer whose label was populated at its
-// last full `compose up` keeps it across every cutover. Once empty,
-// --rerun-init-deps would skip the target and the new image would run against
-// the old schema; the recovery path re-runs these siblings.
-//
-// Single source of truth for the stranded predicate: the per-target warn/rerun
-// (warnStrandedInitDeps) and the per-scan gauge (watchtower_stranded_init_deps).
-// Re-arming via `docker compose up -d --force-recreate <service>` rewrites the
-// label, so the raw value becomes non-empty and this returns nil — which is
-// what lets the gauge drop to 0 and the alert resolve on remediation.
-func strandedInitSiblings(target types.Container, all []types.Container) []string {
-	// Opt-out: a target that legitimately has no init deps — e.g. a frontend
-	// sharing a Compose project with migrate/pg-ready one-shots owned by a
-	// sibling API tier — sets com.centurylinklabs.watchtower.no-init-deps=true
-	// to affirm the empty depends_on is by design, not a dropped-label signal.
-	// A backend that genuinely lost its label won't carry the opt-out.
-	if target.HasNoInitDepsLabel() {
-		return nil
-	}
-
-	// A one-shot init container is never itself a stranded parent — it is the
-	// gate, not the gated service. Skip it so the per-scan gauge doesn't
-	// double-count sibling one-shots that see each other (migrate <-> pg-ready)
-	// when WATCHTOWER_INCLUDE_STOPPED surfaces their exited carcasses in the
-	// scan list. Without this, a project with two one-shots reads 2 even when
-	// nothing is stranded — a false alert.
-	if isOneShotInitSibling(target) {
-		return nil
-	}
-
-	// The dropped-label signal is the raw label being PRESENT and EMPTY —
-	// exactly the stamp `docker compose up --no-deps` leaves. Anything else is
-	// not stranded:
-	//   - absent: the container never went through a label-stamping compose
-	//     create; there is no dropped contract to recover.
-	//   - non-empty: the declared contract is intact (or already re-armed) —
-	//     this is the check that makes the gauge resolve-on-fix. Crucially
-	//     that includes labels holding only service_started / service_healthy
-	//     entries: such targets legitimately declare no *init* deps, and
-	//     treating their intact label as "emptied" executed unrelated
-	//     one-shots against targets that never gated on them.
-	raw, present := target.ComposeDependsOnRaw()
-	if !present || strings.TrimSpace(raw) != "" {
-		return nil
-	}
-
-	project := target.ComposeProject()
-	if project == "" {
-		return nil
-	}
-
-	var siblings []string
-	for _, c := range all {
-		if c.ComposeProject() != project || c.ComposeService() == target.ComposeService() {
-			continue
-		}
-		if isOneShotInitSibling(c) {
-			siblings = append(siblings, c.ComposeService())
-		}
-	}
-	return siblings
-}
-
-// warnStrandedInitDeps records the stranded-init-deps history counter and logs
-// the actionable line for a stale target whose com.docker.compose.depends_on was
-// emptied out-of-band (detection in strandedInitSiblings; siblings is its
-// non-empty result). With --rerun-stranded-init-deps the siblings are re-run as
-// a safety net (recovering=true selects that wording); without it the warning
-// says plainly that migrations will NOT run. Either way the empty label needs
-// re-arming to restore the declared contract (and exact ordering), which is why
-// the companion per-scan gauge (watchtower_stranded_init_deps) keeps the alert
-// firing until an operator redeploys with deps.
-func warnStrandedInitDeps(target types.Container, siblings []string, recovering bool) {
-	metrics.RegisterStrandedInitDeps()
-	entry := log.WithFields(log.Fields{
-		fieldContainer: target.Name(),
-		"project":      target.ComposeProject(),
-		"siblings":     strings.Join(siblings, ","),
-	})
-	if recovering {
-		entry.Warn("--rerun-init-deps: target's com.docker.compose.depends_on is empty but its compose project still holds one-shot init siblings (typically a `docker compose up --no-deps <svc>` recreate emptied the label); re-running the detected siblings as a safety net so the new image does not start on an un-migrated schema. Re-arm with `docker compose up -d --force-recreate <service>` to restore the declared depends_on.")
-		return
-	}
-	entry.Warn("--rerun-init-deps: target's com.docker.compose.depends_on is empty but its compose project still holds one-shot init siblings (typically a `docker compose up --no-deps <svc>` recreate emptied the label); they will NOT be re-run automatically, so the new image may start on an un-migrated schema. Re-arm with `docker compose up -d --force-recreate <service>` to restore the declared depends_on, or opt in to automatic recovery with --rerun-stranded-init-deps.")
-}
-
-// orderInitSiblings best-effort orders recovered one-shot siblings so each runs
-// after any sibling it itself gates on. The declared depends_on order is lost
-// with the emptied label, so we approximate from each sibling's OWN init-dep
-// count: a leaf (e.g. pg-ready, 0 deps) sorts before a migrate that declares it,
-// with the service name as a stable tiebreak. One-shot siblings are created by
-// the full `compose up` (not the --no-deps recreate that stranded the target),
-// so their own labels are usually intact and this reproduces the declared order;
-// re-arming the target restores it exactly. Deterministic in all cases.
-func orderInitSiblings(siblings []string, all []types.Container, project string) []string {
-	ownDepCount := func(svc string) int {
-		for _, c := range all {
-			if c.ComposeProject() == project && c.ComposeService() == svc {
-				return len(c.ComposeInitDependencies())
-			}
-		}
-		return 0
-	}
-	ordered := append([]string(nil), siblings...)
-	sort.SliceStable(ordered, func(a, b int) bool {
-		if ca, cb := ownDepCount(ordered[a]), ownDepCount(ordered[b]); ca != cb {
-			return ca < cb
-		}
-		return ordered[a] < ordered[b]
-	})
-	return ordered
-}
-
-// isOneShotInitSibling reports whether c looks like a Compose one-shot init
-// container (migrate / pg-ready / bootstrap): compose-managed with a "no"
-// restart policy. Long-lived services carry unless-stopped/always/on-failure,
-// so the restart policy discriminates init gates from a project's main
-// service(s) without hardcoding service names.
-func isOneShotInitSibling(c types.Container) bool {
-	if c.ComposeService() == "" {
-		return false
-	}
-
-	info := c.ContainerInfo()
-	if info == nil || info.HostConfig == nil {
-		return false
-	}
-
-	switch info.HostConfig.RestartPolicy.Name {
-	case "", "no":
-		return true
-	default:
-		return false
 	}
 }
 

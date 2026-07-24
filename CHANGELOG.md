@@ -143,6 +143,25 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   already-empty value — the emptying happens at the `--no-deps` recreate.
 
 ### Changed
+- **`actions.Update` restructured into an explicit
+  scan → init-reruns → plan → execute pipeline.** The former monolith (one
+  loop mutating the per-container Stale flag as control flow, a later loop
+  reversing decisions, and an executor applying a different predicate) is now
+  four phase functions over the scanned list: `scanPhase` is the only writer
+  of the Stale flag (with `initRerunPhase`'s failed-migration veto as the one
+  sanctioned reversal), `planPhase` computes an immutable `updatePlan`
+  (dependency-sorted view + strategy partitions) exactly once, and
+  `executePhase` consumes it verbatim. A single `willUpdate` predicate is the
+  one source of truth for update eligibility, shared by the scan and
+  init-rerun phases — the structural fix for the bug class where monitor-only
+  targets had their migrations executed because two code paths answered
+  "will this container be updated" differently. The compose heuristics
+  (stranded detection, sibling ordering, the stranded gauge) moved onto a
+  `composeIndex` built at most once per scan from the unfiltered daemon list,
+  instead of each re-scanning a flat container slice. Behavior-preserving; the
+  central `//nolint:cyclop` on `Update` is gone, and the write-only
+  `staleCheckFailed` counter (dead since the metrics refactor, sibling of the
+  previously-removed `staleCount`) went with it.
 - **Cross-run update state consolidated into a single owner
   (`actions.State`).** The five package-level mutex-guarded maps that
   individual features had accreted in `internal/actions` — rollback cooldowns,

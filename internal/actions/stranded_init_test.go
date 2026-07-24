@@ -159,7 +159,7 @@ func TestOrderInitSiblings(t *testing.T) {
 	all := []types.Container{migrate, pgReady}
 
 	for _, in := range [][]string{{"migrate", "pg-ready"}, {"pg-ready", "migrate"}} {
-		got := orderInitSiblings(in, all, strandedTestProject)
+		got := newComposeIndex(all).orderInitSiblings(in, strandedTestProject)
 		if len(got) != 2 || got[0] != "pg-ready" || got[1] != "migrate" {
 			t.Fatalf("orderInitSiblings(%v) = %v, want [pg-ready migrate]", in, got)
 		}
@@ -168,7 +168,7 @@ func TestOrderInitSiblings(t *testing.T) {
 	t.Run("stable name tiebreak when own dep counts are equal", func(t *testing.T) {
 		a := newStrandedFixture("a-init", "no")
 		b := newStrandedFixture("b-init", "no")
-		got := orderInitSiblings([]string{"b-init", "a-init"}, []types.Container{a, b}, strandedTestProject)
+		got := newComposeIndex([]types.Container{a, b}).orderInitSiblings([]string{"b-init", "a-init"}, strandedTestProject)
 		if len(got) != 2 || got[0] != "a-init" || got[1] != "b-init" {
 			t.Fatalf("expected name-sorted [a-init b-init], got %v", got)
 		}
@@ -203,21 +203,17 @@ func newRearmedFixture(service string, initDeps ...string) types.Container {
 // watchtower_stranded_init_deps gauge are built on. countStranded mirrors the
 // per-scan gauge loop in Update, so these cases pin the gauge's value.
 func TestStrandedInitSiblings(t *testing.T) {
+	// countStranded uses the same composeIndex method that feeds the
+	// watchtower_stranded_init_deps gauge, so these cases pin the gauge value.
 	countStranded := func(all []types.Container) int {
-		n := 0
-		for i := range all {
-			if len(strandedInitSiblings(all[i], all)) > 0 {
-				n++
-			}
-		}
-		return n
+		return newComposeIndex(all).countStranded(all)
 	}
 
 	t.Run("stranded target names its dropped init sibling", func(t *testing.T) {
 		target := newStrandedFixture("api", "unless-stopped") // empty depends_on
 		migrate := newStrandedFixture("migrate", "no")
 
-		got := strandedInitSiblings(target, []types.Container{target, migrate})
+		got := newComposeIndex([]types.Container{target, migrate}).strandedInitSiblings(target)
 		if len(got) != 1 || got[0] != "migrate" {
 			t.Fatalf("expected [migrate], got %v", got)
 		}
@@ -231,7 +227,7 @@ func TestStrandedInitSiblings(t *testing.T) {
 		migrate := newStrandedFixture("migrate", "no")
 		pgReady := newStrandedFixture("pg-ready", "no")
 
-		if got := strandedInitSiblings(target, []types.Container{target, migrate, pgReady}); got != nil {
+		if got := newComposeIndex([]types.Container{target, migrate, pgReady}).strandedInitSiblings(target); got != nil {
 			t.Fatalf("expected nil for a re-armed target, got %v", got)
 		}
 		if n := countStranded([]types.Container{target, migrate, pgReady}); n != 0 {
@@ -254,7 +250,7 @@ func TestStrandedInitSiblings(t *testing.T) {
 		}, nil)
 		migrate := newStrandedFixture("migrate", "no")
 
-		if got := strandedInitSiblings(optOut, []types.Container{optOut, migrate}); got != nil {
+		if got := newComposeIndex([]types.Container{optOut, migrate}).strandedInitSiblings(optOut); got != nil {
 			t.Fatalf("expected nil for a no-init-deps opt-out, got %v", got)
 		}
 	})
@@ -277,7 +273,7 @@ func TestStrandedInitSiblings(t *testing.T) {
 		}, nil)
 		migrate := newStrandedFixture("migrate", "no")
 
-		if got := strandedInitSiblings(noLabel, []types.Container{noLabel, migrate}); got != nil {
+		if got := newComposeIndex([]types.Container{noLabel, migrate}).strandedInitSiblings(noLabel); got != nil {
 			t.Fatalf("expected nil for an absent depends_on label, got %v", got)
 		}
 	})
@@ -301,7 +297,7 @@ func TestStrandedInitSiblings(t *testing.T) {
 		}, nil)
 		backupOneShot := newStrandedFixture("backup", "no")
 
-		if got := strandedInitSiblings(healthyDep, []types.Container{healthyDep, backupOneShot}); got != nil {
+		if got := newComposeIndex([]types.Container{healthyDep, backupOneShot}).strandedInitSiblings(healthyDep); got != nil {
 			t.Fatalf("expected nil for an intact service_healthy depends_on, got %v", got)
 		}
 	})
@@ -310,7 +306,7 @@ func TestStrandedInitSiblings(t *testing.T) {
 		target := newStrandedFixture("api", "unless-stopped")
 		web := newStrandedFixture("web", "unless-stopped")
 
-		if got := strandedInitSiblings(target, []types.Container{target, web}); got != nil {
+		if got := newComposeIndex([]types.Container{target, web}).strandedInitSiblings(target); got != nil {
 			t.Fatalf("expected nil when no one-shot siblings exist, got %v", got)
 		}
 	})
@@ -324,7 +320,7 @@ func TestStrandedInitSiblings(t *testing.T) {
 		}, nil)
 		migrate := newStrandedFixture("migrate", "no")
 
-		if got := strandedInitSiblings(bare, []types.Container{bare, migrate}); got != nil {
+		if got := newComposeIndex([]types.Container{bare, migrate}).strandedInitSiblings(bare); got != nil {
 			t.Fatalf("expected nil for a non-compose target, got %v", got)
 		}
 	})
