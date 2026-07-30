@@ -339,8 +339,14 @@ Not upstream-bug repairs — additions that harden the same feature set.
   BuildKit `--provenance` / `--sbom`); the GoReleaser `checksums.txt` is cosign-signed too. Consumers can answer all
   three supply-chain questions — *who built it* (signature), *how* (provenance), and *what's inside* (SBOM) — and verify
   them with `cosign verify` / `cosign verify-blob` / `docker buildx imagetools inspect`;
-  see [Verifying a release](https://github.com/openserbia/watchtower#verifying-a-release). Releases are additionally
-  gated in CI by `govulncheck` (Go vulnerability DB), Trivy, and Snyk. The distroless base is not published for
+  see [Verifying a release](https://github.com/openserbia/watchtower#verifying-a-release). Pull requests are gated in CI
+  by `govulncheck` (Go vulnerability DB), Trivy (dependency, secret and IaC scans) and Snyk (Go modules plus the Python
+  tooling manifest), and releases re-scan the published image with Trivy (CRITICAL, fixed-only). One nuance worth
+  knowing before opening a PR from a fork: the Snyk step needs a cloud token, and GitHub withholds secrets from fork
+  PRs by design, so that step self-skips there rather than failing the contribution — `govulncheck` and Trivy are
+  hermetic through Devbox and gate every pull request, fork or not. The same scanners run locally as a pre-commit hook
+  (`.githooks/pre-commit`), where Snyk likewise skips on a clone that has never run `snyk auth`.
+  The distroless base is not published for
   `linux/386` or `linux/arm/v6`, so those two platforms are dropped from the **container image** — the binary `tar.gz`
   archives still ship for them.
 

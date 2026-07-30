@@ -1,1 +1,20 @@
-code-review-graph
+# Dev tooling only — never shipped in the watchtower binary or image. Installed
+# into .venv by devbox's init_hook (`pip install -r requirements.txt`).
+code-review-graph>=2.3.7
+
+# Transitive security floors.
+#
+# code-review-graph constrains its deps loosely (e.g. `mcp<2,>=1.0.0`), so pip is
+# free to keep an already-installed version that carries a known advisory: a plain
+# `pip install -r requirements.txt` upgrades nothing that already satisfies the
+# range. These floors make the fixed versions a hard requirement, so a venv
+# created before the fix converges instead of silently failing the snyk gate in
+# .githooks/pre-commit.
+#
+# Each floor names the advisory it closes. Drop an entry once code-review-graph
+# (or its own deps) requires that version or newer on its own — `task
+# security:snyk:deps` re-flags it if a floor is removed too early.
+mcp>=1.28.1               # SNYK-PYTHON-MCP-18016318 auth bypass, -18016320 WebSocket origin validation
+click>=8.3.3              # SNYK-PYTHON-CLICK-16347201 command injection
+pyjwt>=2.13.0             # SNYK-PYTHON-PYJWT-17053408 improper authentication
+python-multipart>=0.0.30  # SNYK-PYTHON-PYTHONMULTIPART-16438952 + -17345663 resource exhaustion

@@ -31,3 +31,75 @@ if git diff --cached --name-only | grep -qE '\.go$|^go\.(mod|sum)$|^\.golangci\.
         exit 1
     fi
 fi
+
+# Vulnerability gate: run govulncheck when a commit changes the dependency set.
+# Scoped to module/vendor files rather than every .go file on purpose — a full
+# scan costs a vuln-DB fetch plus a call-graph build, which is too slow to pay on
+# every code commit, and new advisories enter through dependency changes. CI runs
+# the same gate on all Go changes, so reachability introduced by new call paths
+# is still caught before merge.
+# Calls the wrapper directly instead of `task security:govulncheck`: the task
+# target also writes SARIF into build/security, and this hook stays check-only.
+# Needs network access to vuln.go.dev — offline, bypass with --no-verify.
+if git diff --cached --name-only | grep -qE '^go\.(mod|sum)$|^vendor/'; then
+    echo "pre-commit: scanning dependencies for vulnerabilities (govulncheck via devbox)..."
+    if command -v devbox >/dev/null 2>&1; then
+        devbox run -- python3 scripts/govulncheck-allowlist.py ./... || {
+            echo "" >&2
+            echo "pre-commit: govulncheck gate failed. Bump the affected dependency, or —" >&2
+            echo "if the advisory is reachable but unfixable — add a reviewed entry to ALLOW" >&2
+            echo "in scripts/govulncheck-allowlist.py. Offline or to bypass once:" >&2
+            echo "'git commit --no-verify'." >&2
+            exit 1
+        }
+    else
+        echo "pre-commit: devbox not on PATH — cannot run the CI-pinned scanner." >&2
+        echo "Fix PATH or bypass once with 'git commit --no-verify'." >&2
+        exit 1
+    fi
+fi
+
+# Trivy gate: dependency vulns, leaked secrets, and misconfigurations.
+# Deliberately NOT scoped by staged path like the gates above — a credential can
+# be pasted into any file type, and keeping one out of history is worth a scan on
+# every commit (~7s warm; the .trivycache dir keeps the DB local).
+# Hermetic via devbox with no cloud account, so this is a hard gate. Only
+# `security:fs` runs here; it already covers misconfig, so the dedicated
+# `security:config` IaC pass is left to CI.
+if command -v devbox >/dev/null 2>&1; then
+    echo "pre-commit: trivy scan (vulns, secrets, misconfig)..."
+    devbox run -- task security:fs || {
+        echo "" >&2
+        echo "pre-commit: trivy found HIGH/CRITICAL findings. If it flagged a secret," >&2
+        echo "do NOT bypass — rotate it and remove it from the change. For a false" >&2
+        echo "positive, add a rule to .trivyignore. Bypass once with" >&2
+        echo "'git commit --no-verify'." >&2
+        exit 1
+    }
+else
+    echo "pre-commit: devbox not on PATH — skipping the trivy gate." >&2
+fi
+
+# Snyk Open Source gate: covers go.mod plus requirements.txt (the Python tooling
+# deps govulncheck cannot see), so it also fires on requirements.txt changes.
+# Unlike golangci-lint and govulncheck — hermetic via devbox — snyk is an
+# authenticated cloud service. An unauthenticated clone therefore SKIPS this
+# gate with a warning instead of failing: a contributor without a Snyk account
+# must still be able to commit. CI enforces it where the token exists.
+if git diff --cached --name-only | grep -qE '^go\.(mod|sum)$|^vendor/|^requirements\.txt$'; then
+    if ! command -v devbox >/dev/null 2>&1; then
+        echo "pre-commit: devbox not on PATH — skipping the snyk gate." >&2
+    elif devbox run -- task security:snyk:auth >/dev/null 2>&1; then
+        echo "pre-commit: scanning dependencies with snyk (go.mod + requirements.txt)..."
+        devbox run -- task security:snyk:deps || {
+            echo "" >&2
+            echo "pre-commit: snyk found vulnerable dependencies at or above the" >&2
+            echo "'high' threshold. Upgrade the flagged package, or record a reviewed" >&2
+            echo "exception under 'ignore:' in .snyk. Bypass once with" >&2
+            echo "'git commit --no-verify'." >&2
+            exit 1
+        }
+    else
+        echo "pre-commit: snyk not authenticated — skipping (run 'snyk auth' to enable)." >&2
+    fi
+fi
