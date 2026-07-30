@@ -11,6 +11,50 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
 
 ## [Unreleased]
 
+### Added
+- **`govulncheck`, Trivy and Snyk now gate CI and pre-commit.** The security
+  scanners were already defined in `Taskfile.security.yml` and pinned in
+  Devbox, but nothing ran them: `docs/why-fork.md` claimed dependency scanning
+  was "gated in CI" while no workflow invoked any of the three, so the gate was
+  aspirational and a vulnerable dependency could merge unremarked. The Lint job
+  in `pull-request.yml` now runs `security:govulncheck`, `security:fs` +
+  `security:config` (Trivy) and `security:snyk:deps` after the linter, and
+  `.githooks/pre-commit` runs the same scanners before a commit lands. The two
+  classes of scanner are treated differently on purpose: govulncheck and Trivy
+  are hermetic through Devbox, so they are hard gates everywhere — including
+  PRs from forks. Snyk needs a cloud token, which GitHub deliberately withholds
+  from fork PRs, so its CI step self-skips when `SNYK_TOKEN` is empty rather
+  than failing every external contribution, and the hook skips it (with a
+  warning) on a clone that never ran `snyk auth` — a contributor without a Snyk
+  account must still be able to commit. Trivy is the one gate not scoped by
+  staged path: a credential can be pasted into any file type, so its secret
+  scan is worth ~7s on every commit. `security:snyk:deps` also scans
+  `requirements.txt` now; it was hardcoded to `--file=go.mod`, which is why
+  Snyk kept reporting "Detected multiple supported manifests (2)" and silently
+  covered only one of them.
+
+### Security
+- **Six high-severity advisories closed in the Python dev tooling
+  (`requirements.txt`).** Adding the Snyk gate above immediately surfaced them
+  in the `code-review-graph` dependency tree: command injection in
+  `click@8.3.2` (SNYK-PYTHON-CLICK-16347201), an authorization bypass and a
+  missing WebSocket origin validation in `mcp@1.27.0` (SNYK-PYTHON-MCP-18016318
+  and -18016320), improper authentication in `pyjwt@2.12.1`
+  (SNYK-PYTHON-PYJWT-17053408), and two resource-exhaustion issues in
+  `python-multipart@0.0.26` (SNYK-PYTHON-PYTHONMULTIPART-16438952 and
+  -17345663). This is dev tooling only — none of it is imported by the
+  watchtower binary or present in the published images — but it is installed in
+  every contributor's Devbox venv, and the two `mcp` advisories affect a server
+  that actually listens. Upgrading the direct dependency was **not** sufficient:
+  `code-review-graph` constrains its deps loosely (`mcp<2,>=1.0.0`), so every
+  vulnerable version already satisfied the range and a plain
+  `pip install -r requirements.txt` upgraded nothing — the exact reason the venv
+  had drifted years-stale without complaint. `requirements.txt` therefore pins
+  explicit security floors at each fix version, annotated with the advisory each
+  one closes, so a pre-existing venv converges instead of silently failing the
+  new gate. The floors sit at the fix version rather than the current release,
+  so they constrain nothing going forward.
+
 ## [1.19.0] - 2026-07-24
 
 ### Added

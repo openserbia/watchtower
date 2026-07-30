@@ -29,6 +29,10 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    env:
+      # Empty for PRs from forks — GitHub withholds secrets from them by design.
+      # The snyk step below self-skips in that case (see its `if:`).
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -41,6 +45,21 @@ jobs:
           enable-cache: 'true'
       - name: Lint
         run: devbox run -- task lint
+      # Gates on reachable advisories only (call-graph aware), minus the tracked
+      # allowlist in scripts/govulncheck-allowlist.py. Runs after the linter so a
+      # formatting failure is never reported as a security one.
+      - name: Vulnerability scan
+        run: devbox run -- task security:govulncheck
+      # Trivy: dependency vulns + leaked secrets + IaC misconfigurations.
+      # Hermetic like govulncheck (no account needed), so it gates fork PRs too.
+      - name: Trivy scan
+        run: devbox run -- task security:fs security:config
+      # Snyk Open Source over go.mod + requirements.txt. Unlike govulncheck this
+      # needs a cloud token, so it cannot run on fork PRs (no secrets there) —
+      # skipped rather than failed, leaving govulncheck as the gate every PR gets.
+      - name: Snyk dependency scan
+        if: ${{ env.SNYK_TOKEN != '' }}
+        run: devbox run -- task security:snyk:deps
   test:
     name: Test
     runs-on: ubuntu-latest

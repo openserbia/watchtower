@@ -78,12 +78,23 @@ tasks:
         || (echo "snyk is not authenticated — run 'snyk auth' or export SNYK_TOKEN" && exit 1)
 
   snyk:deps:
-    desc: Snyk Open Source vulnerability scan of Go modules
+    desc: Snyk Open Source vulnerability scan of Go modules and Python tooling deps
     deps: [snyk:auth]
     cmds:
       - mkdir -p {{.REPORT_DIR}}
-      - snyk test --severity-threshold={{.SNYK_SEVERITY}} --file=go.mod
+      # SARIF first, gating table scans after: task stops at the first failing
+      # command, so emitting the reports up front keeps them complete even when
+      # a scan finds something (exactly when the report is worth having).
       - snyk test --severity-threshold={{.SNYK_SEVERITY}} --file=go.mod --sarif-file-output={{.REPORT_DIR}}/snyk-deps.sarif || true
+      - >
+        snyk test --severity-threshold={{.SNYK_SEVERITY}}
+        --file=requirements.txt --package-manager=pip
+        --sarif-file-output={{.REPORT_DIR}}/snyk-deps-python.sarif || true
+      - snyk test --severity-threshold={{.SNYK_SEVERITY}} --file=go.mod
+      # requirements.txt pulls the code-review-graph MCP server and its transitive
+      # deps. Dev tooling only — never shipped in the watchtower binary or image —
+      # but it is installed in the Devbox venv, so it is gated the same way.
+      - snyk test --severity-threshold={{.SNYK_SEVERITY}} --file=requirements.txt --package-manager=pip
 
   snyk:code:
     desc: Snyk Code static analysis (SAST)

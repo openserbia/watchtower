@@ -104,8 +104,11 @@ jobs:
         run: devbox run -- bash -c 'git checkout -- devbox.lock && goreleaser release --clean --release-notes="$RUNNER_TEMP/release-notes.md"'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Trivy CVE scan (observation mode — exit-code: 0 = never fail.
-      # Flip to 1 after the baseline is clean to make this a hard gate).
+      # Trivy CVE scan — a hard gate: `exit-code: 1` fails the job on any
+      # CRITICAL that has a fix available (`ignore-unfixed: true`).
+      # It runs AFTER GoReleaser has pushed, so a failure here does not prevent
+      # the release — the tag and images are already public. Treat a red run as
+      # "pull/patch the release", not "the release was blocked".
       # Scans the just-published :latest tag (same digest as :${{ github.ref_name }}
       # since goreleaser publishes both in lockstep).
       - name: Trivy CVE scan

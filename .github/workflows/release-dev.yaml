@@ -99,10 +99,13 @@ jobs:
         run: |
           devbox run -- cosign sign --yes "openserbia/watchtower@${DIGEST}"
           devbox run -- cosign sign --yes "ghcr.io/openserbia/watchtower@${DIGEST}"
-      # Trivy CVE scan (observation mode — exit-code: 0 = never fail.
-      # Flip to 1 after the baseline is clean to make this a hard gate).
-      # SARIF upload omitted (private repo without GHAS); operator
-      # reads findings from the Trivy table output below.
+      # Trivy CVE scan — a hard gate: `exit-code: 1` fails the job on any
+      # CRITICAL that has a fix available (`ignore-unfixed: true`).
+      # It runs AFTER the image has been pushed and signed, so a failure here
+      # does not prevent publication — :latest-dev is already live. Treat a red
+      # run as "the rolling dev tag needs a rebuild", not "the push was blocked".
+      # SARIF upload omitted; operator reads findings from the Trivy table
+      # output below.
       - name: Trivy CVE scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
