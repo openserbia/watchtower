@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
   "packages": {
-    "github:openserbia/go-flake#go_1_27_0":            "",
-    "github:openserbia/go-flake#golangci-lint_2_13_1": "",
+    "github:openserbia/go-flake#go_1_27_2":            "",
+    "github:openserbia/go-flake#golangci-lint_2_14_0": "",
     "github:openserbia/go-flake#gofumpt_0_11_0":       "",
     "github:openserbia/go-flake#govulncheck_1_7_0":    "",
     "gci": "latest",

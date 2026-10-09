@@ -269,17 +269,17 @@
       "last_modified": "2026-03-16T02:27:38Z",
       "resolved": "github:NixOS/nixpkgs/f8573b9c935cfaa162dd62cc9e75ae2db86f85df?lastModified=1773628058&narHash=sha256-hpXH0z3K9xv0fHaje136KY872VT2T5uwxtezlAskQgY%3D"
     },
-    "github:openserbia/go-flake#go_1_27_0": {
-      "last_modified": "2026-08-20T17:28:17Z",
-      "resolved": "github:openserbia/go-flake/a940a206b47227f54e7286f5eb77f70e67d20635?lastModified=1787246897&narHash=sha256-Pw3Y3B9noJmPqoV%2FSvFrC3UO32CCHswiSrM7e7a7a70%3D#go_1_27_0"
+    "github:openserbia/go-flake#go_1_27_2": {
+      "last_modified": "2026-10-09T12:41:41Z",
+      "resolved": "github:openserbia/go-flake/bd367114832598916682868cdf78f65e10b3c81f?lastModified=1791549701&narHash=sha256-KxKqG9b1%2FAmWRF%2FLKoMQ7ML1GR6WRWLKCTfB%2BmXtn7E%3D#go_1_27_2"
     },
     "github:openserbia/go-flake#gofumpt_0_11_0": {
       "last_modified": "2026-08-20T17:28:17Z",
       "resolved": "github:openserbia/go-flake/a940a206b47227f54e7286f5eb77f70e67d20635?lastModified=1787246897&narHash=sha256-Pw3Y3B9noJmPqoV%2FSvFrC3UO32CCHswiSrM7e7a7a70%3D#gofumpt_0_11_0"
     },
-    "github:openserbia/go-flake#golangci-lint_2_13_1": {
-      "last_modified": "2026-08-20T17:28:17Z",
-      "resolved": "github:openserbia/go-flake/a940a206b47227f54e7286f5eb77f70e67d20635?lastModified=1787246897&narHash=sha256-Pw3Y3B9noJmPqoV%2FSvFrC3UO32CCHswiSrM7e7a7a70%3D#golangci-lint_2_13_1"
+    "github:openserbia/go-flake#golangci-lint_2_14_0": {
+      "last_modified": "2026-10-09T12:41:41Z",
+      "resolved": "github:openserbia/go-flake/bd367114832598916682868cdf78f65e10b3c81f?lastModified=1791549701&narHash=sha256-KxKqG9b1%2FAmWRF%2FLKoMQ7ML1GR6WRWLKCTfB%2BmXtn7E%3D#golangci-lint_2_14_0"
     },
     "github:openserbia/go-flake#govulncheck_1_7_0": {
       "last_modified": "2026-08-20T17:28:17Z",
