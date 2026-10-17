@@ -33,6 +33,20 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   Snyk kept reporting "Detected multiple supported manifests (2)" and silently
   covered only one of them.
 
+### Changed
+- **Go dependencies refreshed (minor/patch only).** Direct: `shoutrrr`
+  v0.16.2 → v0.22.0, `moby/moby/client` v0.5.0 → v0.6.2, `moby/moby/api`
+  v1.55.0 → v1.56.1, `docker/cli` v29.6.2 → v29.9.1,
+  `prometheus/client_golang` v1.24.1 → v1.25.0, `logrus` v1.9.4 → v1.10.2,
+  Ginkgo v2.33.1, Gomega v1.44.0, `golang.org/x/text` v0.43.0; plus the
+  indirect `golang.org/x/*`, OpenTelemetry and Prometheus sweep. The shoutrrr
+  jump carries upstream fixes that change notification behavior: default
+  HTTP clients now honor `HTTP(S)_PROXY`/`NO_PROXY`, failed HTTP requests are
+  reported as send errors instead of success, credentials are redacted from
+  service errors, and with no explicit timeout each send waits the greater of
+  10s and the service's own budget (previously a fixed 10s). `govulncheck`
+  reports no reachable vulnerabilities after the refresh.
+
 ### Security
 - **Six high-severity advisories closed in the Python dev tooling
   (`requirements.txt`).** Adding the Snyk gate above immediately surfaced them
