@@ -21,6 +21,10 @@ var LocalLog = log.WithField("notify", "no")
 
 const (
 	shoutrrrType = "shoutrrr"
+
+	// notificationSendTimeout bounds one send to every configured service.
+	// It matches the fixed router timeout of shoutrrr before v0.22.
+	notificationSendTimeout = 10 * time.Second
 )
 
 type router interface {
@@ -90,9 +94,12 @@ func createNotifier(urls []string, level log.Level, tplString string, legacy boo
 	} else {
 		logger = stdlog.New(log.StandardLogger().WriterLevel(log.TraceLevel), "Shoutrrr: ", 0)
 	}
-	// Zero options keep the sender's default HTTP client and per-service
-	// timeout — identical behavior to the deprecated NewSender.
-	r, err := shoutrrr.NewSenderWithOptions(logger, types.SenderOptions{}, urls...)
+	// A fixed timeout keeps the pre-v0.22 bound on every send. Without it the
+	// router waits for each service's own budget (Discord retries for up to
+	// 5m, Telegram scales per chat), and a stalled send backs up the
+	// one-slot message queue into SendNotification and the logrus hook,
+	// which the update loop calls.
+	r, err := shoutrrr.NewSenderWithOptions(logger, types.SenderOptions{Timeout: notificationSendTimeout}, urls...)
 	if err != nil {
 		log.Fatalf("Failed to initialize Shoutrrr notifications: %s\n", err.Error())
 	}

@@ -1,8 +1,10 @@
 package notifications
 
 import (
+	"errors"
 	"time"
 
+	shoutrrrrouter "github.com/nicholas-fedor/shoutrrr/pkg/router"
 	"github.com/nicholas-fedor/shoutrrr/pkg/types"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -351,8 +353,56 @@ Turns out everything is on fire
 
 			Eventually(blockingRouter.sent).Should(Receive(BeTrue()))
 		})
+
+		It("bounds every send with a fixed 10s router timeout", func() {
+			notifier := createNotifier([]string{"logger://"}, allButTrace, "", true, StaticData{}, false, 0)
+
+			serviceRouter, ok := notifier.Router.(*shoutrrrrouter.ServiceRouter)
+			Expect(ok).To(BeTrue())
+			Expect(serviceRouter.Timeout).To(Equal(10 * time.Second))
+		})
+
+		It("logs a failed send and keeps delivering later messages", func() {
+			logBuffer := gbytes.NewBuffer()
+			previousOutput := logrus.StandardLogger().Out
+			logrus.SetOutput(logBuffer)
+			DeferCleanup(func() { logrus.SetOutput(previousOutput) })
+
+			failing := &failingRouter{calls: make(chan string, 2)}
+			notifier := &shoutrrrTypeNotifier{
+				Urls:     []string{"slack://xoxb:redacted@channel"},
+				Router:   failing,
+				messages: make(chan string, 1),
+				done:     make(chan bool),
+				params:   &types.Params{},
+			}
+			go sendNotifications(notifier)
+
+			notifier.messages <- "first"
+			Eventually(failing.calls).Should(Receive(Equal("first")))
+			Eventually(logBuffer).Should(gbytes.Say(`Failed to send shoutrrr notification`))
+
+			notifier.messages <- "second"
+			Eventually(failing.calls).Should(Receive(Equal("second")))
+
+			done := make(chan struct{})
+			go func() {
+				notifier.Close()
+				close(done)
+			}()
+			Eventually(done).Should(BeClosed())
+		})
 	})
 })
+
+type failingRouter struct {
+	calls chan string
+}
+
+func (f *failingRouter) Send(message string, _ *types.Params) []error {
+	f.calls <- message
+	return []error{errors.New("posting to Slack API: 500 Internal Server Error")}
+}
 
 type blockingRouter struct {
 	unlock chan bool

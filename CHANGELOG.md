@@ -43,9 +43,12 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   jump carries upstream fixes that change notification behavior: default
   HTTP clients now honor `HTTP(S)_PROXY`/`NO_PROXY`, failed HTTP requests are
   reported as send errors instead of success, credentials are redacted from
-  service errors, and with no explicit timeout each send waits the greater of
-  10s and the service's own budget (previously a fixed 10s). `govulncheck`
-  reports no reachable vulnerabilities after the refresh.
+  service errors. Send failures are still only logged and never affect an
+  update. Watchtower now passes an explicit 10s send timeout, so the
+  new per-service budgets (up to 5m for Discord retries) cannot stall the
+  notification queue and, through it, the update loop; the bound is the same
+  fixed 10s as before. `govulncheck` reports no reachable vulnerabilities
+  after the refresh.
 
 ### Security
 - **Six high-severity advisories closed in the Python dev tooling
