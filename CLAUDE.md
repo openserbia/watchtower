@@ -8,7 +8,7 @@ Watchtower is a single-binary Go service (`main.go` → `cmd.Execute()`) that po
 
 ## Toolchain
 
-Go 1.26, golangci-lint v2, gofumpt, gci, and go-task are pinned via **Devbox** (`devbox.json`). Always run commands inside Devbox so tool versions match CI:
+Go 1.27.2, golangci-lint v2, gofumpt, gci, and go-task are pinned via **Devbox** (`devbox.json`). Always run commands inside Devbox so tool versions match CI:
 
 ```bash
 devbox shell                    # enter the environment

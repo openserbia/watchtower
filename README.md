@@ -73,7 +73,7 @@ Full flag reference, notification setup, lifecycle hooks, HTTP API, and metrics 
 
 ## Why this fork
 
-`containrrr/watchtower` stopped accepting changes in late 2024. This fork keeps it alive with a modern toolchain (Go 1.26, golangci-lint v2, Devbox-pinned CI) and extends the same feature set across four axes:
+`containrrr/watchtower` stopped accepting changes in late 2024. This fork keeps it alive with a modern toolchain (Go 1.27.2, golangci-lint v2, Devbox-pinned CI) and extends the same feature set across four axes:
 
 - **Fixes real-world upstream bugs** left unmerged when the project was archived — [#966](https://github.com/containrrr/watchtower/issues/966) (`--cleanup` deletes the replacement image), [#1217](https://github.com/containrrr/watchtower/issues/1217) (nil-pointer panic on GC'd source image), [#1413](https://github.com/containrrr/watchtower/issues/1413) (`No such image` loop that wedges the container).
 - **Safer updates** — opt-in `--health-check-gated` waits for the replacement container to report healthy and automatically rolls back to the previous image on failure, with per-container label overrides and a post-rollback cooldown that prevents thrash.
@@ -117,7 +117,7 @@ Report vulnerabilities via **[GitHub Security Advisories](https://github.com/ope
 ## Contributing
 
 ```bash
-devbox shell                 # reproducible toolchain (Go 1.26, golangci-lint v2, go-task)
+devbox shell                 # reproducible toolchain (Go 1.27.2, golangci-lint v2, go-task)
 devbox run -- task lint      # 0 findings required
 devbox run -- task test      # Ginkgo suites with -race
 devbox run -- task build     # ./build/watchtower
