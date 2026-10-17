@@ -14,7 +14,7 @@ code-review-graph>=2.3.7
 # Each floor names the advisory it closes. Drop an entry once code-review-graph
 # (or its own deps) requires that version or newer on its own — `task
 # security:snyk:deps` re-flags it if a floor is removed too early.
-mcp>=1.28.1               # SNYK-PYTHON-MCP-18016318 auth bypass, -18016320 WebSocket origin validation
+mcp>=1.30.0               # SNYK-PYTHON-MCP-18016318 auth bypass, -18016320 WebSocket origin validation, -20417226 data authenticity
 click>=8.3.3              # SNYK-PYTHON-CLICK-16347201 command injection
-pyjwt>=2.13.0             # SNYK-PYTHON-PYJWT-17053408 improper authentication
+pyjwt>=2.15.0             # SNYK-PYTHON-PYJWT-17053408 improper authentication, -20245319 et al. (2.15.0 signature-verification batch)
 python-multipart>=0.0.30  # SNYK-PYTHON-PYTHONMULTIPART-16438952 + -17345663 resource exhaustion
