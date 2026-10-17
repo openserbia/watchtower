@@ -23,6 +23,11 @@ coverage.out
 .trivycache
 .code-review-graph
 .snyk
+.dccache
+
+# Local secrets
+.env
+.env.*
 
 # Local dev environments, editor and agent state
 .venv

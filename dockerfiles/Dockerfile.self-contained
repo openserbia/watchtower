@@ -31,11 +31,16 @@ RUN git clone --branch "${WATCHTOWER_VERSION}" https://github.com/openserbia/wat
 # Cross-compile for the requested target. Tests are NOT run here: a cross-arch
 # binary can't execute on the build host, and the workflow's dedicated `test`
 # job already runs the suite on the native arch before publish.
-RUN \
+# The cache mounts hold Go's module cache (/go/pkg/mod: GOPATH is /go in the
+# golang image) and build cache. Every platform stage runs on BUILDPLATFORM, so
+# they share one module download instead of fetching the clone's (unvendored)
+# modules once per target arch. They are not part of the image and never change
+# what gets built; `-a` is dropped so the build cache can be reused.
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
   cd watchtower && \
   \
   GO111MODULE=on CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} GOARM=${TARGETVARIANT#v} \
-  go build -a -ldflags "-extldflags '-static' -X github.com/openserbia/watchtower/internal/meta.Version=${VERSION:-$(git describe --tags)}" .
+  go build -ldflags "-extldflags '-static' -X github.com/openserbia/watchtower/internal/meta.Version=${VERSION:-$(git describe --tags)}" .
 
 
 #

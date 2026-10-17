@@ -14,14 +14,20 @@ ARG VERSION=dev
 WORKDIR /watchtower
 COPY go.mod .
 COPY go.sum .
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 COPY . /watchtower
 
-RUN \
+# The cache mounts keep Go's module cache (/go/pkg/mod: GOPATH is /go in the
+# golang image) and build cache (/root/.cache/go-build) on the host between
+# builds. `COPY . /watchtower` invalidates every layer below it on any source
+# change, so without them each build re-downloads every module and compiles and
+# tests the whole tree cold. They are not part of the image, so they never change
+# what gets built; `go build` drops `-a` so the build cache can actually be used.
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
   cd /watchtower && \
   \
-  GO111MODULE=on CGO_ENABLED=0 GOOS=linux go build -a -ldflags "-extldflags '-static' -X github.com/openserbia/watchtower/internal/meta.Version=${VERSION}" . && \
+  GO111MODULE=on CGO_ENABLED=0 GOOS=linux go build -ldflags "-extldflags '-static' -X github.com/openserbia/watchtower/internal/meta.Version=${VERSION}" . && \
   GO111MODULE=on go test ./... -v
 
 
