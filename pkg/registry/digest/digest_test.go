@@ -72,7 +72,7 @@ var _ = Describe("Digests", func() {
 				creds := fmt.Sprintf("%s:%s", GHCRCredentials.Username, GHCRCredentials.Password)
 				matches, err := digest.CompareDigest(context.Background(), mockContainer, creds)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(matches).To(Equal(true))
+				Expect(matches).To(BeTrue())
 			}),
 		)
 
@@ -83,7 +83,7 @@ var _ = Describe("Digests", func() {
 		It("should return an error when container contains no image info", func() {
 			matches, err := digest.CompareDigest(context.Background(), mockContainerNoImage, `user:pass`)
 			Expect(err).To(HaveOccurred())
-			Expect(matches).To(Equal(false))
+			Expect(matches).To(BeFalse())
 		})
 	})
 	When("using different registries", func() {
@@ -147,7 +147,7 @@ var _ = Describe("Digests", func() {
 			// HEAD will be retried by retry.DoHTTP (it treats 401 as
 			// transient) before the GET fallback kicks in — we just care
 			// that a GET eventually fired.
-			Expect(len(server.ReceivedRequests()) >= 2).To(BeTrue())
+			Expect(len(server.ReceivedRequests())).To(BeNumerically(">=", 2))
 		})
 
 		It("falls back to GET and computes SHA256 of the body when the server omits the digest header", func() {
@@ -159,7 +159,7 @@ var _ = Describe("Digests", func() {
 			// body-hash is deterministic but we don't hard-code the hex
 			// here — it's a cosmetic detail, not a contract.
 			Expect(dig).To(HavePrefix("sha256:"))
-			Expect(len(dig)).To(Equal(len("sha256:") + 64))
+			Expect(dig).To(HaveLen(len("sha256:") + 64))
 		})
 
 		It("surfaces both errors when GET also fails", func() {

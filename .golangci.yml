@@ -22,26 +22,37 @@ linters:
     - sqlclosecheck
 
     # Bug prevention
+    - asasalint
     - durationcheck
+    - errchkjson
     - errorlint
     - exhaustive
     - fatcontext
     - gocheckcompilerdirectives
+    - gochecksumtype
+    - iotamixing
     - makezero
+    - musttag
     - nilerr
+    - nilnesserr
     - nosprintfhostport
     - predeclared
+    - reassign
     - rowserrcheck
 
     # Code quality
     - copyloopvar
     - dupl
     - errname
+    - exptostd
+    - ginkgolinter
     - goconst
     - gocritic
     - intrange
+    - mirror
     - misspell
     - mnd
+    - modernize
     - perfsprint
     - prealloc
     - recvcheck
@@ -49,6 +60,7 @@ linters:
     - unconvert
     - unparam
     - usestdlibvars
+    - usetesting
     - wastedassign
     - whitespace
 
@@ -84,8 +96,8 @@ linters:
 
     gosec:
       excludes:
-        - G104 # unhandled errors — covered by errcheck with better signal
-        - G117 # int overflow on conversion — high FP rate on int→int32
+        - G104 # unhandled errors: covered by errcheck with better signal
+        - G117 # int overflow on conversion: high FP rate on int to int32
 
     mnd:
       ignored-functions:
@@ -129,6 +141,8 @@ linters:
     paths:
       - vendor
       - "(^|/)mocks/"
+      # SERVICE OVERRIDE (watchtower) ─────────────────────────────────────
+      # WASM/template-preview shims.
       - pkg/notifications/preview
       - tplprev
 
@@ -256,3 +270,12 @@ formatters:
 
 issues:
   max-same-issues: 5
+
+# ─────────────────────────────────────────────────────────────────────────
+# SERVICE OVERRIDES: inline service-specific exclusions ABOVE, as additional
+# entries inside linters.exclusions.paths: and linters.exclusions.rules:.
+# Do NOT add a second top-level `linters:` block. YAML rejects duplicate
+# keys and golangci-lint will refuse to load the config.
+# Mark inlined overrides with `# SERVICE OVERRIDE (<svc>) ─────` so they
+# remain distinguishable from the shared baseline.
+# ─────────────────────────────────────────────────────────────────────────

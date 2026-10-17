@@ -972,7 +972,7 @@ var _ = Describe("the client", func() {
 
 	Describe(`classifyPullError`, func() {
 		It(`returns nil for a nil error`, func() {
-			Expect(classifyPullError("foo:latest", nil)).To(BeNil())
+			Expect(classifyPullError("foo:latest", nil)).To(Succeed())
 		})
 		It(`wraps unauthorized errors with ErrPullImageUnauthorized`, func() {
 			wrapped := classifyPullError("private/app:latest", cerrdefs.ErrUnauthenticated)

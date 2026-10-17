@@ -322,7 +322,7 @@ func TestFlagsArePrecentInDocumentation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Could not load docs file %q: %v", f, err)
 		}
-		allDocsSb308.WriteString(string(bytes))
+		allDocsSb308.Write(bytes)
 	}
 	allDocs += allDocsSb308.String()
 

@@ -389,7 +389,7 @@ var _ = Describe("the container", func() {
 						"com.centurylinklabs.watchtower.depends-on": "",
 					}))
 					links := c.Links()
-					Expect(links).To(HaveLen(0))
+					Expect(links).To(BeEmpty())
 				})
 			})
 			When("the depends on label is not present", func() {
@@ -411,7 +411,7 @@ var _ = Describe("the container", func() {
 						"com.centurylinklabs.watchtower.no-pull": "true",
 					}))
 					It("should return true", func() {
-						Expect(c.IsNoPull(types.UpdateParams{})).To(Equal(true))
+						Expect(c.IsNoPull(types.UpdateParams{})).To(BeTrue())
 					})
 				})
 				When("no-pull label is false", func() {
@@ -419,7 +419,7 @@ var _ = Describe("the container", func() {
 						"com.centurylinklabs.watchtower.no-pull": "false",
 					}))
 					It("should return false", func() {
-						Expect(c.IsNoPull(types.UpdateParams{})).To(Equal(false))
+						Expect(c.IsNoPull(types.UpdateParams{})).To(BeFalse())
 					})
 				})
 				When("no-pull label is set to an invalid value", func() {
@@ -427,13 +427,13 @@ var _ = Describe("the container", func() {
 						"com.centurylinklabs.watchtower.no-pull": "maybe",
 					}))
 					It("should return false", func() {
-						Expect(c.IsNoPull(types.UpdateParams{})).To(Equal(false))
+						Expect(c.IsNoPull(types.UpdateParams{})).To(BeFalse())
 					})
 				})
 				When("no-pull label is unset", func() {
 					c = MockContainer(WithLabels(map[string]string{}))
 					It("should return false", func() {
-						Expect(c.IsNoPull(types.UpdateParams{})).To(Equal(false))
+						Expect(c.IsNoPull(types.UpdateParams{})).To(BeFalse())
 					})
 				})
 			})
@@ -443,7 +443,7 @@ var _ = Describe("the container", func() {
 						"com.centurylinklabs.watchtower.no-pull": "true",
 					}))
 					It("should return true", func() {
-						Expect(c.IsNoPull(types.UpdateParams{NoPull: true})).To(Equal(true))
+						Expect(c.IsNoPull(types.UpdateParams{NoPull: true})).To(BeTrue())
 					})
 				})
 				When("no-pull label is false", func() {
@@ -451,7 +451,7 @@ var _ = Describe("the container", func() {
 						"com.centurylinklabs.watchtower.no-pull": "false",
 					}))
 					It("should return true", func() {
-						Expect(c.IsNoPull(types.UpdateParams{NoPull: true})).To(Equal(true))
+						Expect(c.IsNoPull(types.UpdateParams{NoPull: true})).To(BeTrue())
 					})
 				})
 				When("label-take-precedence argument is set to true", func() {
@@ -460,7 +460,7 @@ var _ = Describe("the container", func() {
 							"com.centurylinklabs.watchtower.no-pull": "true",
 						}))
 						It("should return true", func() {
-							Expect(c.IsNoPull(types.UpdateParams{LabelPrecedence: true, NoPull: true})).To(Equal(true))
+							Expect(c.IsNoPull(types.UpdateParams{LabelPrecedence: true, NoPull: true})).To(BeTrue())
 						})
 					})
 					When("no-pull label is false", func() {
@@ -468,7 +468,7 @@ var _ = Describe("the container", func() {
 							"com.centurylinklabs.watchtower.no-pull": "false",
 						}))
 						It("should return false", func() {
-							Expect(c.IsNoPull(types.UpdateParams{LabelPrecedence: true, NoPull: true})).To(Equal(false))
+							Expect(c.IsNoPull(types.UpdateParams{LabelPrecedence: true, NoPull: true})).To(BeFalse())
 						})
 					})
 				})

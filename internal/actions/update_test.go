@@ -995,7 +995,7 @@ var _ = Describe("image cooldown under --run-once", func() {
 		// (stale=false) and StartContainer would never be called. A
 		// non-empty StartedContainers confirms the one-shot actually
 		// proceeded despite a configured cooldown.
-		Expect(len(client.TestData.StartedContainers)).To(BeNumerically(">", 0))
+		Expect(client.TestData.StartedContainers).ToNot(BeEmpty())
 	})
 })
 
