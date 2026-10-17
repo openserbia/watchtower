@@ -3,6 +3,7 @@ package filters
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	t "github.com/openserbia/watchtower/pkg/types"
@@ -113,11 +114,9 @@ func FilterByImage(images []string, baseFilter t.Filter) t.Filter {
 	}
 
 	return func(c t.FilterableContainer) bool {
-		image := strings.Split(c.ImageName(), ":")[0]
-		for _, targetImage := range images {
-			if image == targetImage {
-				return baseFilter(c)
-			}
+		image, _, _ := strings.Cut(c.ImageName(), ":")
+		if slices.Contains(images, image) {
+			return baseFilter(c)
 		}
 
 		return false

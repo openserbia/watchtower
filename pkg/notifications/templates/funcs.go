@@ -20,7 +20,7 @@ var Funcs = template.FuncMap{
 	"Title":   cases.Title(language.AmericanEnglish).String,
 }
 
-func toJSON(v interface{}) string {
+func toJSON(v any) string {
 	var bytes []byte
 	var err error
 	if bytes, err = json.MarshalIndent(v, "", "  "); err != nil {

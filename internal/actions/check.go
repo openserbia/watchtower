@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -334,9 +335,9 @@ func cleanupExcessWatchtowers(ctx context.Context, containers []types.Container,
 		// containers is sorted oldest→newest; walk back from the newest and keep
 		// the first stably-named instance instead. The last element is the
 		// already-rejected transient keep, so it simply fails the guard.
-		for i := len(containers) - 1; i >= 0; i-- {
-			if !isTransientWatchtowerName(containers[i].Name()) {
-				keep = containers[i]
+		for _, ctr := range slices.Backward(containers) {
+			if !isTransientWatchtowerName(ctr.Name()) {
+				keep = ctr
 
 				break
 			}

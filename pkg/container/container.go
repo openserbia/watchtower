@@ -413,7 +413,7 @@ func (c Container) Links() []string {
 	dependsOnLabelValue := c.getLabelValueOrEmpty(dependsOnLabel)
 
 	if dependsOnLabelValue != "" {
-		for _, link := range strings.Split(dependsOnLabelValue, ",") {
+		for link := range strings.SplitSeq(dependsOnLabelValue, ",") {
 			// Since the container names need to start with '/', let's prepend it if it's missing
 			if !strings.HasPrefix(link, "/") {
 				link = "/" + link
@@ -426,7 +426,7 @@ func (c Container) Links() []string {
 
 	if (c.containerInfo != nil) && (c.containerInfo.HostConfig != nil) {
 		for _, link := range c.containerInfo.HostConfig.Links {
-			name := strings.Split(link, ":")[0]
+			name, _, _ := strings.Cut(link, ":")
 			links = append(links, name)
 		}
 

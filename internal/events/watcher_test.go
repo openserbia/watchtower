@@ -30,7 +30,7 @@ type fakeClient struct {
 	// the head of the slice as its stream. Guarded by mu.
 	mu       sync.Mutex
 	streams  []fakeStream
-	calls    int32
+	calls    atomic.Int32
 	consumed chan struct{}
 }
 
@@ -44,7 +44,7 @@ type fakeStream struct {
 }
 
 func (f *fakeClient) WatchImageEvents(ctx context.Context) (<-chan t.ImageEvent, <-chan error) {
-	atomic.AddInt32(&f.calls, 1)
+	f.calls.Add(1)
 
 	f.mu.Lock()
 	var stream fakeStream
@@ -110,7 +110,7 @@ var _ = Describe("events watcher", func() {
 	})
 
 	It("debounces a burst of tag events into a single targeted trigger", func() {
-		var triggerCalls int32
+		var triggerCalls atomic.Int32
 		triggered := make(chan []string, 1)
 
 		fake.streams = []fakeStream{{
@@ -125,14 +125,14 @@ var _ = Describe("events watcher", func() {
 		w := events.NewWatcher(wrap(fake), events.Config{
 			Debounce: 50 * time.Millisecond,
 			Trigger: func(names []string) {
-				atomic.AddInt32(&triggerCalls, 1)
+				triggerCalls.Add(1)
 				triggered <- names
 			},
 		})
 		go w.Run(ctx)
 
 		Eventually(triggered, time.Second).Should(Receive(ConsistOf("foo")))
-		Consistently(func() int32 { return atomic.LoadInt32(&triggerCalls) },
+		Consistently(triggerCalls.Load,
 			150*time.Millisecond, 30*time.Millisecond).Should(Equal(int32(1)))
 	})
 
@@ -176,7 +176,7 @@ var _ = Describe("events watcher", func() {
 		go w.Run(ctx)
 
 		Eventually(triggered, 2*time.Second).Should(Receive(ConsistOf("baz")))
-		Expect(atomic.LoadInt32(&fake.calls)).To(BeNumerically(">=", 2))
+		Expect(fake.calls.Load()).To(BeNumerically(">=", 2))
 	})
 
 	It("stops when the context is cancelled", func() {
@@ -193,7 +193,7 @@ var _ = Describe("events watcher", func() {
 
 		// Let the watcher subscribe before cancelling so we exercise the
 		// in-flight cancellation path, not the pre-loop ctx check.
-		Eventually(func() int32 { return atomic.LoadInt32(&fake.calls) },
+		Eventually(func() int32 { return fake.calls.Load() },
 			time.Second).Should(Equal(int32(1)))
 
 		cancel()

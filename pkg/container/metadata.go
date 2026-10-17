@@ -172,7 +172,7 @@ func parseComposeDependsOn(raw string) []composeDep {
 		return nil
 	}
 	out := make([]composeDep, 0)
-	for _, entry := range strings.Split(raw, ",") {
+	for entry := range strings.SplitSeq(raw, ",") {
 		entry = strings.TrimSpace(entry)
 		if entry == "" {
 			continue

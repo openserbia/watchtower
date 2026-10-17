@@ -6,7 +6,7 @@ import (
 	t "github.com/openserbia/watchtower/pkg/types"
 )
 
-type jsonMap = map[string]interface{}
+type jsonMap = map[string]any
 
 // MarshalJSON implements json.Marshaler
 func (d Data) MarshalJSON() ([]byte, error) {

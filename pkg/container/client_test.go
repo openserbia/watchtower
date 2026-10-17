@@ -50,14 +50,14 @@ var _ = Describe("the client", func() {
 		containerKnown := MockContainer(WithImageName("docker.io/prefix/imagename:latest"))
 
 		When(`warn on head failure is set to "always"`, func() {
-			c := dockerClient{ClientOptions: ClientOptions{WarnOnHeadFailed: WarnAlways}}
+			c := dockerClient{WarnOnHeadFailed: WarnAlways}
 			It("should always return true", func() {
 				Expect(c.WarnOnHeadPullFailed(containerUnknown)).To(BeTrue())
 				Expect(c.WarnOnHeadPullFailed(containerKnown)).To(BeTrue())
 			})
 		})
 		When(`warn on head failure is set to "auto"`, func() {
-			c := dockerClient{ClientOptions: ClientOptions{WarnOnHeadFailed: WarnAuto}}
+			c := dockerClient{WarnOnHeadFailed: WarnAuto}
 			It("should return false for unknown repos", func() {
 				Expect(c.WarnOnHeadPullFailed(containerUnknown)).To(BeFalse())
 			})
@@ -66,7 +66,7 @@ var _ = Describe("the client", func() {
 			})
 		})
 		When(`warn on head failure is set to "never"`, func() {
-			c := dockerClient{ClientOptions: ClientOptions{WarnOnHeadFailed: WarnNever}}
+			c := dockerClient{WarnOnHeadFailed: WarnNever}
 			It("should never return true", func() {
 				Expect(c.WarnOnHeadPullFailed(containerUnknown)).To(BeFalse())
 				Expect(c.WarnOnHeadPullFailed(containerKnown)).To(BeFalse())
@@ -306,8 +306,8 @@ var _ = Describe("the client", func() {
 				mockServer.AppendHandlers(mocks.ListContainersHandler("running", "exited", "created"))
 				mockServer.AppendHandlers(mocks.GetContainerHandlers(&mocks.Stopped, &mocks.Watchtower, &mocks.Running)...)
 				client := dockerClient{
-					api:           docker,
-					ClientOptions: ClientOptions{IncludeStopped: true},
+					api:            docker,
+					IncludeStopped: true,
 				}
 				containers, err := client.ListContainers(context.Background(), filters.NoFilter)
 				Expect(err).NotTo(HaveOccurred())
@@ -319,8 +319,8 @@ var _ = Describe("the client", func() {
 				mockServer.AppendHandlers(mocks.ListContainersHandler("running", "restarting"))
 				mockServer.AppendHandlers(mocks.GetContainerHandlers(&mocks.Watchtower, &mocks.Running, &mocks.Restarting)...)
 				client := dockerClient{
-					api:           docker,
-					ClientOptions: ClientOptions{IncludeRestarting: true},
+					api:               docker,
+					IncludeRestarting: true,
 				}
 				containers, err := client.ListContainers(context.Background(), filters.NoFilter)
 				Expect(err).NotTo(HaveOccurred())
@@ -332,8 +332,8 @@ var _ = Describe("the client", func() {
 				mockServer.AppendHandlers(mocks.ListContainersHandler("running"))
 				mockServer.AppendHandlers(mocks.GetContainerHandlers(&mocks.Watchtower, &mocks.Running)...)
 				client := dockerClient{
-					api:           docker,
-					ClientOptions: ClientOptions{IncludeRestarting: false},
+					api:               docker,
+					IncludeRestarting: false,
 				}
 				containers, err := client.ListContainers(context.Background(), filters.NoFilter)
 				Expect(err).NotTo(HaveOccurred())
@@ -690,8 +690,8 @@ var _ = Describe("the client", func() {
 		When(`providing a container with network aliases`, func() {
 			It(`should omit the container ID alias`, func() {
 				client := dockerClient{
-					api:           docker,
-					ClientOptions: ClientOptions{IncludeRestarting: false},
+					api:               docker,
+					IncludeRestarting: false,
 				}
 				ctr := MockContainer(WithImageName("docker.io/prefix/imagename:latest"))
 
@@ -948,14 +948,14 @@ var _ = Describe("the client", func() {
 		})
 		It(`leaves MemorySwappiness untouched when the flag is off`, func() {
 			val := int64(0)
-			hc := &container.HostConfig{Resources: container.Resources{MemorySwappiness: &val}}
+			hc := &container.HostConfig{MemorySwappiness: &val}
 			applyRecreatePolicy(ClientOptions{DisableMemorySwappiness: false}, hc)
 			Expect(hc.MemorySwappiness).ToNot(BeNil())
 			Expect(*hc.MemorySwappiness).To(Equal(int64(0)))
 		})
 		It(`nils MemorySwappiness when the flag is on (Podman/cgroupv2 compat)`, func() {
 			val := int64(0)
-			hc := &container.HostConfig{Resources: container.Resources{MemorySwappiness: &val}}
+			hc := &container.HostConfig{MemorySwappiness: &val}
 			applyRecreatePolicy(ClientOptions{DisableMemorySwappiness: true}, hc)
 			Expect(hc.MemorySwappiness).To(BeNil())
 		})
@@ -964,7 +964,7 @@ var _ = Describe("the client", func() {
 			// back through ContainerCreate, not just 0. We strip
 			// unconditionally when the flag is set.
 			val := int64(60)
-			hc := &container.HostConfig{Resources: container.Resources{MemorySwappiness: &val}}
+			hc := &container.HostConfig{MemorySwappiness: &val}
 			applyRecreatePolicy(ClientOptions{DisableMemorySwappiness: true}, hc)
 			Expect(hc.MemorySwappiness).To(BeNil())
 		})

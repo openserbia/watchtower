@@ -327,10 +327,7 @@ func isTransientDockerErr(err error) bool {
 }
 
 func listBackoffFor(attempt int) time.Duration {
-	delay := listBackoffBase * (1 << (attempt - 1))
-	if delay > listBackoffMax {
-		delay = listBackoffMax
-	}
+	delay := min(listBackoffBase*(1<<(attempt-1)), listBackoffMax)
 	jitter := time.Duration(float64(delay) * listBackoffJitter * (mrand.Float64()*2 - 1))
 	return delay + jitter
 }

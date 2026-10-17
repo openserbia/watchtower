@@ -298,10 +298,7 @@ const (
 func (w *Watchdog) probe(now time.Time) (probeAction, string) {
 	if start := w.updateStart.Load(); start != 0 {
 		if w.stuckDeadline > 0 {
-			lastActivity := w.lastProgress.Load()
-			if lastActivity < start {
-				lastActivity = start
-			}
+			lastActivity := max(w.lastProgress.Load(), start)
 			if idle := now.Sub(time.Unix(0, lastActivity)); idle > w.stuckDeadline {
 				cancelled := w.cancelledAt.Load()
 				if cancelled == 0 {

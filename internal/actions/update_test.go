@@ -1266,7 +1266,7 @@ var _ = Describe("watchtower self-update start-failure notification dedup", func
 
 	countErrorStartFailures := func(out string) int {
 		count := 0
-		for _, line := range strings.Split(out, "\n") {
+		for line := range strings.SplitSeq(out, "\n") {
 			if strings.Contains(line, "level=error") && strings.Contains(line, "Failed to start container") {
 				count++
 			}

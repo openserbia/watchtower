@@ -138,7 +138,7 @@ func sendNotifications(n *shoutrrrTypeNotifier) {
 
 func (n *shoutrrrTypeNotifier) buildMessage(data Data) (string, error) {
 	var body bytes.Buffer
-	var templateData interface{} = data
+	var templateData any = data
 	if n.legacyTemplate {
 		templateData = data.Entries
 	}

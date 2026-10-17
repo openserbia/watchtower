@@ -3,6 +3,7 @@ package actions_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"time"
 
 	dockerContainer "github.com/moby/moby/api/types/container"
@@ -33,9 +34,7 @@ var _ = Describe("the blue-green update strategy", func() {
 		labels := map[string]string{
 			"com.centurylinklabs.watchtower.blue-green.drain": "0s",
 		}
-		for k, v := range extraLabels {
-			labels[k] = v
-		}
+		maps.Copy(labels, extraLabels)
 		config := &dockerContainer.Config{
 			Image:        "fake-image:latest",
 			Labels:       labels,

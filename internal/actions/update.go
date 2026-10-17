@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -640,24 +641,24 @@ func performRollingRestart(ctx context.Context, containers, scanView []types.Con
 	cleanupImageIDs := make(map[types.ImageID]bool, len(containers))
 	failed := make(map[types.ContainerID]error, len(containers))
 
-	for i := len(containers) - 1; i >= 0; i-- {
+	for _, ctr := range slices.Backward(containers) {
 		beat(params)
-		if containers[i].ToRestart() {
-			err := stopStaleContainer(ctx, containers[i], client, params)
+		if ctr.ToRestart() {
+			err := stopStaleContainer(ctx, ctr, client, params)
 			switch {
 			case errors.Is(err, container.ErrContainerNotFound):
 				// Vanished mid-scan (typically a Compose recreate beat us to it).
 				// Don't restart, don't fail — drop from the run with a Skipped
 				// marker so the next scan can pick up whatever's there now.
 				if progress != nil {
-					progress.MarkSkipped(containers[i].ID(), err)
+					progress.MarkSkipped(ctr.ID(), err)
 				}
 			case err != nil:
-				failed[containers[i].ID()] = err
+				failed[ctr.ID()] = err
 			default:
-				if err := restartStaleContainer(ctx, containers[i], client, params, state); err != nil {
-					failed[containers[i].ID()] = err
-				} else if containers[i].IsStale() {
+				if err := restartStaleContainer(ctx, ctr, client, params, state); err != nil {
+					failed[ctr.ID()] = err
+				} else if ctr.IsStale() {
 					// Defer cleanup by one generation: hand --cleanup the
 					// image this container was on *before* the previous
 					// successful update, not the one we just retired.
@@ -666,7 +667,7 @@ func performRollingRestart(ctx context.Context, containers, scanView []types.Con
 					// it out. SourceImageID stays the right field — the old
 					// container was created from it, even if imageInfo now
 					// holds a freshly-pulled replacement.
-					if prior := state.rotatePreviousImage(containers[i].Name(), containers[i].SourceImageID()); prior != "" {
+					if prior := state.rotatePreviousImage(ctr.Name(), ctr.SourceImageID()); prior != "" {
 						cleanupImageIDs[prior] = true
 					}
 				}
@@ -683,9 +684,9 @@ func performRollingRestart(ctx context.Context, containers, scanView []types.Con
 func stopContainersInReversedOrder(ctx context.Context, containers []types.Container, client container.Client, params types.UpdateParams, progress *session.Progress) (failed map[types.ContainerID]error, stopped map[types.ImageID]bool) {
 	failed = make(map[types.ContainerID]error, len(containers))
 	stopped = make(map[types.ImageID]bool, len(containers))
-	for i := len(containers) - 1; i >= 0; i-- {
+	for _, ctr := range slices.Backward(containers) {
 		beat(params)
-		err := stopStaleContainer(ctx, containers[i], client, params)
+		err := stopStaleContainer(ctx, ctr, client, params)
 		switch {
 		case errors.Is(err, container.ErrContainerNotFound):
 			// Vanished mid-scan — most often a Compose recreate that beat us
@@ -693,13 +694,13 @@ func stopContainersInReversedOrder(ctx context.Context, containers []types.Conta
 			// set so the restart phase doesn't try to recreate a name that
 			// already belongs to whatever Compose put there.
 			if progress != nil {
-				progress.MarkSkipped(containers[i].ID(), err)
+				progress.MarkSkipped(ctr.ID(), err)
 			}
 		case err != nil:
-			failed[containers[i].ID()] = err
+			failed[ctr.ID()] = err
 		default:
 			// NOTE: If a container is restarted due to a dependency this might be empty
-			stopped[containers[i].SafeImageID()] = true
+			stopped[ctr.SafeImageID()] = true
 		}
 	}
 	return failed, stopped

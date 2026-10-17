@@ -54,10 +54,8 @@ func mockDataFromStates(states ...s.State) Data {
 	return Data{
 		Entries: legacyMockData.Entries,
 		Report:  mocks.CreateMockProgressReport(states...),
-		StaticData: StaticData{
-			Title: GetTitle(hostname, prefix),
-			Host:  hostname,
-		},
+		Title:   GetTitle(hostname, prefix),
+		Host:    hostname,
 	}
 }
 

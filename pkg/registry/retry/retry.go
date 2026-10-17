@@ -96,10 +96,7 @@ func isTransientStatus(code int) bool {
 }
 
 func backoffFor(attempt int) time.Duration {
-	delay := backoffBase * (1 << (attempt - 1))
-	if delay > backoffMax {
-		delay = backoffMax
-	}
+	delay := min(backoffBase*(1<<(attempt-1)), backoffMax)
 	jitter := time.Duration(float64(delay) * jitterFactor * (rand.Float64()*2 - 1))
 	return delay + jitter
 }

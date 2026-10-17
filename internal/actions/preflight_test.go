@@ -1,6 +1,7 @@
 package actions_test
 
 import (
+	"slices"
 	"time"
 
 	dockerContainer "github.com/moby/moby/api/types/container"
@@ -16,14 +17,7 @@ import (
 
 var _ = Describe("Preflight", func() {
 	// contains reports whether the required set includes a capability.
-	contains := func(ids []container.CapabilityID, want container.CapabilityID) bool {
-		for _, id := range ids {
-			if id == want {
-				return true
-			}
-		}
-		return false
-	}
+	contains := slices.Contains[[]container.CapabilityID]
 
 	plainContainer := func(name string) types.Container {
 		return CreateMockContainer(name, name, "fake-image:latest", time.Now())
