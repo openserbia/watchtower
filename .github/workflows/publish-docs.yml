@@ -2,6 +2,7 @@ name: Publish Docs
 
 on:
   workflow_dispatch: { }
+  # zizmor: ignore[dangerous-triggers] only follows "Release (Production)", which is push/dispatch-triggered and never fork-reachable
   workflow_run:
     workflows: [ "Release (Production)" ]
     types:
@@ -26,7 +27,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1  # zizmor: ignore[artipacked] job pushes with git
         with:
           fetch-depth: 0
       - name: Build tplprev

@@ -2,6 +2,7 @@ name: Greetings
 
 on:
   # Runs in the context of the target (openserbia/watchtower) repository, and as such has access to GITHUB_TOKEN
+  # zizmor: ignore[dangerous-triggers] no checkout or PR code runs; it only posts a greeting
   pull_request_target:
     types: [opened]
   issues:
