@@ -1257,12 +1257,18 @@ func (client dockerClient) RemoveImageByID(ctx context.Context, id t.ImageID) er
 	ctx, cancel := context.WithTimeout(ctx, imageRemoveTimeout)
 	defer cancel()
 
+	// Never force. A forced remove deletes the image even while exited
+	// containers still reference it, because the daemon only refuses a forced
+	// remove for a running container. Exited one-shot init deps (a Compose
+	// `pg-ready` or `migrate` sharing the updated service's image) sit outside
+	// the scan view, so cleanupImages cannot defer for them. Forcing stranded
+	// them on a dangling image ID, and every later `docker compose` call on
+	// their project failed with "No such image". Unforced, the daemon answers
+	// 409 for any referrer, running or exited, which defers below.
 	result, err := client.api.ImageRemove(
 		ctx,
 		string(id),
-		sdkClient.ImageRemoveOptions{
-			Force: true,
-		},
+		sdkClient.ImageRemoveOptions{},
 	)
 	if err != nil && cerrdefs.IsNotFound(err) {
 		// The old image was already gone (e.g. a previous --cleanup run or a
@@ -1272,10 +1278,12 @@ func (client dockerClient) RemoveImageByID(ctx context.Context, id t.ImageID) er
 		return nil
 	}
 	if err != nil && cerrdefs.IsConflict(err) {
-		// Another container still references this image. Common causes:
-		// a shared base image in a Compose stack where the last referrer
-		// hasn't been recreated yet; a self-update where the old and new
-		// watchtower containers overlap for a window. The cleanupImages
+		// Another container, running or exited, still references this image,
+		// or the image still carries more than one tag. Common causes: a
+		// shared base image in a Compose stack where the last referrer
+		// hasn't been recreated yet; an exited one-shot init dep built from
+		// the same image; a self-update where the old and new watchtower
+		// containers overlap for a window. The cleanupImages
 		// deferral logic (internal/actions/update.go) guards the typical
 		// cases against the scan view, but races with containers outside
 		// the scan view still land here. Next poll will retry naturally

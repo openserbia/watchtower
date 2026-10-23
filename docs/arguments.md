@@ -80,6 +80,8 @@ Removes old images after updating. When this flag is specified, watchtower will 
 
 Image removal is deferred by **one generation per container**: the just-retired image stays on disk as the previous-generation rollback target until the *next* successful update of the same container rotates it out. This protects against an edge case where a recreate fails between stop and start (e.g. the registry tag is unresolvable mid-CI-rebuild) — the operator can `docker run` with the prior image to restore service. Disk cost is roughly one extra image per watched container, until that container's next update. The rotation map resets on watchtower restart; that under-cleans by one generation for the next update of each container, intentional in favor of zero on-disk state.
 
+Removal is never forced. An image that any container still uses, including an exited one-shot such as a Compose init dep, or that still carries a second tag, stays on disk until nothing references it.
+
 ```text
             Argument: --cleanup
 Environment Variable: WATCHTOWER_CLEANUP

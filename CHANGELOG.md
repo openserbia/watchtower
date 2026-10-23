@@ -50,6 +50,19 @@ this fork has addressed (upstream went dormant after 2023 and was archived on
   fixed 10s as before. `govulncheck` reports no reachable vulnerabilities
   after the refresh.
 
+### Fixed
+- **`--cleanup` no longer deletes images that exited containers still use.**
+  The old image was removed with `force`, and the daemon only refuses a forced
+  remove for a running container. An exited one-shot built from the same image
+  as the updated service, such as a Compose `pg-ready` or `migrate` init dep,
+  sits outside the scan view, so the "still referenced" deferral never saw it.
+  The forced remove left it pointing at a deleted image ID, and every later
+  `docker compose` call on its project (`images`, `up`, `ps`) failed with
+  `No such image`. Removal is now unforced: the daemon answers `409` for any
+  referrer, running or exited, and Watchtower defers exactly as it already
+  did for a running one. An image that still carries a second tag is also
+  left in place now. `docker image prune` collects it once nothing uses it.
+
 ### Security
 - **Six high-severity advisories closed in the Python dev tooling
   (`requirements.txt`).** Adding the Snyk gate above immediately surfaced them

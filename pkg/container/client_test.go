@@ -259,6 +259,25 @@ var _ = Describe("the client", func() {
 				Expect(c.RemoveImageByID(context.Background(), t.ImageID(image))).To(Succeed())
 			})
 		})
+		When("an exited container still references the image", func() {
+			It("asks the daemon without force and defers on its conflict, so the exited container keeps its image", func() {
+				image := util.GenerateRandomSHA256()
+				mockServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("DELETE", HaveSuffix("/images/"+image)),
+						func(_ http.ResponseWriter, r *http.Request) {
+							Expect(r.URL.Query().Get("force")).To(BeEmpty(), "a forced remove deletes images that exited containers still use")
+						},
+						ghttp.RespondWithJSONEncoded(http.StatusConflict, struct{ Message string }{
+							Message: "conflict: unable to delete " + image[:12] + " (must be forced) - image is being used by stopped container abc123",
+						}),
+					),
+				)
+				c := dockerClient{api: docker}
+				Expect(c.RemoveImageByID(context.Background(), t.ImageID(image))).To(Succeed())
+				Expect(mockServer.ReceivedRequests()).To(HaveLen(1))
+			})
+		})
 	})
 	When("listing containers", func() {
 		When("no filter is provided", func() {
