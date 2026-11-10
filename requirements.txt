@@ -18,3 +18,4 @@ mcp>=1.30.0               # SNYK-PYTHON-MCP-18016318 auth bypass, -18016320 WebS
 click>=8.3.3              # SNYK-PYTHON-CLICK-16347201 command injection
 pyjwt>=2.15.0             # SNYK-PYTHON-PYJWT-17053408 improper authentication, -20245319 et al. (2.15.0 signature-verification batch)
 python-multipart>=0.0.30  # SNYK-PYTHON-PYTHONMULTIPART-16438952 + -17345663 resource exhaustion
+certifi>=2026.10.18       # SNYK-PYTHON-CERTIFI-21280764 improper certificate validation (via mcp > httpx)
