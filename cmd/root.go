@@ -376,22 +376,19 @@ func Run(c *cobra.Command, names []string) {
 // startEventWatcher launches a goroutine that streams image tag/load events
 // from the Docker engine and triggers a targeted scan for local-image rebuilds.
 // The watcher shares updateLock with the scheduler so event-driven and
-// scheduled scans never run concurrently. Event-driven scans are best-effort:
-// if the lock is held (an update is already running), we drop the trigger on
-// the floor — the poll loop is the safety net.
+// scheduled scans never run concurrently. A trigger that arrives while an
+// update holds the lock runs right after it (events.Deferred): a poll that
+// started as the build finished may have checked before the tag moved.
 func startEventWatcher(ctx context.Context, filter t.Filter, lock chan bool) {
+	deferred := &events.Deferred{}
+	scan := func(imageNames []string) {
+		targeted := filters.FilterByImage(imageNames, filter)
+		metric := runUpdatesWithNotifications(targeted)
+		metrics.RegisterScan(metric)
+	}
 	watcher := events.NewWatcher(client, events.Config{
 		Trigger: func(imageNames []string) {
-			select {
-			case v := <-lock:
-				defer func() { lock <- v }()
-				targeted := filters.FilterByImage(imageNames, filter)
-				metric := runUpdatesWithNotifications(targeted)
-				metrics.RegisterScan(metric)
-			default:
-				log.WithField("images", imageNames).
-					Debug("Event-triggered scan skipped: another update is in progress")
-			}
+			deferred.Run(ctx, lock, imageNames, scan)
 		},
 	})
 	go watcher.Run(ctx)

@@ -13,10 +13,24 @@ func UpdateFromContainer(cont types.Container, newImage types.ImageID, state Sta
 		containerID:   cont.ID(),
 		containerName: cont.Name(),
 		imageName:     cont.ImageName(),
-		oldImage:      cont.SafeImageID(),
+		oldImage:      runningImageID(cont),
 		newImage:      newImage,
 		state:         state,
 	}
+}
+
+// runningImageID is the image the container runs. That is SafeImageID, except
+// when GetContainer fell back to the image the tag names now because the one the
+// container was created from is gone (on the containerd image store a rebuild
+// of the tag removes it at once). Then SafeImageID is the update target, the
+// report saw old == new, filed the update as fresh and counted Updated=0.
+func runningImageID(cont types.Container) types.ImageID {
+	if f, ok := cont.(interface{ ImageInfoIsFallback() bool }); ok && f.ImageInfoIsFallback() {
+		if id := cont.SourceImageID(); id != "" {
+			return id
+		}
+	}
+	return cont.SafeImageID()
 }
 
 // AddSkipped adds a container to the Progress with the state set as skipped
